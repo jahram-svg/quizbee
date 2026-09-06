@@ -1,1 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
 
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>QuizBee</title>
+
+    <link rel="stylesheet" href="style.css">
+
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+</head>
+
+<body>
+
+<div class="app">
+
+    <!-- HEADER -->
+
+    <header>
+
+        <div>
+            <h1>🐝 QuizBee</h1>
+            <p id="welcome">Play. Compete. Win.</p>
+        </div>
+
+        <div class="points">
+            🟡 <span id="points">0</span>
+        </div>
+
+    </header>
+
+
+    <!-- HOME -->
+
+    <section id="home" class="page active">
+
+        <div class="hero">
+
+            <h2>Ready to test your brain? 🧠</h2>
+
+            <p>
+                Compete in challenges,
+                earn points and fight for the leaderboard.
+            </p>
+
+        </div>
+
+
+        <h3>Games</h3>
+
+        <div class="games">
+
+            <button
+                class="game-card"
+                onclick="openGame('guess')"
+            >
+
+                <span class="game-icon">🎯</span>
+
+                <div>
+                    <strong>Guess It</strong>
+
+                    <small>
+                        Guess images, people, places and more.
+                    </small>
+                </div>
+
+                <b>10 🟡</b>
+
+            </button>
+
+
+            <button
+                class="game-card"
+                onclick="openGame('who')"
+            >
+
+                <span class="game-icon">🕵️</span>
+
+                <div>
+                    <strong>Who Am I?</strong>
+
+                    <small>
+                        Identify the person from clues.
+                    </small>
+                </div>
+
+                <b>10 🟡</b>
+
+            </button>
+
+
+            <button
+                class="game-card"
+                onclick="openGame('impossible')"
+            >
+
+                <span class="game-icon">💀</span>
+
+                <div>
+                    <strong>Impossible Question</strong>
+
+                    <small>
+                        One question. One crazy week.
+                    </small>
+                </div>
+
+                <b>10 🟡</b>
+
+            </button>
+
+        </div>
+
+
+        <div class="final-card">
+
+            <span>👑</span>
+
+            <div>
+                <strong>Sunday Final</strong>
+
+                <small>
+                    The final challenge is coming...
+                </small>
+            </div>
+
+            <div id="finalTimer">
+                00:00:00
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- LEADERBOARD -->
+
+    <section id="leaderboard" class="page">
+
+        <h2>🏆 Leaderboard</h2>
+
+        <p class="muted">
+            Top QuizBee players
+        </p>
+
+        <div id="leaderboardList">
+
+            <div class="empty">
+                Leaderboard coming soon...
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- WALLET -->
+
+    <section id="wallet" class="page">
+
+        <h2>👛 Wallet</h2>
+
+        <div class="wallet-card">
+
+            <small>QuizBee Points</small>
+
+            <strong>
+                🟡 <span id="walletPoints">0</span>
+            </strong>
+
+            <p>
+                Used to enter games.
+            </p>
+
+            <button onclick="buyPoints()">
+                ➕ Buy Points
+            </button>
+
+        </div>
+
+
+        <div class="wallet-card prize">
+
+            <small>Prize Balance</small>
+
+            <strong>
+                💰 $<span id="prizeBalance">0.00</span>
+            </strong>
+
+            <p>
+                Winnings can be withdrawn.
+            </p>
+
+            <button onclick="withdraw()">
+                💸 Withdraw
+            </button>
+
+        </div>
+
+
+        <h3>This Week's Winners</h3>
+
+        <div class="empty">
+            Winners will appear here after the final.
+        </div>
+
+    </section>
+
+
+    <!-- PROFILE -->
+
+    <section id="profile" class="page">
+
+        <h2>👤 Profile</h2>
+
+        <div class="profile-card">
+
+            <div class="avatar">
+                👤
+            </div>
+
+            <h3 id="username">
+                QuizBee Player
+            </h3>
+
+            <p id="telegramUsername">
+                @username
+            </p>
+
+        </div>
+
+
+        <div class="stats">
+
+            <div>
+                <strong id="profileScore">0</strong>
+                <small>Score</small>
+            </div>
+
+            <div>
+                <strong id="streak">0</strong>
+                <small>🔥 Streak</small>
+            </div>
+
+            <div>
+                <strong id="referrals">0</strong>
+                <small>Referrals</small>
+            </div>
+
+        </div>
+
+
+        <div class="info-card">
+
+            🔥 <strong>7-Day Streak</strong>
+
+            <p>
+                Login for 7 consecutive days
+                to receive 10 QuizBee Points.
+            </p>
+
+        </div>
+
+
+        <div class="info-card">
+
+            👥 <strong>Referral Rewards</strong>
+
+            <p>
+                10 referrals → +50 points<br>
+                20 referrals → +100 points
+            </p>
+
+        </div>
+
+    </section>
+
+
+    <!-- GAME -->
+
+    <section id="game" class="page">
+
+        <button class="back" onclick="goHome()">
+            ← Back
+        </button>
+
+        <div id="gameContent"></div>
+
+    </section>
+
+
+    <!-- NAVIGATION -->
+
+    <nav>
+
+        <button onclick="showPage('home')">
+            🏠
+            <span>Home</span>
+        </button>
+
+        <button onclick="showPage('leaderboard')">
+            🏆
+            <span>Ranks</span>
+        </button>
+
+        <button onclick="showPage('wallet')">
+            👛
+            <span>Wallet</span>
+        </button>
+
+        <button onclick="showPage('profile')">
+            👤
+            <span>Profile</span>
+        </button>
+
+    </nav>
+
+</div>
+
+<script src="app.js"></script>
+
+</body>
+          </html>
