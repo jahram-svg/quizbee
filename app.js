@@ -1,3 +1,8 @@
+// ============================================================
+// QUIZBEE FRONTEND GAME ENGINE
+// DEVELOPMENT / DEMO VERSION
+// ============================================================
+
 const tg = window.Telegram?.WebApp;
 
 if (tg) {
@@ -5,549 +10,946 @@ if (tg) {
     tg.expand();
 }
 
-// =====================================================
-// QUIZBEE DEMO DATA
-// =====================================================
+
+// ============================================================
+// PLAYER STATE
+// ============================================================
 
 const state = {
+
     points: 240,
+
     prizeBalance: 0,
+
     score: 0,
-    streak: 4,
-    referrals: 7,
+
+    streak: 0,
+
+    referrals: 0,
+
+    adsWatched: 0,
 
     currentGame: null,
+
     currentQuestion: null,
+
     currentClueIndex: 0,
-    attempts: 0,
 
-    games: {
-        guess: {
-            id: "guess",
-            title: "🎯 Guess It",
-            description: "Use the clues to identify the answer.",
-            entryFee: 10,
-            reward: 25
-        },
+    attempts: 0
 
-        whoami: {
-            id: "whoami",
-            title: "🕵️ Who Am I?",
-            description: "Identify the mystery person from progressive clues.",
-            entryFee: 10,
-            reward: 100
-        },
-
-        impossible: {
-            id: "impossible",
-            title: "💀 Impossible Question",
-            description: "One extremely difficult question. Can you solve it?",
-            entryFee: 10,
-            reward: 100
-        }
-    },
-
-    questions: {
-        guess: [
-            {
-                clues: [
-                    "I am a footballer.",
-                    "I have won the Ballon d'Or.",
-                    "I am famous for my left foot.",
-                    "I have played in Spain."
-                ],
-                answer: "lionel messi",
-                accepted: ["lionel messi", "messi"]
-            },
-            {
-                clues: [
-                    "I am a country.",
-                    "I am in West Africa.",
-                    "My capital is Abuja.",
-                    "My largest city is Lagos."
-                ],
-                answer: "nigeria",
-                accepted: ["nigeria"]
-            },
-            {
-                clues: [
-                    "I am an animal.",
-                    "I am known for my black and white stripes.",
-                    "I am closely related to horses."
-                ],
-                answer: "zebra",
-                accepted: ["zebra"]
-            }
-        ],
-
-        whoami: [
-            {
-                clues: [
-                    "I am a footballer.",
-                    "I am famous for my number 7.",
-                    "I have played for Manchester United.",
-                    "I have won the Champions League."
-                ],
-                answer: "cristiano ronaldo",
-                accepted: ["cristiano ronaldo", "ronaldo", "cr7"]
-            },
-            {
-                clues: [
-                    "I am a fictional character.",
-                    "I am from an anime.",
-                    "I am known for my straw hat.",
-                    "I want to become the Pirate King."
-                ],
-                answer: "monkey d luffy",
-                accepted: ["monkey d luffy", "luffy"]
-            }
-        ],
-
-        impossible: [
-            {
-                clues: [
-                    "A man walks into a room.",
-                    "There are three switches outside the room.",
-                    "Only one switch controls the light bulb inside.",
-                    "The man can enter the room only once.",
-                    "How can he determine which switch controls the bulb?"
-                ],
-                answer: "use heat",
-                accepted: [
-                    "use heat",
-                    "turn one on",
-                    "turn one switch on",
-                    "heat the bulb",
-                    "use the bulb heat"
-                ]
-            }
-        ]
-    }
 };
 
 
-// =====================================================
+// ============================================================
+// GAME CONFIGURATION
+// ============================================================
+
+const games = [
+
+    {
+        id: "guess",
+
+        icon: "🎯",
+
+        name: "Guess It",
+
+        description:
+            "Use clues to identify the hidden answer.",
+
+        entryFee: 10,
+
+        unlocked: true
+    },
+
+    {
+        id: "impossible",
+
+        icon: "💀",
+
+        name: "Impossible Question",
+
+        description:
+            "A brutal brain teaser. Multiple attempts allowed.",
+
+        entryFee: 10,
+
+        unlocked: true
+    },
+
+    {
+        id: "crowd",
+
+        icon: "🧠",
+
+        name: "The Crowd Trap",
+
+        description:
+            "Choose a number nobody else chooses.",
+
+        entryFee: 10,
+
+        unlocked: false
+    },
+
+    {
+        id: "survivor",
+
+        icon: "🏆",
+
+        name: "The Survivor",
+
+        description:
+            "Survive every round until the final.",
+
+        entryFee: 10,
+
+        unlocked: false
+    },
+
+    {
+        id: "deadnumber",
+
+        icon: "☠️",
+
+        name: "Dead Number",
+
+        description:
+            "Choose a number. Avoid the dead numbers.",
+
+        entryFee: 10,
+
+        unlocked: false
+    },
+
+    {
+        id: "choice",
+
+        icon: "🤔",
+
+        name: "Impossible Choice",
+
+        description:
+            "Predict what the crowd will choose.",
+
+        entryFee: 10,
+
+        unlocked: false
+    }
+
+];
+
+
+// ============================================================
+// QUESTION DATA
+// ============================================================
+
+const questions = {
+
+    guess: [
+
+        {
+            clues: [
+
+                "I am a footballer.",
+
+                "I have won the Ballon d'Or.",
+
+                "I am famous for my left foot.",
+
+                "I have played in Spain."
+
+            ],
+
+            answer: "lionel messi",
+
+            accepted: [
+                "lionel messi",
+                "messi"
+            ]
+        },
+
+        {
+            clues: [
+
+                "I am a country.",
+
+                "I am in West Africa.",
+
+                "My capital is Abuja.",
+
+                "My largest city is Lagos."
+
+            ],
+
+            answer: "nigeria",
+
+            accepted: [
+                "nigeria"
+            ]
+        },
+
+        {
+            clues: [
+
+                "I am an animal.",
+
+                "I have black and white stripes.",
+
+                "I am closely related to horses."
+
+            ],
+
+            answer: "zebra",
+
+            accepted: [
+                "zebra"
+            ]
+        },
+
+        {
+            clues: [
+
+                "I am a planet.",
+
+                "I am known as the Red Planet.",
+
+                "I am the fourth planet from the Sun."
+
+            ],
+
+            answer: "mars",
+
+            accepted: [
+                "mars"
+            ]
+        }
+
+    ],
+
+
+    impossible: [
+
+        {
+            clues: [
+
+                "You have three switches outside a room.",
+
+                "Inside the room is one light bulb.",
+
+                "Only one switch controls the bulb.",
+
+                "You may enter the room only once.",
+
+                "How can you identify the correct switch?"
+
+            ],
+
+            answer: "use heat",
+
+            accepted: [
+
+                "use heat",
+                "use the heat",
+                "turn one on then off",
+                "turn one switch on then off",
+                "heat the bulb",
+                "use bulb heat"
+
+            ]
+        },
+
+        {
+            clues: [
+
+                "A farmer has 17 sheep.",
+
+                "All but 9 die.",
+
+                "How many sheep are left?"
+
+            ],
+
+            answer: "9",
+
+            accepted: [
+                "9",
+                "nine"
+            ]
+        }
+
+    ]
+
+};
+
+
+// ============================================================
 // INITIALIZATION
-// =====================================================
+// ============================================================
 
-document.addEventListener("DOMContentLoaded", () => {
-    renderHome();
-    updateUI();
-});
+document.addEventListener(
+    "DOMContentLoaded",
+    initialize
+);
 
 
-// =====================================================
-// NORMALIZE ANSWERS
-// =====================================================
+function initialize() {
 
-function normalizeAnswer(answer) {
-    return answer
+    renderGames();
+
+    updateStats();
+
+    updateAdUI();
+
+    updateTelegramUser();
+
+}
+
+
+// ============================================================
+// TELEGRAM USER
+// ============================================================
+
+function updateTelegramUser() {
+
+    const user =
+        tg?.initDataUnsafe?.user;
+
+    if (!user) return;
+
+    const name =
+        user.first_name ||
+        "QuizBee Player";
+
+    const username =
+        user.username
+            ? "@" + user.username
+            : "Telegram User";
+
+    const nameElement =
+        document.getElementById("profile-name");
+
+    const usernameElement =
+        document.getElementById("profile-username");
+
+    if (nameElement) {
+        nameElement.textContent = name;
+    }
+
+    if (usernameElement) {
+        usernameElement.textContent = username;
+    }
+}
+
+
+// ============================================================
+// NORMALIZE ANSWER
+// ============================================================
+
+function normalizeAnswer(value) {
+
+    return value
         .toLowerCase()
         .trim()
         .replace(/\s+/g, " ")
         .replace(/[.,!?]/g, "");
+
 }
 
 
-// =====================================================
+// ============================================================
 // CHECK ANSWER
-// =====================================================
+// ============================================================
 
-function isCorrect(userAnswer, question) {
-    const normalized = normalizeAnswer(userAnswer);
+function checkAnswer(value, question) {
 
-    return question.accepted.some(answer =>
-        normalizeAnswer(answer) === normalized
+    const normalized =
+        normalizeAnswer(value);
+
+    return question.accepted.some(
+        answer =>
+            normalizeAnswer(answer) === normalized
     );
+
 }
 
 
-// =====================================================
-// UI HELPERS
-// =====================================================
+// ============================================================
+// RENDER GAMES
+// ============================================================
 
-function updateUI() {
-    const pointsElement = document.getElementById("points");
-    const prizeElement = document.getElementById("prize-balance");
-    const scoreElement = document.getElementById("score");
-    const streakElement = document.getElementById("streak");
-    const referralsElement = document.getElementById("referrals");
+function renderGames() {
 
-    if (pointsElement) {
-        pointsElement.textContent = state.points;
-    }
-
-    if (prizeElement) {
-        prizeElement.textContent = formatMoney(state.prizeBalance);
-    }
-
-    if (scoreElement) {
-        scoreElement.textContent = state.score;
-    }
-
-    if (streakElement) {
-        streakElement.textContent = state.streak;
-    }
-
-    if (referralsElement) {
-        referralsElement.textContent = state.referrals;
-    }
-}
-
-
-function formatMoney(amount) {
-    return `₦${Number(amount).toLocaleString()}`;
-}
-
-
-function showScreen(screenId) {
-    document.querySelectorAll(".screen").forEach(screen => {
-        screen.classList.remove("active");
-    });
-
-    const screen = document.getElementById(screenId);
-
-    if (screen) {
-        screen.classList.add("active");
-    }
-
-    window.scrollTo(0, 0);
-}
-
-
-// =====================================================
-// HOME
-// =====================================================
-
-function renderHome() {
-    showScreen("home");
-
-    const container = document.getElementById("game-list");
+    const container =
+        document.getElementById("game-list");
 
     if (!container) return;
 
     container.innerHTML = "";
 
-    Object.values(state.games).forEach(game => {
-        const card = document.createElement("div");
+    games.forEach(game => {
 
-        card.className = "game-card";
+        const card =
+            document.createElement("div");
+
+        card.className =
+            "game-card" +
+            (!game.unlocked
+                ? " locked-overlay"
+                : "");
+
+        const status =
+            game.unlocked
+                ? `
+                    <span class="status-badge status-open">
+                        ✅ OPEN
+                    </span>
+                  `
+                : `
+                    <span class="status-badge status-locked">
+                        🔒 Coming Soon
+                    </span>
+                  `;
+
+        const button =
+            game.unlocked
+                ? `
+                    <button
+                        class="game-button"
+                        onclick="startGame('${game.id}')"
+                    >
+                        Play
+                    </button>
+                  `
+                : `
+                    <button
+                        class="game-button locked"
+                        onclick="lockedGame()"
+                    >
+                        🔒
+                    </button>
+                  `;
 
         card.innerHTML = `
-            <div class="game-icon">${game.title.split(" ")[0]}</div>
 
-            <div class="game-info">
-                <h3>${game.title.substring(game.title.indexOf(" ") + 1)}</h3>
-                <p>${game.description}</p>
-                <span class="entry-fee">
-                    Entry: ${game.entryFee} Points
-                </span>
+            <div class="game-icon">
+                ${game.icon}
             </div>
 
-            <button onclick="startGame('${game.id}')">
-                Play
-            </button>
+            <div class="game-info">
+
+                <h3>
+                    ${game.name}
+                </h3>
+
+                <p>
+                    ${game.description}
+                </p>
+
+                <div class="game-meta">
+
+                    ${status}
+
+                    ${
+                        game.unlocked
+                            ? `
+                                <span class="entry-badge">
+                                    Entry ${game.entryFee} Points
+                                </span>
+                              `
+                            : ""
+                    }
+
+                </div>
+
+            </div>
+
+            ${button}
+
         `;
 
         container.appendChild(card);
+
     });
+
 }
 
 
-// =====================================================
+// ============================================================
+// LOCKED GAME
+// ============================================================
+
+function lockedGame() {
+
+    alert(
+        "🔒 Coming Soon!\n\n" +
+        "This game will be unlocked as QuizBee grows."
+    );
+
+}
+
+
+// ============================================================
 // START GAME
-// =====================================================
+// ============================================================
 
 function startGame(gameId) {
-    const game = state.games[gameId];
 
-    if (!game) return;
+    const game =
+        games.find(
+            item => item.id === gameId
+        );
 
-    if (state.points < game.entryFee) {
-        alert("You don't have enough QuizBee Points.");
+    if (!game || !game.unlocked) {
+
+        lockedGame();
+
         return;
     }
+
+
+    if (state.points < game.entryFee) {
+
+        alert(
+            "You don't have enough QuizBee Points."
+        );
+
+        return;
+    }
+
+
+    const availableQuestions =
+        questions[gameId];
+
+    if (
+        !availableQuestions ||
+        availableQuestions.length === 0
+    ) {
+
+        alert(
+            "No question is available yet."
+        );
+
+        return;
+    }
+
+
+    // Deduct entry
 
     state.points -= game.entryFee;
 
-    state.currentGame = gameId;
-    state.attempts = 0;
-    state.currentClueIndex = 0;
 
-    const questions = state.questions[gameId];
+    // Select question
 
-    if (!questions || questions.length === 0) {
-        alert("No question is available for this game yet.");
-        state.points += game.entryFee;
-        return;
-    }
+    state.currentGame =
+        gameId;
 
     state.currentQuestion =
-        questions[Math.floor(Math.random() * questions.length)];
+        availableQuestions[
+            Math.floor(
+                Math.random() *
+                availableQuestions.length
+            )
+        ];
+
+
+    state.currentClueIndex = 0;
+
+    state.attempts = 0;
+
 
     renderGame();
 
-    updateUI();
+    updateStats();
+
 }
 
 
-// =====================================================
-// GAME SCREEN
-// =====================================================
+// ============================================================
+// RENDER GAME
+// ============================================================
 
 function renderGame() {
+
     showScreen("game");
 
-    const game = state.games[state.currentGame];
-    const question = state.currentQuestion;
+    const title =
+        document.getElementById("game-title");
 
-    const title = document.getElementById("game-title");
-    const content = document.getElementById("game-content");
+    const content =
+        document.getElementById("game-content");
 
-    if (!title || !content) return;
 
-    title.textContent = game.title;
+    const game =
+        games.find(
+            item =>
+                item.id ===
+                state.currentGame
+        );
 
-    if (state.currentGame === "guess") {
-        renderGuessIt(content, question);
+
+    if (!game) return;
+
+
+    title.textContent =
+        `${game.icon} ${game.name}`;
+
+
+    if (
+        state.currentGame ===
+        "guess"
+    ) {
+
+        renderGuess(content);
+
+        return;
     }
 
-    if (state.currentGame === "whoami") {
-        renderWhoAmI(content, question);
+
+    if (
+        state.currentGame ===
+        "impossible"
+    ) {
+
+        renderImpossible(content);
+
+        return;
     }
 
-    if (state.currentGame === "impossible") {
-        renderImpossible(content, question);
-    }
 }
 
 
-// =====================================================
+// ============================================================
 // GUESS IT
-// =====================================================
+// ============================================================
 
-function renderGuessIt(container, question) {
+function renderGuess(container) {
 
-    const visibleClues =
+    const question =
+        state.currentQuestion;
+
+
+    const clues =
         question.clues.slice(
             0,
-            Math.min(state.currentClueIndex + 1, question.clues.length)
+            state.currentClueIndex + 1
         );
 
+
+    const reward =
+        25;
+
+
     container.innerHTML = `
+
         <div class="question-box">
 
-            <h3>🔎 Clues</h3>
+            <div class="reward-banner">
+
+                🎯 Correct answer:
+                +${reward} Score
+
+            </div>
+
+
+            <h3>
+                Identify the answer
+            </h3>
+
 
             <div class="clues">
-                ${visibleClues.map((clue, index) => `
+
+                ${clues.map(
+                    (clue, index) => `
+
                     <div class="clue">
-                        <strong>Clue ${index + 1}</strong>
-                        <p>${clue}</p>
+
+                        <span class="clue-number">
+                            Clue ${index + 1}
+                        </span>
+
+                        <p>
+                            ${clue}
+                        </p>
+
                     </div>
+
                 `).join("")}
+
             </div>
+
 
             <input
                 id="answer-input"
+                class="answer-input"
                 type="text"
                 placeholder="Enter your answer..."
                 autocomplete="off"
             >
 
-            <button class="submit-btn" onclick="submitAnswer()">
+
+            <button
+                class="primary-button"
+                onclick="submitAnswer()"
+            >
                 Submit Answer
             </button>
+
 
             <div id="answer-feedback"></div>
 
         </div>
+
     `;
+
+
+    focusAnswer();
+
 }
 
 
-// =====================================================
-// WHO AM I
-// =====================================================
+// ============================================================
+// IMPOSSIBLE QUESTION
+// ============================================================
 
-function renderWhoAmI(container, question) {
+function renderImpossible(container) {
 
-    const visibleClues =
-        question.clues.slice(
-            0,
-            Math.min(state.currentClueIndex + 1, question.clues.length)
-        );
+    const question =
+        state.currentQuestion;
 
-    const rewards = [100, 80, 60, 40, 20];
-
-    const currentReward =
-        rewards[Math.min(state.currentClueIndex, rewards.length - 1)];
 
     container.innerHTML = `
+
         <div class="question-box">
 
             <div class="reward-banner">
-                Current reward: ${currentReward} Score
+
+                💀 Weekly Challenge
+
             </div>
 
-            <h3>🕵️ Who Am I?</h3>
+
+            <h3>
+                Think carefully.
+            </h3>
+
 
             <div class="clues">
-                ${visibleClues.map((clue, index) => `
+
+                ${question.clues.map(
+                    (clue, index) => `
+
                     <div class="clue">
-                        <strong>Clue ${index + 1}</strong>
-                        <p>${clue}</p>
+
+                        <span class="clue-number">
+                            ${index + 1}
+                        </span>
+
+                        <p>
+                            ${clue}
+                        </p>
+
                     </div>
+
                 `).join("")}
+
             </div>
 
-            <input
-                id="answer-input"
-                type="text"
-                placeholder="Who am I?"
-                autocomplete="off"
+
+            <p
+                style="
+                    font-size:11px;
+                    color:#777;
+                    margin-top:10px;
+                "
             >
-
-            <button class="submit-btn" onclick="submitAnswer()">
-                Submit Answer
-            </button>
-
-            <div id="answer-feedback"></div>
-
-        </div>
-    `;
-}
-
-
-// =====================================================
-// IMPOSSIBLE QUESTION
-// =====================================================
-
-function renderImpossible(container, question) {
-
-    container.innerHTML = `
-        <div class="question-box impossible">
-
-            <h3>💀 Impossible Question</h3>
-
-            <p class="impossible-text">
-                ${question.clues.join("<br><br>")}
-            </p>
-
-            <p class="attempt-info">
                 You can try multiple times.
             </p>
 
+
             <input
                 id="answer-input"
+                class="answer-input"
                 type="text"
-                placeholder="Think carefully..."
+                placeholder="Your answer..."
                 autocomplete="off"
             >
 
-            <button class="submit-btn" onclick="submitAnswer()">
+
+            <button
+                class="primary-button"
+                onclick="submitAnswer()"
+            >
                 Submit Answer
             </button>
+
 
             <div id="answer-feedback"></div>
 
         </div>
+
     `;
+
+
+    focusAnswer();
+
 }
 
 
-// =====================================================
+// ============================================================
+// FOCUS INPUT
+// ============================================================
+
+function focusAnswer() {
+
+    setTimeout(() => {
+
+        const input =
+            document.getElementById(
+                "answer-input"
+            );
+
+        if (input) {
+            input.focus();
+        }
+
+    }, 100);
+
+}
+
+
+// ============================================================
 // SUBMIT ANSWER
-// =====================================================
+// ============================================================
 
 function submitAnswer() {
 
-    const input = document.getElementById("answer-input");
-    const feedback = document.getElementById("answer-feedback");
+    const input =
+        document.getElementById(
+            "answer-input"
+        );
 
-    if (!input || !feedback) return;
+    const feedback =
+        document.getElementById(
+            "answer-feedback"
+        );
 
-    const answer = input.value.trim();
 
-    if (!answer) {
+    if (!input || !feedback)
+        return;
+
+
+    const value =
+        input.value.trim();
+
+
+    if (!value) {
+
         feedback.innerHTML = `
+
             <div class="feedback wrong">
+
                 Please enter an answer.
+
             </div>
+
         `;
+
         return;
     }
 
+
     state.attempts++;
 
-    const correct = isCorrect(answer, state.currentQuestion);
+
+    const correct =
+        checkAnswer(
+            value,
+            state.currentQuestion
+        );
+
 
     if (correct) {
 
-        let earnedScore = 25;
+        let earned =
+            25;
 
-        if (state.currentGame === "whoami") {
 
-            const rewards = [100, 80, 60, 40, 20];
+        if (
+            state.currentGame ===
+            "impossible"
+        ) {
 
-            earnedScore =
-                rewards[
-                    Math.min(
-                        state.currentClueIndex,
-                        rewards.length - 1
-                    )
-                ];
+            earned = 100;
+
         }
 
-        if (state.currentGame === "impossible") {
-            earnedScore = 100;
-        }
 
-        state.score += earnedScore;
+        state.score += earned;
+
+
+        input.disabled = true;
+
 
         feedback.innerHTML = `
+
             <div class="feedback correct">
-                🎉 Correct!<br>
-                +${earnedScore} Score
+
+                🎉 <strong>Correct!</strong>
+
+                <br>
+
+                +${earned} Score
+
             </div>
 
+
             <button
-                class="continue-btn"
+                class="secondary-button"
                 onclick="finishGame()"
             >
                 Continue
             </button>
+
         `;
 
-        input.disabled = true;
 
-        updateUI();
+        updateStats();
 
         return;
     }
 
 
-    // =================================================
-    // WRONG ANSWER
-    // =================================================
+    // IMPOSSIBLE QUESTION
 
-    if (state.currentGame === "impossible") {
+    if (
+        state.currentGame ===
+        "impossible"
+    ) {
 
         feedback.innerHTML = `
+
             <div class="feedback wrong">
-                ❌ Answer is wrong.<br>
+
+                ❌ Answer is wrong.
+
+                <br>
+
                 Try again.
+
             </div>
+
         `;
 
+
         input.value = "";
+
         input.focus();
 
         return;
     }
 
 
-    // Reveal next clue
+    // GUESS IT
 
     if (
         state.currentClueIndex <
@@ -557,161 +959,407 @@ function submitAnswer() {
         state.currentClueIndex++;
 
         feedback.innerHTML = `
+
             <div class="feedback wrong">
-                ❌ Not correct.
-                Here's another clue.
-            </div>
-        `;
 
-        setTimeout(() => {
-            renderGame();
-        }, 700);
-
-    } else {
-
-        feedback.innerHTML = `
-            <div class="feedback wrong">
                 ❌ Not correct.
 
-                <br><br>
+                <br>
 
-                The correct answer was:
-                <strong>${state.currentQuestion.answer}</strong>
+                Here's another clue...
+
             </div>
 
-            <button
-                class="continue-btn"
-                onclick="finishGame()"
-            >
-                Finish
-            </button>
         `;
+
+
+        setTimeout(
+            renderGame,
+            650
+        );
+
+
+        return;
     }
+
+
+    // ALL CLUES USED
+
+    feedback.innerHTML = `
+
+        <div class="feedback wrong">
+
+            ❌ You didn't get it.
+
+            <br><br>
+
+            Correct answer:
+
+            <strong>
+                ${state.currentQuestion.answer}
+            </strong>
+
+        </div>
+
+
+        <button
+            class="secondary-button"
+            onclick="finishGame()"
+        >
+            Finish
+        </button>
+
+    `;
+
 }
 
 
-// =====================================================
+// ============================================================
 // FINISH GAME
-// =====================================================
+// ============================================================
 
 function finishGame() {
 
     state.currentGame = null;
+
     state.currentQuestion = null;
 
-    renderHome();
-    updateUI();
+    goHome();
+
 }
 
 
-// =====================================================
+// ============================================================
+// ADS
+// ============================================================
+
+function openAds() {
+
+    showScreen("ads");
+
+    updateAdUI();
+
+}
+
+
+function watchDemoAd() {
+
+    if (
+        state.adsWatched >= 10
+    ) {
+
+        alert(
+            "🎉 Today's 10-ad reward has already been completed."
+        );
+
+        return;
+    }
+
+
+    state.adsWatched++;
+
+
+    updateAdUI();
+
+
+    if (
+        state.adsWatched === 10
+    ) {
+
+        state.points += 10;
+
+
+        alert(
+            "🎉 Congratulations!\n\n" +
+            "+10 QuizBee Points"
+        );
+
+
+        updateStats();
+
+        return;
+    }
+
+
+    alert(
+        `📺 Ad completed!\n\n` +
+        `${state.adsWatched}/10 completed.`
+    );
+
+}
+
+
+function updateAdUI() {
+
+    const count =
+        state.adsWatched;
+
+
+    const percent =
+        (count / 10) * 100;
+
+
+    const text =
+        document.getElementById(
+            "ad-progress-text"
+        );
+
+    const bar =
+        document.getElementById(
+            "ad-progress-bar"
+        );
+
+    const pageCount =
+        document.getElementById(
+            "ads-count"
+        );
+
+    const pageBar =
+        document.getElementById(
+            "ads-page-progress"
+        );
+
+
+    if (text) {
+        text.textContent =
+            `${count} / 10`;
+    }
+
+
+    if (bar) {
+        bar.style.width =
+            `${percent}%`;
+    }
+
+
+    if (pageCount) {
+        pageCount.textContent =
+            `${count} / 10`;
+    }
+
+
+    if (pageBar) {
+        pageBar.style.width =
+            `${percent}%`;
+    }
+
+}
+
+
+// ============================================================
 // WALLET
-// =====================================================
+// ============================================================
 
 function openWallet() {
 
     showScreen("wallet");
 
-    const wallet = document.getElementById("wallet-content");
 
-    if (!wallet) return;
+    const container =
+        document.getElementById(
+            "wallet-content"
+        );
 
-    wallet.innerHTML = `
+
+    container.innerHTML = `
 
         <div class="wallet-card">
-            <span>🐝 QuizBee Points</span>
-            <strong>${state.points}</strong>
-            <small>Play-only balance</small>
+
+            <h3>
+                🐝 QuizBee Points
+            </h3>
+
+            <span class="wallet-amount">
+                ${state.points}
+            </span>
+
+            <small>
+                Play-only balance.
+                Cannot be withdrawn.
+            </small>
+
         </div>
 
-        <div class="wallet-card prize">
-            <span>🏆 Prize Balance</span>
-            <strong>${formatMoney(state.prizeBalance)}</strong>
-            <small>Withdrawable winnings</small>
+
+        <div class="wallet-card">
+
+            <h3>
+                🏆 Prize Balance
+            </h3>
+
+            <span class="wallet-amount">
+                ₦${state.prizeBalance.toLocaleString()}
+            </span>
+
+            <small>
+                Withdrawable competition winnings.
+            </small>
+
         </div>
+
 
         <div class="wallet-note">
-            QuizBee Points cannot be withdrawn.
-            Prize Balance contains your actual winnings.
+
+            QuizBee Points and Prize Balance
+            are completely separate.
+
+            <br><br>
+
+            Points are used to enter games.
+
+            Prize Balance contains actual
+            winnings and is withdrawable.
+
         </div>
 
-        <button class="withdraw-btn" onclick="withdrawPrize()">
+
+        <button
+            class="primary-button"
+            onclick="withdrawPrize()"
+        >
             Withdraw Prize
         </button>
+
+
+        <button
+            class="secondary-button"
+            onclick="buyPoints()"
+        >
+            🐝 Buy QuizBee Points
+        </button>
+
     `;
+
+}
+
+
+function buyPoints() {
+
+    alert(
+        "Payment system will be connected in the payment stage."
+    );
+
 }
 
 
 function withdrawPrize() {
 
-    if (state.prizeBalance <= 0) {
-        alert("You don't have any withdrawable prize balance yet.");
+    if (
+        state.prizeBalance <= 0
+    ) {
+
+        alert(
+            "You don't have a withdrawable prize balance yet."
+        );
+
         return;
     }
 
+
     alert(
-        "Withdrawal system will be connected after the backend and payment system are built."
+        "Withdrawal system will be connected after the secure backend is implemented."
     );
+
 }
 
 
-// =====================================================
+// ============================================================
 // PROFILE
-// =====================================================
+// ============================================================
 
 function openProfile() {
 
     showScreen("profile");
 
-    const profile = document.getElementById("profile-content");
 
-    if (!profile) return;
+    const container =
+        document.getElementById(
+            "profile-content"
+        );
 
-    const telegramUser =
+
+    const user =
         tg?.initDataUnsafe?.user;
 
+
     const name =
-        telegramUser?.first_name ||
+        user?.first_name ||
         "QuizBee Player";
 
+
     const username =
-        telegramUser?.username
-            ? `@${telegramUser.username}`
+        user?.username
+            ? `@${user.username}`
             : "Telegram User";
 
-    profile.innerHTML = `
 
-        <div class="profile-header">
+    container.innerHTML = `
+
+        <div class="profile-card">
+
             <div class="avatar">
                 🐝
             </div>
 
-            <h2>${name}</h2>
+            <h2 id="profile-name">
+                ${name}
+            </h2>
 
-            <p>${username}</p>
-        </div>
-
-        <div class="stats-grid">
-
-            <div class="stat">
-                <strong>${state.score}</strong>
-                <span>Score</span>
-            </div>
-
-            <div class="stat">
-                <strong>${state.streak}</strong>
-                <span>Day Streak</span>
-            </div>
-
-            <div class="stat">
-                <strong>${state.referrals}</strong>
-                <span>Referrals</span>
-            </div>
+            <p id="profile-username">
+                ${username}
+            </p>
 
         </div>
 
-        <div class="milestone">
-            <h3>🎁 Referral Milestones</h3>
+
+        <div class="profile-stats">
+
+            <div class="profile-stat">
+
+                <strong>
+                    ${state.score}
+                </strong>
+
+                <span>
+                    Score
+                </span>
+
+            </div>
+
+
+            <div class="profile-stat">
+
+                <strong>
+                    ${state.streak}
+                </strong>
+
+                <span>
+                    🔥 Streak
+                </span>
+
+            </div>
+
+
+            <div class="profile-stat">
+
+                <strong>
+                    ${state.referrals}
+                </strong>
+
+                <span>
+                    Referrals
+                </span>
+
+            </div>
+
+        </div>
+
+
+        <div class="info-card">
+
+            <h3>
+                🎁 Referral Rewards
+            </h3>
 
             <p>
                 10 referrals → +50 Points
@@ -721,110 +1369,250 @@ function openProfile() {
                 20 referrals → +100 Points
             </p>
 
-            <p>
-                Current referrals:
-                <strong>${state.referrals}</strong>
-            </p>
         </div>
+
+
+        <div class="info-card">
+
+            <h3>
+                🔥 Daily Streak
+            </h3>
+
+            <p>
+                7 consecutive days → +10 Points
+            </p>
+
+        </div>
+
     `;
+
 }
 
 
-// =====================================================
+// ============================================================
 // LEADERBOARD
-// =====================================================
+// ============================================================
 
 function openLeaderboard() {
 
     showScreen("leaderboard");
 
-    const leaderboard =
-        document.getElementById("leaderboard-content");
 
-    if (!leaderboard) return;
+    const container =
+        document.getElementById(
+            "leaderboard-content"
+        );
+
 
     const players = [
-        { name: "QuizMaster", score: 980 },
-        { name: "BrainBee", score: 820 },
-        { name: "MysteryPro", score: 710 },
-        { name: "You", score: state.score },
-        { name: "BeeHunter", score: 480 }
+
+        {
+            name: "QuizMaster",
+            score: 980
+        },
+
+        {
+            name: "BrainBee",
+            score: 820
+        },
+
+        {
+            name: "MysteryPro",
+            score: 710
+        },
+
+        {
+            name: "You",
+            score: state.score
+        },
+
+        {
+            name: "BeeHunter",
+            score: 480
+        }
+
     ];
 
-    players.sort((a, b) => b.score - a.score);
 
-    leaderboard.innerHTML = `
-        <div class="leaderboard-list">
+    players.sort(
+        (a, b) =>
+            b.score - a.score
+    );
 
-            ${players.map((player, index) => `
-                <div class="leaderboard-row">
+
+    container.innerHTML = `
+
+        <div class="leaderboard">
+
+            ${players.map(
+                (player, index) => `
+
+                <div class="leader-row">
 
                     <span class="rank">
                         #${index + 1}
                     </span>
 
-                    <span class="player-name">
+                    <span class="player">
                         ${player.name}
                     </span>
 
-                    <strong>
+                    <span class="leader-score">
                         ${player.score}
-                    </strong>
+                    </span>
 
                 </div>
+
             `).join("")}
 
         </div>
+
     `;
+
 }
 
 
-// =====================================================
+// ============================================================
+// STATS
+// ============================================================
+
+function updateStats() {
+
+    const points =
+        document.getElementById(
+            "points"
+        );
+
+    const score =
+        document.getElementById(
+            "score"
+        );
+
+    const streak =
+        document.getElementById(
+            "streak"
+        );
+
+    const referrals =
+        document.getElementById(
+            "referrals"
+        );
+
+
+    if (points) {
+        points.textContent =
+            state.points;
+    }
+
+
+    if (score) {
+        score.textContent =
+            state.score;
+    }
+
+
+    if (streak) {
+        streak.textContent =
+            state.streak;
+    }
+
+
+    if (referrals) {
+        referrals.textContent =
+            state.referrals;
+    }
+
+}
+
+
+// ============================================================
 // NAVIGATION
-// =====================================================
+// ============================================================
+
+function showScreen(id) {
+
+    document
+        .querySelectorAll(".screen")
+        .forEach(
+            screen =>
+                screen.classList.remove(
+                    "active"
+                )
+        );
+
+
+    const screen =
+        document.getElementById(id);
+
+
+    if (screen) {
+
+        screen.classList.add(
+            "active"
+        );
+
+    }
+
+
+    window.scrollTo(
+        0,
+        0
+    );
+
+}
+
 
 function goHome() {
-    renderHome();
-    updateUI();
+
+    showScreen("home");
+
+    updateStats();
+
 }
 
 
 function navigate(section) {
 
-    if (section === "home") {
-        goHome();
+    switch (section) {
+
+        case "home":
+
+            goHome();
+
+            break;
+
+
+        case "leaderboard":
+
+            openLeaderboard();
+
+            break;
+
+
+        case "wallet":
+
+            openWallet();
+
+            break;
+
+
+        case "profile":
+
+            openProfile();
+
+            break;
+
     }
 
-    if (section === "wallet") {
-        openWallet();
-    }
-
-    if (section === "profile") {
-        openProfile();
-    }
-
-    if (section === "leaderboard") {
-        openLeaderboard();
-    }
 }
 
 
-// =====================================================
-// BUY POINTS
-// =====================================================
-
-function buyPoints() {
-
-    alert(
-        "Payment system coming next. We will connect Nigerian and international payment options."
-    );
-}
-
-
-// =====================================================
+// ============================================================
 // TELEGRAM MAIN BUTTON
-// =====================================================
+// ============================================================
 
 if (tg) {
+
     tg.MainButton.hide();
-            }
+
+}
