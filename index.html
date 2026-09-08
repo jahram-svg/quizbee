@@ -16,51 +16,53 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 
-
 <body>
 
 <div id="app">
 
-    <!-- ========================================= -->
     <!-- HEADER -->
-    <!-- ========================================= -->
-
     <header class="top-header">
 
         <div class="brand">
-            🐝 <span>QuizBee</span>
+            🐝 QuizBee
         </div>
 
-        <div class="points-display">
-            <span>🐝</span>
-            <span id="points">240</span>
+        <div class="points-pill">
+            🐝 <span id="points">240</span>
         </div>
 
     </header>
 
 
-    <!-- ========================================= -->
-    <!-- HOME -->
-    <!-- ========================================= -->
+    <!-- ================= HOME ================= -->
 
     <section id="home" class="screen active">
 
         <div class="hero">
 
-            <h1>Think Fast. Win Big. 🐝</h1>
+            <div class="hero-badge">
+                🐝 QUIZBEE
+            </div>
+
+            <h1>
+                Easy to understand.<br>
+                Fun to play.<br>
+                Difficult to win.
+            </h1>
 
             <p>
-                Challenge your brain and compete with players around the world.
+                Test your brain, strategy and ability to predict the crowd.
             </p>
 
         </div>
 
 
-        <div class="section-heading">
+        <div class="section-title">
 
-            <h2>🔥 Games</h2>
-
-            <p>Choose your challenge</p>
+            <div>
+                <h2>🎮 Games</h2>
+                <p>Choose your challenge</p>
+            </div>
 
         </div>
 
@@ -68,49 +70,92 @@
         <div id="game-list"></div>
 
 
-        <!-- SUNDAY FINAL -->
+        <!-- ADS -->
+
+        <div class="ads-card" onclick="openAds()">
+
+            <div class="ads-icon">
+                📺
+            </div>
+
+            <div class="ads-info">
+
+                <h3>Watch Ads</h3>
+
+                <p>
+                    Watch 10 verified ads
+                    to earn 10 QuizBee Points.
+                </p>
+
+                <div class="ads-progress">
+
+                    <div class="progress-track">
+
+                        <div
+                            id="ad-progress-bar"
+                            class="progress-fill"
+                        ></div>
+
+                    </div>
+
+                    <span id="ad-progress-text">
+                        0 / 10
+                    </span>
+
+                </div>
+
+            </div>
+
+            <span class="arrow">
+                →
+            </span>
+
+        </div>
+
+
+        <!-- FINAL -->
 
         <div class="final-card">
 
             <div>
 
-                <span class="final-label">
-                    💀 SUNDAY FINAL
+                <span class="final-tag">
+                    🏆 WEEKLY FINAL
                 </span>
 
-                <h2>Impossible Question</h2>
+                <h2>
+                    Sunday Final
+                </h2>
 
                 <p>
-                    The hardest challenge of the week.
+                    The ultimate weekly challenge.
                 </p>
 
             </div>
 
-            <div class="countdown">
-
-                <strong>COMING SOON</strong>
-
+            <div class="final-timer">
+                SOON
             </div>
 
         </div>
 
 
-        <!-- QUICK STATS -->
+        <!-- STATS -->
 
-        <div class="quick-stats">
+        <div class="stats-row">
 
-            <div>
+            <div class="mini-stat">
                 <strong id="score">0</strong>
                 <span>Score</span>
             </div>
 
-            <div>
-                <strong id="streak">4</strong>
+            <div class="mini-stat">
+                <strong id="streak">0</strong>
                 <span>🔥 Streak</span>
             </div>
 
-            <div>
-                <strong id="referrals">7</strong>
+            <div class="mini-stat">
+                <strong id="referrals">0</strong>
                 <span>Referrals</span>
             </div>
 
@@ -119,15 +164,16 @@
     </section>
 
 
-    <!-- ========================================= -->
-    <!-- GAME -->
-    <!-- ========================================= -->
+    <!-- ================= GAME ================= -->
 
     <section id="game" class="screen">
 
-        <div class="game-header">
+        <div class="page-header">
 
-            <button onclick="goHome()" class="back-btn">
+            <button
+                class="back-button"
+                onclick="goHome()"
+            >
                 ←
             </button>
 
@@ -142,15 +188,97 @@
     </section>
 
 
-    <!-- ========================================= -->
-    <!-- WALLET -->
-    <!-- ========================================= -->
+    <!-- ================= ADS ================= -->
+
+    <section id="ads" class="screen">
+
+        <div class="page-header">
+
+            <button
+                class="back-button"
+                onclick="goHome()"
+            >
+                ←
+            </button>
+
+            <h2>📺 Watch Ads</h2>
+
+        </div>
+
+        <div class="ads-page">
+
+            <div class="ads-big-icon">
+                📺
+            </div>
+
+            <h2>
+                Earn QuizBee Points
+            </h2>
+
+            <p>
+                Watch verified advertisements
+                and earn points.
+            </p>
+
+            <div class="ads-counter">
+
+                <strong id="ads-count">
+                    0 / 10
+                </strong>
+
+                <span>
+                    Daily target
+                </span>
+
+            </div>
+
+            <div class="progress-track large">
+
+                <div
+                    id="ads-page-progress"
+                    class="progress-fill"
+                ></div>
+
+            </div>
+
+            <div class="reward-box">
+
+                🎁
+
+                <div>
+                    <strong>10 Points</strong>
+                    <span>at 10 completed ads</span>
+                </div>
+
+            </div>
+
+            <button
+                class="primary-button"
+                onclick="watchDemoAd()"
+            >
+                📺 Watch Ad
+            </button>
+
+            <p class="demo-note">
+                Development mode: ad completion is simulated.
+                Real ad verification will be connected later.
+            </p>
+
+        </div>
+
+    </section>
+
+
+    <!-- ================= WALLET ================= -->
 
     <section id="wallet" class="screen">
 
         <div class="page-header">
 
-            <button onclick="goHome()" class="back-btn">
+            <button
+                class="back-button"
+                onclick="goHome()"
+            >
                 ←
             </button>
 
@@ -163,15 +291,16 @@
     </section>
 
 
-    <!-- ========================================= -->
-    <!-- LEADERBOARD -->
-    <!-- ========================================= -->
+    <!-- ================= LEADERBOARD ================= -->
 
     <section id="leaderboard" class="screen">
 
         <div class="page-header">
 
-            <button onclick="goHome()" class="back-btn">
+            <button
+                class="back-button"
+                onclick="goHome()"
+            >
                 ←
             </button>
 
@@ -184,15 +313,16 @@
     </section>
 
 
-    <!-- ========================================= -->
-    <!-- PROFILE -->
-    <!-- ========================================= -->
+    <!-- ================= PROFILE ================= -->
 
     <section id="profile" class="screen">
 
         <div class="page-header">
 
-            <button onclick="goHome()" class="back-btn">
+            <button
+                class="back-button"
+                onclick="goHome()"
+            >
                 ←
             </button>
 
@@ -205,39 +335,66 @@
     </section>
 
 
-    <!-- ========================================= -->
-    <!-- BOTTOM NAV -->
-    <!-- ========================================= -->
+    <!-- ================= BOTTOM NAV ================= -->
 
     <nav class="bottom-nav">
 
         <button onclick="navigate('home')">
-            🏠
-            <span>Home</span>
+
+            <span class="nav-icon">
+                🏠
+            </span>
+
+            <span>
+                Home
+            </span>
+
         </button>
+
 
         <button onclick="navigate('leaderboard')">
-            🏆
-            <span>Leaderboard</span>
+
+            <span class="nav-icon">
+                🏆
+            </span>
+
+            <span>
+                Leaderboard
+            </span>
+
         </button>
+
 
         <button onclick="navigate('wallet')">
-            💰
-            <span>Wallet</span>
+
+            <span class="nav-icon">
+                💰
+            </span>
+
+            <span>
+                Wallet
+            </span>
+
         </button>
 
+
         <button onclick="navigate('profile')">
-            👤
-            <span>Profile</span>
+
+            <span class="nav-icon">
+                👤
+            </span>
+
+            <span>
+                Profile
+            </span>
+
         </button>
 
     </nav>
 
 </div>
 
-
 <script src="app.js"></script>
 
 </body>
-
     </html>
