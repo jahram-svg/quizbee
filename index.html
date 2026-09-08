@@ -2,12 +2,11 @@
 <html lang="en">
 
 <head>
-
     <meta charset="UTF-8">
 
     <meta
         name="viewport"
-        content="width=device-width, initial-scale=1.0"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     >
 
     <title>QuizBee</title>
@@ -15,125 +14,104 @@
     <link rel="stylesheet" href="style.css">
 
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-
 </head>
+
 
 <body>
 
-<div class="app">
+<div id="app">
 
+    <!-- ========================================= -->
     <!-- HEADER -->
+    <!-- ========================================= -->
 
-    <header>
+    <header class="top-header">
 
-        <div>
-            <h1>🐝 QuizBee</h1>
-            <p id="welcome">Play. Compete. Win.</p>
+        <div class="brand">
+            🐝 <span>QuizBee</span>
         </div>
 
-        <div class="points">
-            🟡 <span id="points">0</span>
+        <div class="points-display">
+            <span>🐝</span>
+            <span id="points">240</span>
         </div>
 
     </header>
 
 
+    <!-- ========================================= -->
     <!-- HOME -->
+    <!-- ========================================= -->
 
-    <section id="home" class="page active">
+    <section id="home" class="screen active">
 
         <div class="hero">
 
-            <h2>Ready to test your brain? 🧠</h2>
+            <h1>Think Fast. Win Big. 🐝</h1>
 
             <p>
-                Compete in challenges,
-                earn points and fight for the leaderboard.
+                Challenge your brain and compete with players around the world.
             </p>
 
         </div>
 
 
-        <h3>Games</h3>
+        <div class="section-heading">
 
-        <div class="games">
+            <h2>🔥 Games</h2>
 
-            <button
-                class="game-card"
-                onclick="openGame('guess')"
-            >
-
-                <span class="game-icon">🎯</span>
-
-                <div>
-                    <strong>Guess It</strong>
-
-                    <small>
-                        Guess images, people, places and more.
-                    </small>
-                </div>
-
-                <b>10 🟡</b>
-
-            </button>
-
-
-            <button
-                class="game-card"
-                onclick="openGame('who')"
-            >
-
-                <span class="game-icon">🕵️</span>
-
-                <div>
-                    <strong>Who Am I?</strong>
-
-                    <small>
-                        Identify the person from clues.
-                    </small>
-                </div>
-
-                <b>10 🟡</b>
-
-            </button>
-
-
-            <button
-                class="game-card"
-                onclick="openGame('impossible')"
-            >
-
-                <span class="game-icon">💀</span>
-
-                <div>
-                    <strong>Impossible Question</strong>
-
-                    <small>
-                        One question. One crazy week.
-                    </small>
-                </div>
-
-                <b>10 🟡</b>
-
-            </button>
+            <p>Choose your challenge</p>
 
         </div>
 
+
+        <div id="game-list"></div>
+
+
+        <!-- SUNDAY FINAL -->
 
         <div class="final-card">
 
-            <span>👑</span>
-
             <div>
-                <strong>Sunday Final</strong>
 
-                <small>
-                    The final challenge is coming...
-                </small>
+                <span class="final-label">
+                    💀 SUNDAY FINAL
+                </span>
+
+                <h2>Impossible Question</h2>
+
+                <p>
+                    The hardest challenge of the week.
+                </p>
+
             </div>
 
-            <div id="finalTimer">
-                00:00:00
+            <div class="countdown">
+
+                <strong>COMING SOON</strong>
+
+            </div>
+
+        </div>
+
+
+        <!-- QUICK STATS -->
+
+        <div class="quick-stats">
+
+            <div>
+                <strong id="score">0</strong>
+                <span>Score</span>
+            </div>
+
+            <div>
+                <strong id="streak">4</strong>
+                <span>🔥 Streak</span>
+            </div>
+
+            <div>
+                <strong id="referrals">7</strong>
+                <span>Referrals</span>
             </div>
 
         </div>
@@ -141,182 +119,114 @@
     </section>
 
 
-    <!-- LEADERBOARD -->
-
-    <section id="leaderboard" class="page">
-
-        <h2>🏆 Leaderboard</h2>
-
-        <p class="muted">
-            Top QuizBee players
-        </p>
-
-        <div id="leaderboardList">
-
-            <div class="empty">
-                Leaderboard coming soon...
-            </div>
-
-        </div>
-
-    </section>
-
-
-    <!-- WALLET -->
-
-    <section id="wallet" class="page">
-
-        <h2>👛 Wallet</h2>
-
-        <div class="wallet-card">
-
-            <small>QuizBee Points</small>
-
-            <strong>
-                🟡 <span id="walletPoints">0</span>
-            </strong>
-
-            <p>
-                Used to enter games.
-            </p>
-
-            <button onclick="buyPoints()">
-                ➕ Buy Points
-            </button>
-
-        </div>
-
-
-        <div class="wallet-card prize">
-
-            <small>Prize Balance</small>
-
-            <strong>
-                💰 $<span id="prizeBalance">0.00</span>
-            </strong>
-
-            <p>
-                Winnings can be withdrawn.
-            </p>
-
-            <button onclick="withdraw()">
-                💸 Withdraw
-            </button>
-
-        </div>
-
-
-        <h3>This Week's Winners</h3>
-
-        <div class="empty">
-            Winners will appear here after the final.
-        </div>
-
-    </section>
-
-
-    <!-- PROFILE -->
-
-    <section id="profile" class="page">
-
-        <h2>👤 Profile</h2>
-
-        <div class="profile-card">
-
-            <div class="avatar">
-                👤
-            </div>
-
-            <h3 id="username">
-                QuizBee Player
-            </h3>
-
-            <p id="telegramUsername">
-                @username
-            </p>
-
-        </div>
-
-
-        <div class="stats">
-
-            <div>
-                <strong id="profileScore">0</strong>
-                <small>Score</small>
-            </div>
-
-            <div>
-                <strong id="streak">0</strong>
-                <small>🔥 Streak</small>
-            </div>
-
-            <div>
-                <strong id="referrals">0</strong>
-                <small>Referrals</small>
-            </div>
-
-        </div>
-
-
-        <div class="info-card">
-
-            🔥 <strong>7-Day Streak</strong>
-
-            <p>
-                Login for 7 consecutive days
-                to receive 10 QuizBee Points.
-            </p>
-
-        </div>
-
-
-        <div class="info-card">
-
-            👥 <strong>Referral Rewards</strong>
-
-            <p>
-                10 referrals → +50 points<br>
-                20 referrals → +100 points
-            </p>
-
-        </div>
-
-    </section>
-
-
+    <!-- ========================================= -->
     <!-- GAME -->
+    <!-- ========================================= -->
 
-    <section id="game" class="page">
+    <section id="game" class="screen">
 
-        <button class="back" onclick="goHome()">
-            ← Back
-        </button>
+        <div class="game-header">
 
-        <div id="gameContent"></div>
+            <button onclick="goHome()" class="back-btn">
+                ←
+            </button>
+
+            <h2 id="game-title">
+                Game
+            </h2>
+
+        </div>
+
+        <div id="game-content"></div>
 
     </section>
 
 
-    <!-- NAVIGATION -->
+    <!-- ========================================= -->
+    <!-- WALLET -->
+    <!-- ========================================= -->
 
-    <nav>
+    <section id="wallet" class="screen">
 
-        <button onclick="showPage('home')">
+        <div class="page-header">
+
+            <button onclick="goHome()" class="back-btn">
+                ←
+            </button>
+
+            <h2>💰 Wallet</h2>
+
+        </div>
+
+        <div id="wallet-content"></div>
+
+    </section>
+
+
+    <!-- ========================================= -->
+    <!-- LEADERBOARD -->
+    <!-- ========================================= -->
+
+    <section id="leaderboard" class="screen">
+
+        <div class="page-header">
+
+            <button onclick="goHome()" class="back-btn">
+                ←
+            </button>
+
+            <h2>🏆 Leaderboard</h2>
+
+        </div>
+
+        <div id="leaderboard-content"></div>
+
+    </section>
+
+
+    <!-- ========================================= -->
+    <!-- PROFILE -->
+    <!-- ========================================= -->
+
+    <section id="profile" class="screen">
+
+        <div class="page-header">
+
+            <button onclick="goHome()" class="back-btn">
+                ←
+            </button>
+
+            <h2>👤 Profile</h2>
+
+        </div>
+
+        <div id="profile-content"></div>
+
+    </section>
+
+
+    <!-- ========================================= -->
+    <!-- BOTTOM NAV -->
+    <!-- ========================================= -->
+
+    <nav class="bottom-nav">
+
+        <button onclick="navigate('home')">
             🏠
             <span>Home</span>
         </button>
 
-        <button onclick="showPage('leaderboard')">
+        <button onclick="navigate('leaderboard')">
             🏆
-            <span>Ranks</span>
+            <span>Leaderboard</span>
         </button>
 
-        <button onclick="showPage('wallet')">
-            👛
+        <button onclick="navigate('wallet')">
+            💰
             <span>Wallet</span>
         </button>
 
-        <button onclick="showPage('profile')">
+        <button onclick="navigate('profile')">
             👤
             <span>Profile</span>
         </button>
@@ -325,7 +235,9 @@
 
 </div>
 
+
 <script src="app.js"></script>
 
 </body>
-          </html>
+
+    </html>
