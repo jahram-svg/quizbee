@@ -5,430 +5,636 @@
 }
 
 body {
-
-    font-family:
-        Arial,
-        sans-serif;
-
-    background: #f7f7f7;
-
-    color: #151515;
-
+    font-family: Arial, sans-serif;
+    background: #f5f6fa;
+    color: #171717;
     padding-bottom: 80px;
 }
 
-
-.app {
-
-    max-width: 600px;
-
-    margin: auto;
-
-    min-height: 100vh;
-
-    background: #ffffff;
+button {
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
 }
 
-
-header {
-
-    display: flex;
-
-    justify-content: space-between;
-
-    align-items: center;
-
-    padding: 20px;
-
-    border-bottom: 1px solid #eeeeee;
-}
-
-
-header h1 {
-
-    font-size: 24px;
-}
-
-
-header p {
-
-    color: #777;
-
-    font-size: 13px;
-
-    margin-top: 4px;
-}
-
-
-.points {
-
-    background: #fff5c2;
-
-    padding: 9px 12px;
-
-    border-radius: 20px;
-
-    font-weight: bold;
-}
-
-
-.page {
-
+.screen {
     display: none;
-
-    padding: 20px;
-
-    min-height: calc(100vh - 145px);
+    min-height: calc(100vh - 70px);
+    padding: 20px 16px;
 }
 
-
-.page.active {
-
+.screen.active {
     display: block;
 }
 
 
-.hero {
+/* =========================================
+   HEADER
+========================================= */
 
-    background: #111;
+.top-header {
+    height: 65px;
+    background: #ffffff;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 18px;
+    border-bottom: 1px solid #eeeeee;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+}
+
+.brand {
+    font-size: 21px;
+    font-weight: 800;
+}
+
+.points-display {
+    background: #fff4c2;
+    padding: 9px 13px;
+    border-radius: 20px;
+    font-weight: 700;
+}
+
+
+/* =========================================
+   HERO
+========================================= */
+
+.hero {
+    background: linear-gradient(
+        135deg,
+        #171717,
+        #353535
+    );
 
     color: white;
 
-    border-radius: 18px;
+    padding: 28px 20px;
 
-    padding: 25px;
+    border-radius: 20px;
 
     margin-bottom: 25px;
 }
 
-
-.hero h2 {
-
-    margin-bottom: 10px;
+.hero h1 {
+    font-size: 27px;
+    margin-bottom: 9px;
 }
 
-
 .hero p {
-
-    color: #cccccc;
-
+    color: #dddddd;
     line-height: 1.5;
 }
 
 
-h3 {
+/* =========================================
+   SECTION HEADINGS
+========================================= */
 
-    margin: 20px 0 12px;
+.section-heading {
+    margin-bottom: 15px;
 }
 
-
-.games {
-
-    display: flex;
-
-    flex-direction: column;
-
-    gap: 12px;
+.section-heading h2 {
+    font-size: 22px;
 }
 
-
-.game-card {
-
-    width: 100%;
-
-    border: 1px solid #eeeeee;
-
-    background: white;
-
-    padding: 16px;
-
-    border-radius: 16px;
-
-    display: flex;
-
-    align-items: center;
-
-    gap: 12px;
-
-    text-align: left;
-
-    cursor: pointer;
-}
-
-
-.game-card:active {
-
-    transform: scale(.98);
-}
-
-
-.game-icon {
-
-    font-size: 28px;
-}
-
-
-.game-card div {
-
-    flex: 1;
-}
-
-
-.game-card strong {
-
-    display: block;
-
-    margin-bottom: 5px;
-}
-
-
-.game-card small {
-
+.section-heading p {
     color: #777;
-
-    line-height: 1.3;
-}
-
-
-.game-card b {
-
-    white-space: nowrap;
-}
-
-
-.final-card {
-
-    display: flex;
-
-    align-items: center;
-
-    gap: 12px;
-
-    margin-top: 20px;
-
-    padding: 16px;
-
-    border-radius: 16px;
-
-    background: #f2f2f2;
-}
-
-
-.final-card div:nth-child(2) {
-
-    flex: 1;
-}
-
-
-.final-card small {
-
-    display: block;
-
-    color: #777;
-
     margin-top: 4px;
 }
 
 
-#finalTimer {
+/* =========================================
+   GAME CARDS
+========================================= */
 
-    font-weight: bold;
+.game-card {
+    background: white;
+    border-radius: 18px;
+    padding: 17px;
+    margin-bottom: 13px;
+
+    display: flex;
+    align-items: center;
+    gap: 13px;
+
+    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+}
+
+.game-icon {
+    width: 48px;
+    height: 48px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    background: #fff4c2;
+
+    border-radius: 14px;
+
+    font-size: 25px;
+}
+
+.game-info {
+    flex: 1;
+}
+
+.game-info h3 {
+    font-size: 17px;
+    margin-bottom: 5px;
+}
+
+.game-info p {
+    font-size: 12px;
+    color: #777;
+    line-height: 1.4;
+}
+
+.entry-fee {
+    display: inline-block;
+    margin-top: 7px;
+
+    font-size: 11px;
+    font-weight: 700;
+
+    background: #f0f0f0;
+
+    padding: 5px 8px;
+
+    border-radius: 7px;
+}
+
+.game-card button {
+    background: #171717;
+    color: white;
+
+    padding: 10px 13px;
+
+    border-radius: 10px;
+
+    font-weight: 700;
 }
 
 
-.wallet-card {
+/* =========================================
+   FINAL CARD
+========================================= */
+
+.final-card {
+    background: #171717;
+    color: white;
 
     padding: 20px;
 
     border-radius: 18px;
 
-    background: #f5f5f5;
+    margin-top: 25px;
 
-    margin-bottom: 15px;
+    display: flex;
+    justify-content: space-between;
+    gap: 15px;
+    align-items: center;
+}
+
+.final-label {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+
+.final-card h2 {
+    margin: 6px 0;
+    font-size: 18px;
+}
+
+.final-card p {
+    color: #cccccc;
+    font-size: 12px;
+}
+
+.countdown {
+    font-size: 10px;
+    background: #333;
+    padding: 10px;
+    border-radius: 10px;
 }
 
 
-.wallet-card strong {
+/* =========================================
+   QUICK STATS
+========================================= */
 
+.quick-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+
+    gap: 10px;
+
+    margin-top: 20px;
+}
+
+.quick-stats div {
+    background: white;
+    padding: 15px 8px;
+    border-radius: 15px;
+
+    text-align: center;
+}
+
+.quick-stats strong {
     display: block;
-
-    font-size: 28px;
-
-    margin: 10px 0;
+    font-size: 20px;
 }
 
-
-.wallet-card p {
-
+.quick-stats span {
+    display: block;
     color: #777;
-
-    margin-bottom: 15px;
+    font-size: 11px;
+    margin-top: 4px;
 }
 
 
-.wallet-card button {
+/* =========================================
+   PAGE HEADER
+========================================= */
 
-    width: 100%;
+.page-header,
+.game-header {
+    display: flex;
+    align-items: center;
+    gap: 13px;
 
-    padding: 13px;
+    margin-bottom: 20px;
+}
 
-    border: none;
+.page-header h2,
+.game-header h2 {
+    font-size: 21px;
+}
+
+.back-btn {
+    width: 38px;
+    height: 38px;
 
     border-radius: 12px;
 
-    background: #111;
+    background: white;
 
-    color: white;
-
-    font-weight: bold;
+    font-size: 22px;
 }
 
 
-.prize {
+/* =========================================
+   QUESTION BOX
+========================================= */
 
-    background: #fff4d6;
+.question-box {
+    background: white;
+    padding: 20px;
+    border-radius: 20px;
+
+    box-shadow: 0 5px 20px rgba(0,0,0,0.05);
 }
 
-
-.profile-card {
-
-    text-align: center;
-
-    padding: 25px;
-
-    background: #f5f5f5;
-
-    border-radius: 18px;
+.question-box h3 {
+    font-size: 21px;
+    margin-bottom: 18px;
 }
 
+.clue {
+    background: #f5f6fa;
+    padding: 14px;
 
-.avatar {
-
-    font-size: 45px;
+    border-radius: 13px;
 
     margin-bottom: 10px;
 }
 
+.clue strong {
+    font-size: 11px;
+    color: #777;
+}
 
-.profile-card p {
+.clue p {
+    margin-top: 5px;
+    line-height: 1.45;
+}
 
+
+/* =========================================
+   INPUT
+========================================= */
+
+input {
+    width: 100%;
+
+    padding: 15px;
+
+    border: 1px solid #dddddd;
+
+    border-radius: 12px;
+
+    font-size: 16px;
+
+    outline: none;
+
+    margin-top: 8px;
+}
+
+input:focus {
+    border-color: #171717;
+}
+
+
+/* =========================================
+   BUTTONS
+========================================= */
+
+.submit-btn,
+.continue-btn,
+.withdraw-btn {
+    width: 100%;
+
+    padding: 14px;
+
+    border-radius: 12px;
+
+    margin-top: 12px;
+
+    font-size: 15px;
+
+    font-weight: 700;
+}
+
+.submit-btn {
+    background: #171717;
+    color: white;
+}
+
+.continue-btn {
+    background: #eeeeee;
+    color: #171717;
+}
+
+.withdraw-btn {
+    background: #171717;
+    color: white;
+}
+
+
+/* =========================================
+   FEEDBACK
+========================================= */
+
+.feedback {
+    margin-top: 15px;
+
+    padding: 14px;
+
+    border-radius: 12px;
+
+    text-align: center;
+
+    line-height: 1.5;
+}
+
+.feedback.correct {
+    background: #e6f8ea;
+}
+
+.feedback.wrong {
+    background: #fff0f0;
+}
+
+
+/* =========================================
+   REWARD
+========================================= */
+
+.reward-banner {
+    background: #fff4c2;
+
+    padding: 12px;
+
+    border-radius: 12px;
+
+    margin-bottom: 15px;
+
+    text-align: center;
+
+    font-weight: 700;
+}
+
+.impossible-text {
+    line-height: 1.6;
+}
+
+.attempt-info {
+    margin-top: 15px;
+
+    color: #777;
+
+    font-size: 13px;
+}
+
+
+/* =========================================
+   WALLET
+========================================= */
+
+.wallet-card {
+    background: white;
+
+    padding: 20px;
+
+    border-radius: 18px;
+
+    margin-bottom: 14px;
+
+    box-shadow: 0 5px 20px rgba(0,0,0,0.04);
+}
+
+.wallet-card span {
+    display: block;
+    font-size: 14px;
+}
+
+.wallet-card strong {
+    display: block;
+
+    font-size: 28px;
+
+    margin: 8px 0;
+}
+
+.wallet-card small {
+    color: #777;
+}
+
+.wallet-card.prize {
+    border: 1px solid #eeeeee;
+}
+
+.wallet-note {
+    background: #eeeeee;
+
+    padding: 15px;
+
+    border-radius: 13px;
+
+    font-size: 12px;
+
+    line-height: 1.5;
+
+    margin-bottom: 15px;
+}
+
+
+/* =========================================
+   PROFILE
+========================================= */
+
+.profile-header {
+    text-align: center;
+
+    background: white;
+
+    padding: 25px;
+
+    border-radius: 20px;
+
+    margin-bottom: 15px;
+}
+
+.avatar {
+    width: 65px;
+    height: 65px;
+
+    border-radius: 50%;
+
+    background: #fff4c2;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    font-size: 32px;
+
+    margin: auto auto 10px;
+}
+
+.profile-header p {
     color: #777;
 
     margin-top: 5px;
 }
 
-
-.stats {
-
+.stats-grid {
     display: grid;
 
     grid-template-columns: repeat(3, 1fr);
 
     gap: 10px;
 
-    margin-top: 15px;
-}
-
-
-.stats div {
-
-    background: #f5f5f5;
-
-    padding: 15px;
-
-    text-align: center;
-
-    border-radius: 14px;
-}
-
-
-.stats strong {
-
-    display: block;
-
-    font-size: 20px;
-
-    margin-bottom: 5px;
-}
-
-
-.stats small {
-
-    color: #777;
-}
-
-
-.info-card {
-
-    margin-top: 15px;
-
-    padding: 16px;
-
-    background: #f5f5f5;
-
-    border-radius: 15px;
-}
-
-
-.info-card p {
-
-    color: #666;
-
-    line-height: 1.5;
-
-    margin-top: 7px;
-}
-
-
-.empty {
-
-    padding: 25px;
-
-    text-align: center;
-
-    color: #777;
-
-    background: #f5f5f5;
-
-    border-radius: 15px;
-}
-
-
-.muted {
-
-    color: #777;
-
     margin-bottom: 15px;
 }
 
+.stat {
+    background: white;
 
-.back {
+    border-radius: 15px;
 
-    border: none;
+    padding: 16px 8px;
 
-    background: none;
+    text-align: center;
+}
 
-    font-size: 16px;
+.stat strong {
+    display: block;
 
-    margin-bottom: 20px;
+    font-size: 20px;
+}
 
-    cursor: pointer;
+.stat span {
+    color: #777;
+
+    font-size: 11px;
+}
+
+.milestone {
+    background: white;
+
+    padding: 18px;
+
+    border-radius: 18px;
+}
+
+.milestone h3 {
+    margin-bottom: 12px;
+}
+
+.milestone p {
+    padding: 9px 0;
+
+    border-bottom: 1px solid #eeeeee;
+
+    font-size: 13px;
 }
 
 
-nav {
+/* =========================================
+   LEADERBOARD
+========================================= */
 
+.leaderboard-list {
+    background: white;
+
+    border-radius: 18px;
+
+    overflow: hidden;
+}
+
+.leaderboard-row {
+    display: flex;
+
+    align-items: center;
+
+    padding: 17px;
+
+    border-bottom: 1px solid #eeeeee;
+
+    gap: 12px;
+}
+
+.rank {
+    width: 35px;
+
+    font-weight: 800;
+}
+
+.player-name {
+    flex: 1;
+}
+
+
+/* =========================================
+   BOTTOM NAV
+========================================= */
+
+.bottom-nav {
     position: fixed;
 
     bottom: 0;
 
-    left: 50%;
+    left: 0;
 
-    transform: translateX(-50%);
+    right: 0;
 
-    width: 100%;
-
-    max-width: 600px;
+    height: 68px;
 
     background: white;
 
@@ -438,17 +644,11 @@ nav {
 
     grid-template-columns: repeat(4, 1fr);
 
-    padding: 8px 5px;
-
-    z-index: 100;
+    z-index: 50;
 }
 
-
-nav button {
-
-    background: none;
-
-    border: none;
+.bottom-nav button {
+    background: transparent;
 
     display: flex;
 
@@ -456,17 +656,32 @@ nav button {
 
     align-items: center;
 
+    justify-content: center;
+
     gap: 4px;
 
-    font-size: 18px;
+    font-size: 19px;
+}
 
-    cursor: pointer;
+.bottom-nav span {
+    font-size: 10px;
 }
 
 
-nav span {
+/* =========================================
+   MOBILE
+========================================= */
 
-    font-size: 11px;
+@media (min-width: 700px) {
 
-    color: #666;
-  }
+    body {
+        max-width: 600px;
+        margin: auto;
+    }
+
+    .bottom-nav {
+        max-width: 600px;
+        left: 50%;
+        transform: translateX(-50%);
+    }
+}
