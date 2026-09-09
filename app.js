@@ -27,6 +27,10 @@ let currentGame = null;
 let currentChallenge = null;
 
 
+// ============================================================
+// TELEGRAM USER
+// ============================================================
+
 function getTelegramUser() {
 
     if (tg?.initDataUnsafe?.user) {
@@ -36,9 +40,12 @@ function getTelegramUser() {
     return user;
 }
 
-
 user = getTelegramUser();
 
+
+// ============================================================
+// API
+// ============================================================
 
 async function api(path, options = {}) {
 
@@ -70,9 +77,15 @@ async function api(path, options = {}) {
 }
 
 
+// ============================================================
+// TOAST
+// ============================================================
+
 function toast(message) {
 
     const el = document.getElementById("toast");
+
+    if (!el) return;
 
     el.textContent = message;
     el.classList.add("show");
@@ -82,6 +95,10 @@ function toast(message) {
     }, 2500);
 }
 
+
+// ============================================================
+// NAVIGATION
+// ============================================================
 
 function showPage(page) {
 
@@ -108,6 +125,7 @@ function showPage(page) {
     };
 
     if (navMap[page] !== undefined) {
+
         document.querySelectorAll(".nav-item")[navMap[page]]
             ?.classList.add("active");
     }
@@ -135,9 +153,14 @@ function goHome() {
 }
 
 
+// ============================================================
+// GAME HELPERS
+// ============================================================
+
 function gameDescription(id) {
 
     const descriptions = {
+
         guess_it:
             "Use clues to identify the hidden answer before everyone else.",
 
@@ -161,9 +184,13 @@ function gameDescription(id) {
 }
 
 
+// ============================================================
+// GAME CARD
+// ============================================================
+
 function renderGameCard(game) {
 
-    const locked = game.status !== "active";
+    const locked = !game.active;
 
     return `
         <div
@@ -175,24 +202,36 @@ function renderGameCard(game) {
                 ${locked ? "🔒 LOCKED" : "● LIVE"}
             </span>
 
-            <div class="game-icon">${game.emoji}</div>
+            <div class="game-icon">
+                ${game.icon || "🎮"}
+            </div>
 
             <h3>${game.name}</h3>
 
             <p>${gameDescription(game.id)}</p>
+
+            <div class="entry">
+                Entry: ${game.entry_fee || 0} Points
+            </div>
 
         </div>
     `;
 }
 
 
+// ============================================================
+// GAMES LIST
+// ============================================================
+
 function renderGames() {
 
     const container = document.getElementById("gamesList");
 
+    if (!container) return;
+
     container.innerHTML = state.games.map(game => {
 
-        const locked = game.status !== "active";
+        const locked = !game.active;
 
         return `
             <div
@@ -200,14 +239,22 @@ function renderGames() {
                 onclick="${locked ? "lockedGame()" : `openGame('${game.id}')`}"
             >
 
-                <div class="game-icon">${game.emoji}</div>
+                <div class="game-icon">
+                    ${game.icon || "🎮"}
+                </div>
 
                 <div class="game-info">
+
                     <h3>${game.name}</h3>
-                    <p>${gameDescription(game.id)}</p>
+
+                    <p>
+                        ${gameDescription(game.id)}
+                    </p>
+
                     <div class="entry">
-                        Entry: ${game.entry_points} Points
+                        Entry: ${game.entry_fee || 0} Points
                     </div>
+
                 </div>
 
                 <div>
@@ -220,9 +267,15 @@ function renderGames() {
 }
 
 
+// ============================================================
+// HOME GAMES
+// ============================================================
+
 function renderHomeGames() {
 
     const container = document.getElementById("homeGames");
+
+    if (!container) return;
 
     container.innerHTML = state.games
         .slice(0, 4)
@@ -231,11 +284,19 @@ function renderHomeGames() {
 }
 
 
+// ============================================================
+// LOCKED GAME
+// ============================================================
+
 function lockedGame() {
 
     toast("🔒 Coming Soon — this game is currently locked.");
 }
 
+
+// ============================================================
+// OPEN GAME
+// ============================================================
 
 async function openGame(gameId) {
 
@@ -243,7 +304,7 @@ async function openGame(gameId) {
 
     if (!game) return;
 
-    if (game.status !== "active") {
+    if (!game.active) {
         lockedGame();
         return;
     }
@@ -251,13 +312,14 @@ async function openGame(gameId) {
     currentGame = game;
 
     document.getElementById("gameTitle").textContent =
-        `${game.emoji} ${game.name}`;
+        `${game.icon || "🎮"} ${game.name}`;
 
     document.getElementById("gameContent").innerHTML = `
+
         <div class="game-detail-card">
 
             <div class="game-detail-icon">
-                ${game.emoji}
+                ${game.icon || "🎮"}
             </div>
 
             <h2>${game.name}</h2>
@@ -267,14 +329,17 @@ async function openGame(gameId) {
             </p>
 
             <div class="info-box">
-                Entry fee: <strong>${game.entry_points} QuizBee Points</strong>
+                Entry fee:
+                <strong>
+                    ${game.entry_fee} QuizBee Points
+                </strong>
             </div>
 
             <button
                 class="primary-btn"
                 onclick="enterGame()"
             >
-                ENTER GAME — ${game.entry_points} POINTS
+                ENTER GAME — ${game.entry_fee} POINTS
             </button>
 
         </div>
@@ -283,6 +348,10 @@ async function openGame(gameId) {
     showPage("game");
 }
 
+
+// ============================================================
+// ENTER GAME
+// ============================================================
 
 async function enterGame() {
 
@@ -298,23 +367,48 @@ async function enterGame() {
             }
         );
 
-        state.points = result.points;
+        if (result.user) {
 
-        updateBalances();
+            state.points =
+                result.user.quizbee_points ?? state.points;
 
-        toast("Entry successful!");
+            state.prize_balance =
+                result.user.prize_balance ?? state.prize_balance;
 
-        await loadChallenge();
+            updateBalances();
+        }
+
+        toast(
+            result.already_entered
+                ? "You already entered this challenge."
+                : "Entry successful!"
+        );
+
+        if (result.challenge) {
+
+            currentChallenge = result.challenge;
+
+            renderChallenge(currentChallenge);
+
+        } else {
+
+            await loadChallenge();
+        }
 
     } catch (error) {
 
         toast(error.message);
-
     }
 }
 
 
+// ============================================================
+// LOAD CHALLENGE
+// ============================================================
+
 async function loadChallenge() {
+
+    if (!currentGame) return;
 
     try {
 
@@ -322,53 +416,83 @@ async function loadChallenge() {
             `/api/games/${currentGame.id}/challenge`
         );
 
-        currentChallenge = data;
+        /*
+         * Backend returns:
+         *
+         * {
+         *   success: true,
+         *   game: {...},
+         *   challenge: {...}
+         * }
+         */
 
-        renderChallenge(data);
+        currentChallenge = data.challenge;
+
+        renderChallenge(currentChallenge);
 
     } catch (error) {
 
         toast(error.message);
-
     }
 }
 
 
+// ============================================================
+// RENDER CHALLENGE
+// ============================================================
+
 function renderChallenge(challenge) {
 
-    const container = document.getElementById("gameContent");
+    if (!challenge) {
+        toast("No challenge available.");
+        return;
+    }
 
-    if (challenge.type === "guess_it") {
+    /*
+     * Backend types:
+     *
+     * guess
+     * text
+     * choice
+     */
+
+    if (challenge.game_id === "guess_it") {
         renderGuessIt(challenge);
         return;
     }
 
-    if (challenge.type === "impossible_question") {
+    if (challenge.game_id === "impossible_question") {
         renderImpossibleQuestion(challenge);
         return;
     }
 
-    if (challenge.type === "crowd_trap") {
+    if (challenge.game_id === "crowd_trap") {
         renderNumberChoice(challenge, "crowd");
         return;
     }
 
-    if (challenge.type === "survivor") {
+    if (challenge.game_id === "survivor") {
         renderSurvivor(challenge);
         return;
     }
 
-    if (challenge.type === "dead_number") {
+    if (challenge.game_id === "dead_number") {
         renderNumberChoice(challenge, "dead");
         return;
     }
 
-    if (challenge.type === "impossible_choice") {
+    if (challenge.game_id === "impossible_choice") {
         renderImpossibleChoice(challenge);
         return;
     }
+
+    toast("Unknown game type.");
 }
 
+
+// ============================================================
+// GUESS IT
+// ============================================================
 
 function renderGuessIt(challenge) {
 
@@ -378,15 +502,23 @@ function renderGuessIt(challenge) {
 
             <div class="challenge-box">
 
-                <h3>🎯 Guess It</h3>
+                <h3>🎯 ${challenge.title || "Guess It"}</h3>
 
                 <div class="question">
-                    ${challenge.prompt}
+                    ${formatQuestion(challenge.question)}
                 </div>
 
-                <div class="info-box">
-                    ${challenge.clue || ""}
-                </div>
+                ${
+                    challenge.metadata?.image_url
+                    ? `
+                        <img
+                            src="${challenge.metadata.image_url}"
+                            class="challenge-image"
+                            alt="Guess It clue"
+                        >
+                    `
+                    : ""
+                }
 
                 <input
                     id="answerInput"
@@ -409,6 +541,10 @@ function renderGuessIt(challenge) {
 }
 
 
+// ============================================================
+// IMPOSSIBLE QUESTION
+// ============================================================
+
 function renderImpossibleQuestion(challenge) {
 
     document.getElementById("gameContent").innerHTML = `
@@ -417,10 +553,12 @@ function renderImpossibleQuestion(challenge) {
 
             <div class="challenge-box">
 
-                <h3>💀 Weekly Impossible Question</h3>
+                <h3>
+                    💀 ${challenge.title || "Weekly Impossible Question"}
+                </h3>
 
                 <div class="question">
-                    ${challenge.prompt}
+                    ${formatQuestion(challenge.question)}
                 </div>
 
                 <div class="info-box">
@@ -449,7 +587,14 @@ function renderImpossibleQuestion(challenge) {
 }
 
 
+// ============================================================
+// NUMBER GAMES
+// ============================================================
+
 function renderNumberChoice(challenge, mode) {
+
+    const min = challenge.min ?? 1;
+    const max = challenge.max ?? 20;
 
     document.getElementById("gameContent").innerHTML = `
 
@@ -458,28 +603,30 @@ function renderNumberChoice(challenge, mode) {
             <div class="challenge-box">
 
                 <h3>
-                    ${mode === "crowd"
-                        ? "🧠 The Crowd Trap"
-                        : "☠️ Dead Number"}
+                    ${
+                        mode === "crowd"
+                            ? "🧠 The Crowd Trap"
+                            : "☠️ Dead Number"
+                    }
                 </h3>
 
                 <div class="question">
-                    ${challenge.prompt}
+                    ${formatQuestion(challenge.question)}
                 </div>
 
                 <div class="info-box">
                     Choose between
-                    <strong>${challenge.min}</strong>
+                    <strong>${min}</strong>
                     and
-                    <strong>${challenge.max}</strong>.
+                    <strong>${max}</strong>.
                 </div>
 
                 <input
                     id="numberInput"
                     class="number-input"
                     type="number"
-                    min="${challenge.min}"
-                    max="${challenge.max}"
+                    min="${min}"
+                    max="${max}"
                     placeholder="Enter your number"
                 >
 
@@ -497,7 +644,13 @@ function renderNumberChoice(challenge, mode) {
 }
 
 
+// ============================================================
+// SURVIVOR
+// ============================================================
+
 function renderSurvivor(challenge) {
+
+    const options = challenge.options || [];
 
     document.getElementById("gameContent").innerHTML = `
 
@@ -505,21 +658,21 @@ function renderSurvivor(challenge) {
 
             <div class="challenge-box">
 
-                <h3>🏆 The Survivor</h3>
+                <h3>
+                    🏆 ${challenge.title || "The Survivor"}
+                </h3>
 
                 <div class="question">
-                    ${challenge.prompt}
+                    ${formatQuestion(challenge.question)}
                 </div>
 
                 <div class="info-box">
-                    Round ${challenge.round} —
-                    ${challenge.options.length} options.
-                    Only one is safe.
+                    Choose one option carefully.
                 </div>
 
                 <div class="options">
 
-                    ${challenge.options.map(option => `
+                    ${options.map(option => `
                         <button
                             class="option-btn"
                             onclick="submitChoice('${escapeQuotes(option)}')"
@@ -537,7 +690,13 @@ function renderSurvivor(challenge) {
 }
 
 
+// ============================================================
+// IMPOSSIBLE CHOICE
+// ============================================================
+
 function renderImpossibleChoice(challenge) {
+
+    const options = challenge.options || [];
 
     document.getElementById("gameContent").innerHTML = `
 
@@ -545,10 +704,12 @@ function renderImpossibleChoice(challenge) {
 
             <div class="challenge-box">
 
-                <h3>🤔 Impossible Choice</h3>
+                <h3>
+                    🤔 ${challenge.title || "Impossible Choice"}
+                </h3>
 
                 <div class="question">
-                    ${challenge.prompt}
+                    ${formatQuestion(challenge.question)}
                 </div>
 
                 <div class="info-box">
@@ -558,7 +719,7 @@ function renderImpossibleChoice(challenge) {
 
                 <div class="options">
 
-                    ${challenge.options.map(option => `
+                    ${options.map(option => `
                         <button
                             class="option-btn"
                             onclick="submitChoice('${escapeQuotes(option)}')"
@@ -576,6 +737,23 @@ function renderImpossibleChoice(challenge) {
 }
 
 
+// ============================================================
+// QUESTION FORMATTER
+// ============================================================
+
+function formatQuestion(value) {
+
+    if (!value) return "";
+
+    return String(value)
+        .replace(/\n/g, "<br>");
+}
+
+
+// ============================================================
+// ESCAPE
+// ============================================================
+
 function escapeQuotes(value) {
 
     return String(value)
@@ -583,6 +761,10 @@ function escapeQuotes(value) {
         .replace(/'/g, "\\'");
 }
 
+
+// ============================================================
+// ANSWER
+// ============================================================
 
 async function submitAnswer() {
 
@@ -597,14 +779,26 @@ async function submitAnswer() {
 }
 
 
+// ============================================================
+// NUMBER ANSWER
+// ============================================================
+
 async function submitNumber(mode) {
 
     const input = document.getElementById("numberInput");
 
+    if (!input || input.value === "") {
+        toast("Enter a number.");
+        return;
+    }
+
     const number = Number(input.value);
 
-    if (!number) {
-        toast("Enter a number.");
+    const min = currentChallenge?.min ?? 1;
+    const max = currentChallenge?.max ?? 20;
+
+    if (number < min || number > max) {
+        toast(`Choose a number between ${min} and ${max}.`);
         return;
     }
 
@@ -612,13 +806,26 @@ async function submitNumber(mode) {
 }
 
 
+// ============================================================
+// CHOICE ANSWER
+// ============================================================
+
 async function submitChoice(choice) {
 
     await submitGameAnswer(choice);
 }
 
 
+// ============================================================
+// SUBMIT GAME ANSWER
+// ============================================================
+
 async function submitGameAnswer(answer) {
+
+    if (!currentGame || !currentChallenge) {
+        toast("No active challenge.");
+        return;
+    }
 
     try {
 
@@ -626,7 +833,9 @@ async function submitGameAnswer(answer) {
             `/api/games/${currentGame.id}/answer`,
             {
                 method: "POST",
+
                 body: JSON.stringify({
+                    challenge_id: currentChallenge.id,
                     answer: answer
                 })
             }
@@ -634,9 +843,17 @@ async function submitGameAnswer(answer) {
 
         if (result.correct) {
 
-            toast("🎉 Correct! You survived!");
+            toast(
+                result.message ||
+                "🎉 Correct! You won!"
+            );
 
-            state.score = result.score || state.score;
+            if (result.reward) {
+
+                state.points += Number(result.reward);
+
+                updateBalances();
+            }
 
         } else {
 
@@ -644,25 +861,24 @@ async function submitGameAnswer(answer) {
                 result.message ||
                 "❌ That's not correct. Try again."
             );
-
-        }
-
-        if (result.points !== undefined) {
-            state.points = result.points;
-            updateBalances();
         }
 
     } catch (error) {
 
         toast(error.message);
-
     }
 }
 
 
+// ============================================================
+// ADS
+// ============================================================
+
 async function watchAd() {
 
     const button = document.getElementById("watchAdButton");
+
+    if (!button) return;
 
     button.disabled = true;
     button.textContent = "📺 WATCHING...";
@@ -679,18 +895,20 @@ async function watchAd() {
                 }
             );
 
-            state.points = result.points;
-            state.ads_watched = result.ads_watched;
+            state.points += Number(result.reward || 1);
+            state.ads_watched += 1;
 
             updateBalances();
             updateAds();
 
-            toast("+1 QuizBee Point earned!");
+            toast(
+                result.message ||
+                "+1 QuizBee Point earned!"
+            );
 
         } catch (error) {
 
             toast(error.message);
-
         }
 
         button.disabled = false;
@@ -700,57 +918,120 @@ async function watchAd() {
 }
 
 
+// ============================================================
+// ADS UI
+// ============================================================
+
 function updateAds() {
 
     const watched = state.ads_watched || 0;
 
-    document.getElementById("adsProgress").textContent =
-        `${watched}/10`;
+    const progress =
+        document.getElementById("adsProgress");
 
-    document.getElementById("adsProgressBar").style.width =
-        `${Math.min(watched, 10) * 10}%`;
+    const progressBar =
+        document.getElementById("adsProgressBar");
 
-    if (watched >= 10) {
+    const button =
+        document.getElementById("watchAdButton");
 
-        document.getElementById("watchAdButton").disabled = true;
+    if (progress) {
+        progress.textContent = `${watched}/10`;
+    }
 
-        document.getElementById("watchAdButton").textContent =
+    if (progressBar) {
+        progressBar.style.width =
+            `${Math.min(watched, 10) * 10}%`;
+    }
+
+    if (button && watched >= 10) {
+
+        button.disabled = true;
+
+        button.textContent =
             "✅ DAILY REWARD COMPLETE";
-
     }
 }
 
 
+// ============================================================
+// BALANCES
+// ============================================================
+
 function updateBalances() {
 
-    document.getElementById("pointsBalance").textContent =
-        state.points;
+    const points =
+        document.getElementById("pointsBalance");
 
-    document.getElementById("prizeBalance").textContent =
-        `₦${Number(state.prize_balance || 0).toLocaleString()}`;
+    const prize =
+        document.getElementById("prizeBalance");
+
+    if (points) {
+        points.textContent = state.points || 0;
+    }
+
+    if (prize) {
+
+        prize.textContent =
+            `₦${Number(
+                state.prize_balance || 0
+            ).toLocaleString()}`;
+    }
 }
 
+
+// ============================================================
+// PROFILE
+// ============================================================
 
 function updateProfile() {
 
-    document.getElementById("profileName").textContent =
-        user.first_name || "Player";
+    const name =
+        document.getElementById("profileName");
 
-    document.getElementById("profileUsername").textContent =
-        user.username
-            ? `@${user.username}`
-            : "Telegram Player";
+    const username =
+        document.getElementById("profileUsername");
 
-    document.getElementById("profileScore").textContent =
-        state.score || 0;
+    const score =
+        document.getElementById("profileScore");
 
-    document.getElementById("profileStreak").textContent =
-        state.streak || 0;
+    const streak =
+        document.getElementById("profileStreak");
 
-    document.getElementById("profileReferrals").textContent =
-        state.referrals || 0;
+    const referrals =
+        document.getElementById("profileReferrals");
+
+    if (name) {
+
+        name.textContent =
+            user.first_name || "Player";
+    }
+
+    if (username) {
+
+        username.textContent =
+            user.username
+                ? `@${user.username}`
+                : "Telegram Player";
+    }
+
+    if (score) {
+        score.textContent = state.score || 0;
+    }
+
+    if (streak) {
+        streak.textContent = state.streak || 0;
+    }
+
+    if (referrals) {
+        referrals.textContent = state.referrals || 0;
+    }
 }
 
+
+// ============================================================
+// LEADERBOARD
+// ============================================================
 
 async function loadLeaderboard(type = "weekly", button = null) {
 
@@ -771,7 +1052,10 @@ async function loadLeaderboard(type = "weekly", button = null) {
         const container =
             document.getElementById("leaderboardList");
 
-        if (!data.players.length) {
+        const players =
+            data.leaderboard || [];
+
+        if (!players.length) {
 
             container.innerHTML =
                 `<div class="info-box">
@@ -782,22 +1066,24 @@ async function loadLeaderboard(type = "weekly", button = null) {
         }
 
         container.innerHTML =
-            data.players.map((player, index) => `
+            players.map((player, index) => `
+
                 <div class="rank-row">
 
                     <div class="rank-number">
-                        ${index + 1}
+                        ${player.rank || index + 1}
                     </div>
 
                     <div class="rank-name">
-                        ${player.name}
+                        ${player.first_name || player.username || "Player"}
                     </div>
 
                     <div class="rank-score">
-                        ${player.score}
+                        ${player.total_earned || 0}
                     </div>
 
                 </div>
+
             `).join("");
 
     } catch (error) {
@@ -810,17 +1096,29 @@ async function loadLeaderboard(type = "weekly", button = null) {
 }
 
 
+// ============================================================
+// FUTURE PAYMENTS
+// ============================================================
+
 function buyPoints() {
 
-    toast("💰 Point purchases will be connected later.");
+    toast(
+        "💰 Point purchases will be connected later."
+    );
 }
 
 
 function withdrawPrize() {
 
-    toast("💸 Withdrawals will be connected after the wallet system.");
+    toast(
+        "💸 Withdrawals will be connected after the wallet system."
+    );
 }
 
+
+// ============================================================
+// BOOTSTRAP
+// ============================================================
 
 async function bootstrap() {
 
@@ -830,28 +1128,48 @@ async function bootstrap() {
             "/api/bootstrap",
             {
                 method: "POST",
+
                 body: JSON.stringify({
                     telegram_user: user
                 })
             }
         );
 
-        state = {
-            ...state,
-            ...data.user,
-            games: data.games
-        };
+        const backendUser = data.user || {};
+
+        state.points =
+            backendUser.quizbee_points ?? 0;
+
+        state.prize_balance =
+            backendUser.prize_balance ?? 0;
+
+        state.score =
+            backendUser.total_earned ?? 0;
+
+        state.streak =
+            backendUser.streak_days ?? 0;
+
+        state.referrals =
+            backendUser.referrals_count ?? 0;
+
+        state.games =
+            data.games || [];
 
     } catch (error) {
 
-        console.log(error);
+        console.log("Bootstrap error:", error);
 
-        // Demo fallback
         state.games = defaultGames();
     }
 
-    document.getElementById("welcomeText").textContent =
-        `Welcome, ${user.first_name || "Player"} 👋`;
+    const welcome =
+        document.getElementById("welcomeText");
+
+    if (welcome) {
+
+        welcome.textContent =
+            `Welcome, ${user.first_name || "Player"} 👋`;
+    }
 
     updateBalances();
     updateProfile();
@@ -861,53 +1179,67 @@ async function bootstrap() {
 }
 
 
+// ============================================================
+// FALLBACK GAMES
+// ============================================================
+
 function defaultGames() {
 
     return [
+
         {
             id: "guess_it",
             name: "Guess It",
-            emoji: "🎯",
-            status: "active",
-            entry_points: 10
+            icon: "🎯",
+            active: true,
+            entry_fee: 10
         },
+
         {
             id: "impossible_question",
             name: "Impossible Question",
-            emoji: "💀",
-            status: "active",
-            entry_points: 10
+            icon: "💀",
+            active: true,
+            entry_fee: 10
         },
+
         {
             id: "crowd_trap",
             name: "The Crowd Trap",
-            emoji: "🧠",
-            status: "locked",
-            entry_points: 10
+            icon: "🧠",
+            active: false,
+            entry_fee: 10
         },
+
         {
             id: "survivor",
             name: "The Survivor",
-            emoji: "🏆",
-            status: "locked",
-            entry_points: 10
+            icon: "🏆",
+            active: false,
+            entry_fee: 10
         },
+
         {
             id: "dead_number",
             name: "Dead Number",
-            emoji: "☠️",
-            status: "locked",
-            entry_points: 10
+            icon: "☠️",
+            active: false,
+            entry_fee: 10
         },
+
         {
             id: "impossible_choice",
             name: "Impossible Choice",
-            emoji: "🤔",
-            status: "locked",
-            entry_points: 10
+            icon: "🤔",
+            active: false,
+            entry_fee: 10
         }
     ];
 }
 
+
+// ============================================================
+// START
+// ============================================================
 
 bootstrap();
