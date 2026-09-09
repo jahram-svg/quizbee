@@ -6,4 +6,4 @@ venv/
 .vscode/
 .firebase/
 serviceAccountKey.json
-firebase-key.json 
+firebase-key.json
