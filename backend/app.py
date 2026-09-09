@@ -1,754 +1,1072 @@
 import os
 import re
-import hmac
-import hashlib
-import json
-import time
 import random
+import string
 from datetime import datetime, timezone
 
-from flask import Flask, request, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
+
+from firebase_admin import firestore
+
+from backend.firebase import db
 
 
 app = Flask(__name__)
-CORS(app)
 
-DEV_MODE = os.getenv("DEV_MODE", "true").lower() == "true"
-
-ENTRY_POINTS_DEFAULT = 10
-
-
-GAMES = {
-    "guess_it": {
-        "id": "guess_it",
-        "name": "Guess It",
-        "emoji": "🎯",
-        "status": "active",
-        "entry_points": 10,
-        "type": "guess_it"
+CORS(
+    app,
+    resources={
+        r"/api/*": {
+            "origins": "*"
+        }
     },
-
-    "impossible_question": {
-        "id": "impossible_question",
-        "name": "Impossible Question",
-        "emoji": "💀",
-        "status": "active",
-        "entry_points": 10,
-        "type": "impossible_question"
-    },
-
-    "crowd_trap": {
-        "id": "crowd_trap",
-        "name": "The Crowd Trap",
-        "emoji": "🧠",
-        "status": "locked",
-        "entry_points": 10,
-        "type": "crowd_trap"
-    },
-
-    "survivor": {
-        "id": "survivor",
-        "name": "The Survivor",
-        "emoji": "🏆",
-        "status": "locked",
-        "entry_points": 10,
-        "type": "survivor"
-    },
-
-    "dead_number": {
-        "id": "dead_number",
-        "name": "Dead Number",
-        "emoji": "☠️",
-        "status": "locked",
-        "entry_points": 10,
-        "type": "dead_number"
-    },
-
-    "impossible_choice": {
-        "id": "impossible_choice",
-        "name": "Impossible Choice",
-        "emoji": "🤔",
-        "status": "locked",
-        "entry_points": 10,
-        "type": "impossible_choice"
-    }
-}
+    allow_headers=[
+        "Content-Type",
+        "X-Telegram-Init-Data"
+    ],
+    methods=[
+        "GET",
+        "POST",
+        "OPTIONS"
+    ]
+)
 
 
-USERS = {}
-
-ENTRIES = {}
-
-ANSWERS = {}
-
-ADS = {}
+DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
 
 
-DEMO_CHALLENGES = {
+# ============================================================
+# HELPERS
+# ============================================================
 
-    "guess_it": {
-        "type": "guess_it",
-        "prompt": "Which footballer is commonly known as CR7?",
-        "clue": "The Portuguese superstar has won multiple Ballon d'Or awards.",
-        "correct_answer": "cristiano ronaldo",
-        "accepted_answers": [
-            "cristiano ronaldo",
-            "ronaldo",
-            "cr7"
-        ]
-    },
-
-    "impossible_question": {
-        "type": "impossible_question",
-        "prompt": "I am thinking of a number. What number comes next in this sequence: 1, 11, 21, 1211, 111221, ?",
-        "correct_answer": "312211",
-        "accepted_answers": [
-            "312211"
-        ]
-    },
-
-    "crowd_trap": {
-        "type": "crowd_trap",
-        "prompt": "Choose a number nobody else chooses.",
-        "min": 1,
-        "max": 20
-    },
-
-    "survivor": {
-        "type": "survivor",
-        "round": 1,
-        "prompt": "Choose the one option that keeps you alive.",
-        "options": [
-            "A",
-            "B",
-            "C",
-            "D",
-            "E",
-            "F",
-            "G",
-            "H",
-            "I",
-            "J",
-            "K",
-            "L",
-            "M",
-            "N",
-            "O"
-        ]
-    },
-
-    "dead_number": {
-        "type": "dead_number",
-        "prompt": "Choose a number. Some numbers are DEAD.",
-        "min": 1,
-        "max": 10
-    },
-
-    "impossible_choice": {
-        "type": "impossible_choice",
-        "prompt": "Which option do you think the majority of players will choose?",
-        "options": [
-            "A — Get ₦500 tomorrow",
-            "B — Get ₦150 today",
-            "C — Get ₦1,000 in 7 days",
-            "D — Get ₦100 every day for 5 days"
-        ]
-    }
-}
+def now():
+    return datetime.now(timezone.utc)
 
 
-def normalize(value):
+def normalize_answer(value):
+    if value is None:
+        return ""
 
-    value = str(value or "").lower().strip()
+    value = str(value).strip().lower()
 
     value = re.sub(r"\s+", " ", value)
+
+    value = re.sub(r"[^\w\s-]", "", value)
 
     return value
 
 
-def get_user():
+def generate_referral_code():
+    letters = "".join(
+        random.choice(string.ascii_uppercase)
+        for _ in range(3)
+    )
 
-    telegram_user = request.json.get("telegram_user", {})
+    digits = "".join(
+        random.choice(string.digits)
+        for _ in range(5)
+    )
 
-    telegram_id = telegram_user.get("id")
+    return f"TB{letters}{digits}"
 
-    if not telegram_id:
-        telegram_id = 999000001
 
-    telegram_id = str(telegram_id)
+def get_demo_telegram_id():
+    return "999000001"
 
-    if telegram_id not in USERS:
 
-        USERS[telegram_id] = {
-            "telegram_id": telegram_id,
-            "first_name": telegram_user.get(
-                "first_name",
-                "Demo"
-            ),
-            "username": telegram_user.get(
-                "username",
-                "demo_player"
-            ),
-            "points": 100,
-            "prize_balance": 0,
-            "score": 0,
-            "streak": 1,
-            "referrals": 0,
-            "created_at": time.time()
+def get_telegram_user():
+    """
+    Development fallback.
+
+    IMPORTANT:
+    This is NOT production Telegram authentication.
+
+    Production Telegram initData validation will be added before launch.
+    """
+
+    telegram_id = get_demo_telegram_id()
+
+    if DEV_MODE:
+        telegram_id = (
+            request.headers.get("X-Demo-Telegram-ID")
+            or get_demo_telegram_id()
+        )
+
+    return {
+        "telegram_id": str(telegram_id),
+        "username": "QuizBeeUser",
+        "first_name": "QuizBee",
+    }
+
+
+def user_ref(telegram_id):
+    return db.collection("users").document(str(telegram_id))
+
+
+def get_or_create_user():
+    telegram_user = get_telegram_user()
+
+    telegram_id = telegram_user["telegram_id"]
+
+    ref = user_ref(telegram_id)
+    snap = ref.get()
+
+    if snap.exists:
+        data = snap.to_dict()
+
+        updates = {
+            "username": telegram_user.get("username", ""),
+            "first_name": telegram_user.get("first_name", ""),
+            "updated_at": now(),
         }
 
-    return USERS[telegram_id]
+        ref.update(updates)
 
+        data.update(updates)
+
+        return data
+
+    referral_code = generate_referral_code()
+
+    data = {
+        "telegram_id": telegram_id,
+        "username": telegram_user.get("username", ""),
+        "first_name": telegram_user.get("first_name", ""),
+
+        "quizbee_points": 100,
+        "prize_balance": 0,
+
+        "total_earned": 0,
+        "total_spent": 0,
+
+        "referral_code": referral_code,
+        "referred_by": None,
+        "referrals_count": 0,
+
+        "streak_days": 1,
+
+        "last_login": now(),
+        "created_at": now(),
+        "updated_at": now(),
+    }
+
+    ref.set(data)
+
+    return data
+
+
+def get_game(game_id):
+    ref = db.collection("games").document(game_id)
+    snap = ref.get()
+
+    if not snap.exists:
+        return None
+
+    data = snap.to_dict()
+    data["id"] = game_id
+
+    return data
+
+
+def get_all_games():
+    docs = (
+        db.collection("games")
+        .order_by("sort_order")
+        .stream()
+    )
+
+    games = []
+
+    for doc in docs:
+        data = doc.to_dict()
+        data["id"] = doc.id
+        games.append(data)
+
+    return games
+
+
+def get_active_challenge(game_id):
+    query = (
+        db.collection("challenges")
+        .where("game_id", "==", game_id)
+        .where("active", "==", True)
+        .limit(1)
+    )
+
+    docs = list(query.stream())
+
+    if not docs:
+        return None
+
+    doc = docs[0]
+
+    data = doc.to_dict()
+    data["id"] = doc.id
+
+    return data
+
+
+def has_entered_challenge(telegram_id, game_id, challenge_id):
+    query = (
+        db.collection("entries")
+        .where("telegram_id", "==", str(telegram_id))
+        .where("game_id", "==", game_id)
+        .where("challenge_id", "==", challenge_id)
+        .limit(1)
+    )
+
+    return len(list(query.stream())) > 0
+
+
+def get_public_challenge(challenge):
+    """
+    Never send the correct answer to the frontend.
+    """
+
+    data = dict(challenge)
+
+    data.pop("correct_answer", None)
+    data.pop("accepted_answers", None)
+
+    return data
+
+
+# ============================================================
+# HEALTH
+# ============================================================
 
 @app.get("/api/health")
 def health():
+    try:
+        db.collection("settings").document("health").set(
+            {
+                "last_check": now()
+            },
+            merge=True
+        )
 
-    return jsonify({
-        "status": "ok",
-        "service": "QuizBee API",
-        "dev_mode": DEV_MODE
-    })
+        return jsonify({
+            "success": True,
+            "firebase": True,
+            "dev_mode": DEV_MODE,
+            "message": "QuizBee backend is running."
+        })
 
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "firebase": False,
+            "error": str(e)
+        }), 500
+
+
+# ============================================================
+# BOOTSTRAP
+# ============================================================
 
 @app.post("/api/bootstrap")
 def bootstrap():
+    try:
+        user = get_or_create_user()
+        games = get_all_games()
 
-    user = get_user()
+        challenge = get_active_challenge("impossible_question")
 
-    return jsonify({
-        "user": user,
-        "games": list(GAMES.values())
-    })
+        return jsonify({
+            "success": True,
+            "user": user,
+            "games": games,
+            "featured_challenge": (
+                get_public_challenge(challenge)
+                if challenge
+                else None
+            )
+        })
 
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+# ============================================================
+# GAMES
+# ============================================================
 
 @app.get("/api/games")
 def games():
+    try:
+        return jsonify({
+            "success": True,
+            "games": get_all_games()
+        })
 
-    return jsonify({
-        "games": list(GAMES.values())
-    })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
+
+# ============================================================
+# GAME ENTRY
+# ============================================================
 
 @app.post("/api/games/<game_id>/enter")
 def enter_game(game_id):
+    try:
+        user = get_or_create_user()
 
-    if game_id not in GAMES:
+        game = get_game(game_id)
+
+        if not game:
+            return jsonify({
+                "success": False,
+                "error": "Game not found."
+            }), 404
+
+        if not game.get("active", False):
+            return jsonify({
+                "success": False,
+                "error": "This game is coming soon."
+            }), 403
+
+        challenge = get_active_challenge(game_id)
+
+        if not challenge:
+            return jsonify({
+                "success": False,
+                "error": "No active challenge is available yet."
+            }), 404
+
+        telegram_id = user["telegram_id"]
+
+        if has_entered_challenge(
+            telegram_id,
+            game_id,
+            challenge["id"]
+        ):
+            return jsonify({
+                "success": True,
+                "already_entered": True,
+                "challenge": get_public_challenge(challenge),
+                "user": user
+            })
+
+        entry_fee = int(game.get("entry_fee", 10))
+
+        if int(user.get("quizbee_points", 0)) < entry_fee:
+            return jsonify({
+                "success": False,
+                "error": "Not enough QuizBee Points."
+            }), 400
+
+        new_balance = (
+            int(user.get("quizbee_points", 0))
+            - entry_fee
+        )
+
+        user_ref(telegram_id).update({
+            "quizbee_points": new_balance,
+            "total_spent": firestore.Increment(entry_fee),
+            "updated_at": now()
+        })
+
+        entry_ref = db.collection("entries").document()
+
+        entry_ref.set({
+            "telegram_id": telegram_id,
+            "game_id": game_id,
+            "challenge_id": challenge["id"],
+            "entry_fee": entry_fee,
+            "status": "active",
+            "created_at": now()
+        })
+
+        db.collection("transactions").document().set({
+            "telegram_id": telegram_id,
+            "type": "game_entry",
+            "game_id": game_id,
+            "amount": -entry_fee,
+            "currency": "quizbee_points",
+            "created_at": now()
+        })
+
+        user["quizbee_points"] = new_balance
+
         return jsonify({
-            "error": "Game not found."
-        }), 404
+            "success": True,
+            "already_entered": False,
+            "challenge": get_public_challenge(challenge),
+            "user": user
+        })
 
-    game = GAMES[game_id]
-
-    if game["status"] != "active":
+    except Exception as e:
         return jsonify({
-            "error": "This game is currently locked."
-        }), 403
+            "success": False,
+            "error": str(e)
+        }), 500
 
-    user = get_user()
 
-    entry_cost = game["entry_points"]
-
-    if user["points"] < entry_cost:
-
-        return jsonify({
-            "error": "Not enough QuizBee Points."
-        }), 400
-
-    entry_key = (
-        f'{user["telegram_id"]}:'
-        f'{game_id}'
-    )
-
-    if entry_key in ENTRIES:
-
-        return jsonify({
-            "error": "You have already entered this round."
-        }), 400
-
-    user["points"] -= entry_cost
-
-    ENTRIES[entry_key] = {
-        "telegram_id": user["telegram_id"],
-        "game_id": game_id,
-        "entered_at": time.time()
-    }
-
-    return jsonify({
-        "success": True,
-        "points": user["points"]
-    })
-
+# ============================================================
+# GET CHALLENGE
+# ============================================================
 
 @app.get("/api/games/<game_id>/challenge")
 def challenge(game_id):
+    try:
+        game = get_game(game_id)
 
-    if game_id not in GAMES:
+        if not game:
+            return jsonify({
+                "success": False,
+                "error": "Game not found."
+            }), 404
+
+        challenge_data = get_active_challenge(game_id)
+
+        if not challenge_data:
+            return jsonify({
+                "success": False,
+                "error": "No active challenge."
+            }), 404
+
         return jsonify({
-            "error": "Game not found."
-        }), 404
+            "success": True,
+            "game": game,
+            "challenge": get_public_challenge(challenge_data)
+        })
 
-    challenge_data = dict(
-        DEMO_CHALLENGES[game_id]
-    )
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
-    # Never expose secret answers.
-    challenge_data.pop("correct_answer", None)
-    challenge_data.pop("accepted_answers", None)
 
-    return jsonify(challenge_data)
-
+# ============================================================
+# ANSWER SUBMISSION
+# ============================================================
 
 @app.post("/api/games/<game_id>/answer")
 def answer(game_id):
+    try:
+        user = get_or_create_user()
 
-    if game_id not in GAMES:
-        return jsonify({
-            "error": "Game not found."
-        }), 404
+        body = request.get_json(silent=True) or {}
 
-    user = get_user()
+        challenge_id = body.get("challenge_id")
+        submitted_answer = body.get("answer")
 
-    entry_key = (
-        f'{user["telegram_id"]}:'
-        f'{game_id}'
-    )
+        if not challenge_id:
+            return jsonify({
+                "success": False,
+                "error": "Missing challenge ID."
+            }), 400
 
-    if entry_key not in ENTRIES:
-        return jsonify({
-            "error": "Enter the game first."
-        }), 400
+        challenge_ref = (
+            db.collection("challenges")
+            .document(challenge_id)
+        )
 
-    body = request.json or {}
+        challenge_snap = challenge_ref.get()
 
-    submitted = normalize(
-        body.get("answer", "")
-    )
+        if not challenge_snap.exists:
+            return jsonify({
+                "success": False,
+                "error": "Challenge not found."
+            }), 404
 
-    if not submitted:
-        return jsonify({
-            "error": "Answer is required."
-        }), 400
+        challenge_data = challenge_snap.to_dict()
 
-    game = GAMES[game_id]
+        if challenge_data.get("game_id") != game_id:
+            return jsonify({
+                "success": False,
+                "error": "Invalid challenge."
+            }), 400
 
-    # -------------------------
-    # GUESS IT
-    # -------------------------
+        telegram_id = user["telegram_id"]
 
-    if game_id == "guess_it":
+        if not has_entered_challenge(
+            telegram_id,
+            game_id,
+            challenge_id
+        ):
+            return jsonify({
+                "success": False,
+                "error": "You must enter the game first."
+            }), 403
 
-        correct = submitted in [
-            normalize(x)
-            for x in DEMO_CHALLENGES[game_id]
-            ["accepted_answers"]
+        normalized = normalize_answer(submitted_answer)
+
+        correct_answer = normalize_answer(
+            challenge_data.get("correct_answer")
+        )
+
+        accepted_answers = challenge_data.get(
+            "accepted_answers",
+            []
+        )
+
+        accepted_normalized = [
+            normalize_answer(x)
+            for x in accepted_answers
         ]
 
-        if correct:
+        is_correct = (
+            normalized == correct_answer
+            or normalized in accepted_normalized
+        )
 
-            user["score"] += 100
+        answer_ref = db.collection("answers").document()
+
+        answer_ref.set({
+            "telegram_id": telegram_id,
+            "game_id": game_id,
+            "challenge_id": challenge_id,
+            "answer": str(submitted_answer or ""),
+            "normalized_answer": normalized,
+            "correct": is_correct,
+            "created_at": now()
+        })
+
+        if is_correct:
+
+            # Prevent multiple successful rewards for the same challenge.
+            existing_correct = (
+                db.collection("answers")
+                .where("telegram_id", "==", telegram_id)
+                .where("challenge_id", "==", challenge_id)
+                .where("correct", "==", True)
+                .limit(2)
+            )
+
+            existing = list(existing_correct.stream())
+
+            if len(existing) > 1:
+                # Current answer is likely the second correct answer.
+                # Do not award again.
+                return jsonify({
+                    "success": True,
+                    "correct": True,
+                    "already_rewarded": True,
+                    "message": "Correct answer."
+                })
+
+            reward = int(
+                challenge_data.get(
+                    "reward_points",
+                    0
+                )
+            )
+
+            if reward > 0:
+                user_ref(telegram_id).update({
+                    "quizbee_points": firestore.Increment(reward),
+                    "total_earned": firestore.Increment(reward),
+                    "updated_at": now()
+                })
+
+                db.collection("transactions").document().set({
+                    "telegram_id": telegram_id,
+                    "type": "game_reward",
+                    "game_id": game_id,
+                    "challenge_id": challenge_id,
+                    "amount": reward,
+                    "currency": "quizbee_points",
+                    "created_at": now()
+                })
 
             return jsonify({
+                "success": True,
                 "correct": True,
-                "message": "Correct! 🎉",
-                "score": user["score"],
-                "points": user["points"]
+                "reward": reward,
+                "message": "Correct answer! 🎉"
             })
 
         return jsonify({
+            "success": True,
             "correct": False,
-            "message": "❌ Wrong answer."
+            "reward": 0,
+            "message": "Wrong answer. Try again."
         })
 
-
-    # -------------------------
-    # IMPOSSIBLE QUESTION
-    # -------------------------
-
-    if game_id == "impossible_question":
-
-        correct = submitted in [
-            normalize(x)
-            for x in DEMO_CHALLENGES[game_id]
-            ["accepted_answers"]
-        ]
-
-        if correct:
-
-            user["score"] += 250
-
-            return jsonify({
-                "correct": True,
-                "message": "🔥 You solved the Impossible Question!",
-                "score": user["score"],
-                "points": user["points"]
-            })
-
+    except Exception as e:
         return jsonify({
-            "correct": False,
-            "message": "❌ That's wrong. Try again."
-        })
+            "success": False,
+            "error": str(e)
+        }), 500
 
 
-    # -------------------------
-    # CROWD TRAP
-    # -------------------------
-
-    if game_id == "crowd_trap":
-
-        try:
-            number = int(submitted)
-        except ValueError:
-            return jsonify({
-                "error": "Choose a valid number."
-            }), 400
-
-        minimum = DEMO_CHALLENGES[game_id]["min"]
-        maximum = DEMO_CHALLENGES[game_id]["max"]
-
-        if number < minimum or number > maximum:
-
-            return jsonify({
-                "error": f"Choose between {minimum} and {maximum}."
-            }), 400
-
-        ANSWERS.setdefault(game_id, {})[
-            user["telegram_id"]
-        ] = number
-
-        return jsonify({
-            "correct": False,
-            "message":
-                "🔒 Choice locked. Results are revealed when the round closes."
-        })
-
-
-    # -------------------------
-    # SURVIVOR
-    # -------------------------
-
-    if game_id == "survivor":
-
-        ANSWERS.setdefault(game_id, {})[
-            user["telegram_id"]
-        ] = submitted
-
-        return jsonify({
-            "correct": False,
-            "message":
-                "🔒 Choice locked. The safe option will be revealed later."
-        })
-
-
-    # -------------------------
-    # DEAD NUMBER
-    # -------------------------
-
-    if game_id == "dead_number":
-
-        try:
-            number = int(submitted)
-        except ValueError:
-            return jsonify({
-                "error": "Choose a valid number."
-            }), 400
-
-        minimum = DEMO_CHALLENGES[game_id]["min"]
-        maximum = DEMO_CHALLENGES[game_id]["max"]
-
-        if number < minimum or number > maximum:
-
-            return jsonify({
-                "error": f"Choose between {minimum} and {maximum}."
-            }), 400
-
-        ANSWERS.setdefault(game_id, {})[
-            user["telegram_id"]
-        ] = number
-
-        return jsonify({
-            "correct": False,
-            "message":
-                "☠️ Choice locked. Dead Numbers will be revealed later."
-        })
-
-
-    # -------------------------
-    # IMPOSSIBLE CHOICE
-    # -------------------------
-
-    if game_id == "impossible_choice":
-
-        ANSWERS.setdefault(game_id, {})[
-            user["telegram_id"]
-        ] = submitted
-
-        return jsonify({
-            "correct": False,
-            "message":
-                "🔒 Prediction locked. The crowd result will be revealed later."
-        })
-
-
-    return jsonify({
-        "error": "Unsupported game."
-    }), 400
-
+# ============================================================
+# ADS
+# ============================================================
 
 @app.post("/api/ads/mock-complete")
-def mock_ad_complete():
+def mock_complete_ad():
+    try:
+        user = get_or_create_user()
 
-    user = get_user()
+        telegram_id = user["telegram_id"]
 
-    user_id = user["telegram_id"]
+        # One point per verified/mock ad.
+        reward = 1
 
-    today = datetime.now(
-        timezone.utc
-    ).strftime("%Y-%m-%d")
+        db.collection("ad_rewards").document().set({
+            "telegram_id": telegram_id,
+            "reward": reward,
+            "provider": "mock",
+            "status": "completed",
+            "created_at": now()
+        })
 
-    key = f"{user_id}:{today}"
+        user_ref(telegram_id).update({
+            "quizbee_points": firestore.Increment(reward),
+            "total_earned": firestore.Increment(reward),
+            "updated_at": now()
+        })
 
-    watched = ADS.get(key, 0)
-
-    if watched >= 10:
+        db.collection("transactions").document().set({
+            "telegram_id": telegram_id,
+            "type": "ad_reward",
+            "amount": reward,
+            "currency": "quizbee_points",
+            "created_at": now()
+        })
 
         return jsonify({
-            "error":
-                "Today's ad reward limit is complete."
-        }), 400
+            "success": True,
+            "reward": reward,
+            "message": "+1 QuizBee Point"
+        })
 
-    ADS[key] = watched + 1
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
-    user["points"] += 1
 
-    return jsonify({
-        "success": True,
-        "points": user["points"],
-        "ads_watched": ADS[key]
-    })
-
+# ============================================================
+# LEADERBOARD
+# ============================================================
 
 @app.get("/api/leaderboard")
 def leaderboard():
+    try:
+        docs = (
+            db.collection("users")
+            .order_by(
+                "total_earned",
+                direction=firestore.Query.DESCENDING
+            )
+            .limit(50)
+            .stream()
+        )
 
-    players = []
+        results = []
 
-    for user in USERS.values():
+        rank = 1
 
-        players.append({
-            "name": user["first_name"],
-            "score": user["score"]
+        for doc in docs:
+            data = doc.to_dict()
+
+            results.append({
+                "rank": rank,
+                "telegram_id": data.get("telegram_id"),
+                "username": data.get("username", ""),
+                "first_name": data.get("first_name", ""),
+                "total_earned": data.get("total_earned", 0)
+            })
+
+            rank += 1
+
+        return jsonify({
+            "success": True,
+            "leaderboard": results
         })
 
-    players.sort(
-        key=lambda x: x["score"],
-        reverse=True
-    )
-
-    return jsonify({
-        "players": players[:50]
-    })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 
-# ------------------------------------
-# DEVELOPMENT CONTROLS
-# ------------------------------------
+# ============================================================
+# PROFILE
+# ============================================================
 
-@app.post("/api/dev/unlock/<game_id>")
-def dev_unlock(game_id):
+@app.get("/api/profile")
+def profile():
+    try:
+        user = get_or_create_user()
+
+        return jsonify({
+            "success": True,
+            "user": user
+        })
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+# ============================================================
+# DEV ADMIN FUNCTIONS
+# ============================================================
+
+@app.post("/api/dev/setup")
+def dev_setup():
 
     if not DEV_MODE:
         return jsonify({
+            "success": False,
             "error": "Development mode disabled."
         }), 403
 
-    if game_id not in GAMES:
-        return jsonify({
-            "error": "Game not found."
-        }), 404
+    games = [
+        {
+            "id": "guess_it",
+            "name": "Guess It",
+            "icon": "🎯",
+            "description": "Use clues to identify the answer.",
+            "active": True,
+            "entry_fee": 10,
+            "sort_order": 1
+        },
+        {
+            "id": "impossible_question",
+            "name": "Impossible Question",
+            "icon": "💀",
+            "description": "A question designed to test reasoning.",
+            "active": True,
+            "entry_fee": 10,
+            "sort_order": 2
+        },
+        {
+            "id": "crowd_trap",
+            "name": "The Crowd Trap",
+            "icon": "🧠",
+            "description": "Predict the crowd.",
+            "active": False,
+            "entry_fee": 10,
+            "sort_order": 3
+        },
+        {
+            "id": "survivor",
+            "name": "The Survivor",
+            "icon": "🏆",
+            "description": "Choose carefully and survive.",
+            "active": False,
+            "entry_fee": 10,
+            "sort_order": 4
+        },
+        {
+            "id": "dead_number",
+            "name": "Dead Number",
+            "icon": "☠️",
+            "description": "Avoid the dead numbers.",
+            "active": False,
+            "entry_fee": 10,
+            "sort_order": 5
+        },
+        {
+            "id": "impossible_choice",
+            "name": "Impossible Choice",
+            "icon": "🤔",
+            "description": "Choose between difficult outcomes.",
+            "active": False,
+            "entry_fee": 10,
+            "sort_order": 6
+        }
+    ]
 
-    GAMES[game_id]["status"] = "active"
+    for game in games:
+        game_id = game.pop("id")
+
+        game["updated_at"] = now()
+
+        db.collection("games").document(game_id).set(
+            game,
+            merge=True
+        )
 
     return jsonify({
         "success": True,
-        "game": GAMES[game_id]
+        "message": "Games created."
+    })
+
+
+@app.post("/api/dev/create-challenges")
+def create_challenges():
+
+    if not DEV_MODE:
+        return jsonify({
+            "success": False,
+            "error": "Development mode disabled."
+        }), 403
+
+    # Remove previous demo challenges.
+    existing = db.collection("challenges").stream()
+
+    for doc in existing:
+        doc.reference.delete()
+
+    challenges = [
+
+        # GUESS IT
+        {
+            "game_id": "guess_it",
+            "title": "Guess the Footballer",
+            "question": "Who is this footballer?",
+            "type": "guess",
+            "active": True,
+            "round_id": "demo_round_1",
+            "correct_answer": "Cristiano Ronaldo",
+            "accepted_answers": [
+                "Ronaldo",
+                "CR7",
+                "Cristiano Ronaldo"
+            ],
+            "reward_points": 20,
+            "metadata": {
+                "image_url": "",
+                "category": "Football"
+            }
+        },
+
+        # IMPOSSIBLE QUESTION
+        {
+            "game_id": "impossible_question",
+            "title": "The Sequence",
+            "question": (
+                "What comes next?\n\n"
+                "1, 11, 21, 1211, 111221, ?"
+            ),
+            "type": "text",
+            "active": True,
+            "round_id": "weekly_1",
+            "correct_answer": "312211",
+            "accepted_answers": [
+                "312211"
+            ],
+            "reward_points": 50,
+            "metadata": {
+                "difficulty": "hard"
+            }
+        },
+
+        # CROWD TRAP
+        {
+            "game_id": "crowd_trap",
+            "title": "Pick a Number",
+            "question": "Choose a number from 1 to 20.",
+            "type": "choice",
+            "active": False,
+            "round_id": "demo_round_1",
+            "correct_answer": "7",
+            "accepted_answers": [
+                "7"
+            ],
+            "options": [
+                "1", "2", "3", "4", "5",
+                "6", "7", "8", "9", "10",
+                "11", "12", "13", "14", "15",
+                "16", "17", "18", "19", "20"
+            ],
+            "reward_points": 30
+        },
+
+        # SURVIVOR
+        {
+            "game_id": "survivor",
+            "title": "Choose Your Door",
+            "question": "Choose one option.",
+            "type": "choice",
+            "active": False,
+            "round_id": "demo_round_1",
+            "correct_answer": "A",
+            "accepted_answers": ["A"],
+            "options": [
+                "A", "B", "C", "D", "E",
+                "F", "G", "H", "I", "J",
+                "K", "L", "M", "N", "O"
+            ],
+            "reward_points": 50
+        },
+
+        # DEAD NUMBER
+        {
+            "game_id": "dead_number",
+            "title": "Avoid the Dead Numbers",
+            "question": "Choose a number from 1 to 10.",
+            "type": "choice",
+            "active": False,
+            "round_id": "demo_round_1",
+            "correct_answer": "2",
+            "accepted_answers": ["2"],
+            "options": [
+                "1", "2", "3", "4", "5",
+                "6", "7", "8", "9", "10"
+            ],
+            "reward_points": 40
+        },
+
+        # IMPOSSIBLE CHOICE
+        {
+            "game_id": "impossible_choice",
+            "title": "Impossible Choice",
+            "question": "Which would you choose?",
+            "type": "choice",
+            "active": False,
+            "round_id": "demo_round_1",
+            "correct_answer": "B",
+            "accepted_answers": ["B"],
+            "options": [
+                "A",
+                "B",
+                "C",
+                "D"
+            ],
+            "reward_points": 40
+        }
+    ]
+
+    for challenge in challenges:
+        db.collection("challenges").add({
+            **challenge,
+            "created_at": now(),
+            "updated_at": now()
+        })
+
+    return jsonify({
+        "success": True,
+        "message": "Demo challenges created."
+    })
+
+
+@app.post("/api/dev/unlock/<game_id>")
+def unlock_game(game_id):
+
+    if not DEV_MODE:
+        return jsonify({
+            "success": False,
+            "error": "Development mode disabled."
+        }), 403
+
+    ref = db.collection("games").document(game_id)
+
+    if not ref.get().exists:
+        return jsonify({
+            "success": False,
+            "error": "Game not found."
+        }), 404
+
+    ref.update({
+        "active": True,
+        "updated_at": now()
+    })
+
+    return jsonify({
+        "success": True,
+        "game_id": game_id,
+        "active": True
     })
 
 
 @app.post("/api/dev/lock/<game_id>")
-def dev_lock(game_id):
+def lock_game(game_id):
 
     if not DEV_MODE:
         return jsonify({
+            "success": False,
             "error": "Development mode disabled."
         }), 403
 
-    if game_id not in GAMES:
+    ref = db.collection("games").document(game_id)
+
+    if not ref.get().exists:
         return jsonify({
+            "success": False,
             "error": "Game not found."
         }), 404
 
-    GAMES[game_id]["status"] = "locked"
+    ref.update({
+        "active": False,
+        "updated_at": now()
+    })
 
     return jsonify({
-        "success": True
+        "success": True,
+        "game_id": game_id,
+        "active": False
     })
 
 
 @app.post("/api/dev/reset")
-def dev_reset():
+def reset_demo():
 
     if not DEV_MODE:
         return jsonify({
+            "success": False,
             "error": "Development mode disabled."
         }), 403
 
-    USERS.clear()
-    ENTRIES.clear()
-    ANSWERS.clear()
-    ADS.clear()
+    telegram_id = get_demo_telegram_id()
+
+    ref = user_ref(telegram_id)
+
+    ref.set({
+        "telegram_id": telegram_id,
+        "username": "QuizBeeUser",
+        "first_name": "QuizBee",
+
+        "quizbee_points": 100,
+        "prize_balance": 0,
+
+        "total_earned": 0,
+        "total_spent": 0,
+
+        "referral_code": generate_referral_code(),
+        "referred_by": None,
+        "referrals_count": 0,
+
+        "streak_days": 1,
+
+        "last_login": now(),
+        "created_at": now(),
+        "updated_at": now()
+    })
 
     return jsonify({
         "success": True,
-        "message": "Development data reset."
+        "message": "Demo user reset."
     })
 
 
-@app.post("/api/dev/resolve/<game_id>")
-def dev_resolve(game_id):
-
-    if not DEV_MODE:
-        return jsonify({
-            "error": "Development mode disabled."
-        }), 403
-
-    if game_id not in GAMES:
-        return jsonify({
-            "error": "Game not found."
-        }), 404
-
-    results = {}
-
-    submitted = ANSWERS.get(game_id, {})
-
-    # CROWD TRAP
-    if game_id == "crowd_trap":
-
-        counts = {}
-
-        for number in submitted.values():
-            counts[number] = counts.get(number, 0) + 1
-
-        winners = [
-            user_id
-            for user_id, number in submitted.items()
-            if counts[number] == 1
-        ]
-
-        for user_id in winners:
-            USERS[user_id]["score"] += 150
-
-        results = {
-            "winner_count": len(winners),
-            "winners": winners,
-            "counts": counts
-        }
-
-
-    # SURVIVOR
-    elif game_id == "survivor":
-
-        safe = "A"
-
-        winners = [
-            user_id
-            for user_id, choice in submitted.items()
-            if choice == safe
-        ]
-
-        for user_id in winners:
-            USERS[user_id]["score"] += 200
-
-        results = {
-            "safe_option": safe,
-            "survivors": winners
-        }
-
-
-    # DEAD NUMBER
-    elif game_id == "dead_number":
-
-        dead_numbers = [2, 5, 7]
-
-        survivors = [
-            user_id
-            for user_id, number in submitted.items()
-            if number not in dead_numbers
-        ]
-
-        for user_id in survivors:
-            USERS[user_id]["score"] += 200
-
-        results = {
-            "dead_numbers": dead_numbers,
-            "survivors": survivors
-        }
-
-
-    # IMPOSSIBLE CHOICE
-    elif game_id == "impossible_choice":
-
-        counts = {}
-
-        for choice in submitted.values():
-            counts[choice] = counts.get(choice, 0) + 1
-
-        if counts:
-
-            highest = max(counts.values())
-
-            winners = [
-                user_id
-                for user_id, choice in submitted.items()
-                if counts[choice] == highest
-            ]
-
-        else:
-            winners = []
-
-        for user_id in winners:
-            USERS[user_id]["score"] += 200
-
-        results = {
-            "counts": counts,
-            "winners": winners
-        }
-
-
-    else:
-
-        return jsonify({
-            "error":
-                "This game does not use round resolution."
-        }), 400
-
-
-    ANSWERS[game_id] = {}
-
-    return jsonify({
-        "success": True,
-        "results": results
-    })
-
+# ============================================================
+# START SERVER
+# ============================================================
 
 if __name__ == "__main__":
 
-    port = int(
-        os.getenv("PORT", "5000")
-    )
+    port = int(os.getenv("PORT", "5000"))
+
+    print("====================================")
+    print("🐝 QuizBee Firebase Backend")
+    print("====================================")
+    print(f"DEV_MODE: {DEV_MODE}")
+    print(f"PORT: {port}")
+    print("Firebase: initialized")
+    print("====================================")
 
     app.run(
         host="0.0.0.0",
         port=port,
-        debug=True
-)
+        debug=False
+    )
