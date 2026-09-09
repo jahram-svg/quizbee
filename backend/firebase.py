@@ -7,7 +7,6 @@ from firebase_admin import firestore
 
 load_dotenv()
 
-
 def initialize_firebase():
     """
     Initialize Firebase Admin SDK using environment variables.
