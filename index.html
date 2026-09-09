@@ -1,398 +1,307 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
-    >
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0,
+          maximum-scale=1.0,user-scalable=no">
 
     <title>QuizBee</title>
 
-    <link rel="stylesheet" href="style.css">
-
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="config.js"></script>
+
+    <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
 <div id="app">
 
-    <!-- HEADER -->
-    <header class="top-header">
-
-        <div class="brand">
-            🐝 QuizBee
+    <header class="topbar">
+        <div>
+            <div class="brand">🐝 QuizBee</div>
+            <div class="welcome" id="welcomeText">Welcome!</div>
         </div>
 
-        <div class="points-pill">
-            🐝 <span id="points">240</span>
-        </div>
-
+        <button class="profile-btn" onclick="showPage('profile')">
+            👤
+        </button>
     </header>
 
 
-    <!-- ================= HOME ================= -->
+    <main>
 
-    <section id="home" class="screen active">
+        <!-- HOME -->
+        <section id="homePage" class="page active">
 
-        <div class="hero">
+            <div class="balance-card">
+                <div>
+                    <span class="balance-label">QuizBee Points</span>
+                    <strong id="pointsBalance">0</strong>
+                </div>
 
-            <div class="hero-badge">
-                🐝 QUIZBEE
+                <div>
+                    <span class="balance-label">Prize Balance</span>
+                    <strong id="prizeBalance">₦0</strong>
+                </div>
             </div>
 
-            <h1>
-                Easy to understand.<br>
-                Fun to play.<br>
-                Difficult to win.
-            </h1>
 
-            <p>
-                Test your brain, strategy and ability to predict the crowd.
+            <div class="quick-actions">
+
+                <button onclick="showPage('games')">
+                    🎮
+                    <span>Games</span>
+                </button>
+
+                <button onclick="showPage('ads')">
+                    📺
+                    <span>Watch Ads</span>
+                </button>
+
+                <button onclick="showPage('leaderboard')">
+                    🏆
+                    <span>Leaderboard</span>
+                </button>
+
+                <button onclick="showPage('profile')">
+                    👤
+                    <span>Profile</span>
+                </button>
+
+            </div>
+
+
+            <div class="section-title">
+                <h2>🔥 This Week</h2>
+            </div>
+
+            <div class="featured-card" onclick="openGame('impossible_question')">
+
+                <div class="featured-icon">💀</div>
+
+                <div class="featured-content">
+                    <span class="small-label">WEEKLY CHALLENGE</span>
+                    <h2>Impossible Question</h2>
+                    <p>One question. Unlimited attempts. Can you solve it?</p>
+                </div>
+
+                <span class="arrow">›</span>
+
+            </div>
+
+
+            <div class="section-title">
+                <h2>🎮 Games</h2>
+                <button onclick="showPage('games')">View all</button>
+            </div>
+
+            <div id="homeGames" class="game-grid"></div>
+
+        </section>
+
+
+        <!-- GAMES -->
+        <section id="gamesPage" class="page">
+
+            <div class="page-heading">
+                <button class="back-btn" onclick="goHome()">‹</button>
+                <h1>Games</h1>
+            </div>
+
+            <p class="page-description">
+                Easy to understand. Hard to win.
             </p>
 
-        </div>
+            <div id="gamesList" class="games-list"></div>
+
+        </section>
 
 
-        <div class="section-title">
+        <!-- GAME DETAIL -->
+        <section id="gamePage" class="page">
 
-            <div>
-                <h2>🎮 Games</h2>
-                <p>Choose your challenge</p>
+            <div class="page-heading">
+                <button class="back-btn" onclick="showPage('games')">‹</button>
+                <h1 id="gameTitle">Game</h1>
             </div>
 
-        </div>
+            <div id="gameContent"></div>
 
-
-        <div id="game-list"></div>
+        </section>
 
 
         <!-- ADS -->
+        <section id="adsPage" class="page">
 
-        <div class="ads-card" onclick="openAds()">
-
-            <div class="ads-icon">
-                📺
+            <div class="page-heading">
+                <button class="back-btn" onclick="goHome()">‹</button>
+                <h1>📺 Watch Ads</h1>
             </div>
 
-            <div class="ads-info">
+            <div class="ads-card">
 
-                <h3>Watch Ads</h3>
+                <div class="ad-big-icon">📺</div>
+
+                <h2>Earn QuizBee Points</h2>
 
                 <p>
-                    Watch 10 verified ads
-                    to earn 10 QuizBee Points.
+                    Watch verified ads and earn points.
+                    Complete today's target to claim your reward.
                 </p>
 
-                <div class="ads-progress">
-
-                    <div class="progress-track">
-
-                        <div
-                            id="ad-progress-bar"
-                            class="progress-fill"
-                        ></div>
-
+                <div class="ad-progress">
+                    <div class="progress-header">
+                        <span>Ads watched</span>
+                        <strong id="adsProgress">0/10</strong>
                     </div>
 
-                    <span id="ad-progress-text">
-                        0 / 10
-                    </span>
-
+                    <div class="progress-bar">
+                        <div id="adsProgressBar"></div>
+                    </div>
                 </div>
 
-            </div>
+                <div class="reward-box">
+                    <span>Today's Reward</span>
+                    <strong>+10 Points</strong>
+                </div>
 
-            <span class="arrow">
-                →
-            </span>
-
-        </div>
-
-
-        <!-- FINAL -->
-
-        <div class="final-card">
-
-            <div>
-
-                <span class="final-tag">
-                    🏆 WEEKLY FINAL
-                </span>
-
-                <h2>
-                    Sunday Final
-                </h2>
-
-                <p>
-                    The ultimate weekly challenge.
-                </p>
+                <button
+                    id="watchAdButton"
+                    class="primary-btn"
+                    onclick="watchAd()">
+                    📺 WATCH AD
+                </button>
 
             </div>
 
-            <div class="final-timer">
-                SOON
+        </section>
+
+
+        <!-- LEADERBOARD -->
+        <section id="leaderboardPage" class="page">
+
+            <div class="page-heading">
+                <button class="back-btn" onclick="goHome()">‹</button>
+                <h1>🏆 Leaderboard</h1>
             </div>
 
-        </div>
+            <div class="tabs">
+                <button class="active" onclick="loadLeaderboard('weekly', this)">
+                    Weekly
+                </button>
 
-
-        <!-- STATS -->
-
-        <div class="stats-row">
-
-            <div class="mini-stat">
-                <strong id="score">0</strong>
-                <span>Score</span>
+                <button onclick="loadLeaderboard('alltime', this)">
+                    All Time
+                </button>
             </div>
 
-            <div class="mini-stat">
-                <strong id="streak">0</strong>
-                <span>🔥 Streak</span>
+            <div id="leaderboardList" class="leaderboard-list">
+                Loading...
             </div>
 
-            <div class="mini-stat">
-                <strong id="referrals">0</strong>
-                <span>Referrals</span>
+        </section>
+
+
+        <!-- PROFILE -->
+        <section id="profilePage" class="page">
+
+            <div class="page-heading">
+                <button class="back-btn" onclick="goHome()">‹</button>
+                <h1>Profile</h1>
             </div>
 
-        </div>
+            <div class="profile-card">
 
-    </section>
+                <div class="avatar" id="profileAvatar">🐝</div>
 
+                <h2 id="profileName">Player</h2>
 
-    <!-- ================= GAME ================= -->
-
-    <section id="game" class="screen">
-
-        <div class="page-header">
-
-            <button
-                class="back-button"
-                onclick="goHome()"
-            >
-                ←
-            </button>
-
-            <h2 id="game-title">
-                Game
-            </h2>
-
-        </div>
-
-        <div id="game-content"></div>
-
-    </section>
-
-
-    <!-- ================= ADS ================= -->
-
-    <section id="ads" class="screen">
-
-        <div class="page-header">
-
-            <button
-                class="back-button"
-                onclick="goHome()"
-            >
-                ←
-            </button>
-
-            <h2>📺 Watch Ads</h2>
-
-        </div>
-
-        <div class="ads-page">
-
-            <div class="ads-big-icon">
-                📺
-            </div>
-
-            <h2>
-                Earn QuizBee Points
-            </h2>
-
-            <p>
-                Watch verified advertisements
-                and earn points.
-            </p>
-
-            <div class="ads-counter">
-
-                <strong id="ads-count">
-                    0 / 10
-                </strong>
-
-                <span>
-                    Daily target
-                </span>
+                <span id="profileUsername">@player</span>
 
             </div>
 
-            <div class="progress-track large">
-
-                <div
-                    id="ads-page-progress"
-                    class="progress-fill"
-                ></div>
-
-            </div>
-
-            <div class="reward-box">
-
-                🎁
+            <div class="stats-grid">
 
                 <div>
-                    <strong>10 Points</strong>
-                    <span>at 10 completed ads</span>
+                    <strong id="profileScore">0</strong>
+                    <span>Score</span>
+                </div>
+
+                <div>
+                    <strong id="profileStreak">0</strong>
+                    <span>Day Streak</span>
+                </div>
+
+                <div>
+                    <strong id="profileReferrals">0</strong>
+                    <span>Referrals</span>
                 </div>
 
             </div>
 
-            <button
-                class="primary-button"
-                onclick="watchDemoAd()"
-            >
-                📺 Watch Ad
-            </button>
+            <div class="menu-card">
 
-            <p class="demo-note">
-                Development mode: ad completion is simulated.
-                Real ad verification will be connected later.
-            </p>
+                <button onclick="buyPoints()">
+                    💰 Buy Points
+                    <span>›</span>
+                </button>
 
-        </div>
+                <button onclick="withdrawPrize()">
+                    💸 Withdraw Prize
+                    <span>›</span>
+                </button>
 
-    </section>
+                <button>
+                    📜 Game History
+                    <span>›</span>
+                </button>
 
+                <button>
+                    ℹ️ How QuizBee Works
+                    <span>›</span>
+                </button>
 
-    <!-- ================= WALLET ================= -->
+            </div>
 
-    <section id="wallet" class="screen">
+        </section>
 
-        <div class="page-header">
+    </main>
 
-            <button
-                class="back-button"
-                onclick="goHome()"
-            >
-                ←
-            </button>
-
-            <h2>💰 Wallet</h2>
-
-        </div>
-
-        <div id="wallet-content"></div>
-
-    </section>
-
-
-    <!-- ================= LEADERBOARD ================= -->
-
-    <section id="leaderboard" class="screen">
-
-        <div class="page-header">
-
-            <button
-                class="back-button"
-                onclick="goHome()"
-            >
-                ←
-            </button>
-
-            <h2>🏆 Leaderboard</h2>
-
-        </div>
-
-        <div id="leaderboard-content"></div>
-
-    </section>
-
-
-    <!-- ================= PROFILE ================= -->
-
-    <section id="profile" class="screen">
-
-        <div class="page-header">
-
-            <button
-                class="back-button"
-                onclick="goHome()"
-            >
-                ←
-            </button>
-
-            <h2>👤 Profile</h2>
-
-        </div>
-
-        <div id="profile-content"></div>
-
-    </section>
-
-
-    <!-- ================= BOTTOM NAV ================= -->
 
     <nav class="bottom-nav">
 
-        <button onclick="navigate('home')">
-
-            <span class="nav-icon">
-                🏠
-            </span>
-
-            <span>
-                Home
-            </span>
-
+        <button class="nav-item active" onclick="showPage('home')">
+            <span>🏠</span>
+            Home
         </button>
 
-
-        <button onclick="navigate('leaderboard')">
-
-            <span class="nav-icon">
-                🏆
-            </span>
-
-            <span>
-                Leaderboard
-            </span>
-
+        <button class="nav-item" onclick="showPage('games')">
+            <span>🎮</span>
+            Games
         </button>
 
-
-        <button onclick="navigate('wallet')">
-
-            <span class="nav-icon">
-                💰
-            </span>
-
-            <span>
-                Wallet
-            </span>
-
+        <button class="nav-item" onclick="showPage('ads')">
+            <span>📺</span>
+            Ads
         </button>
 
+        <button class="nav-item" onclick="showPage('leaderboard')">
+            <span>🏆</span>
+            Rank
+        </button>
 
-        <button onclick="navigate('profile')">
-
-            <span class="nav-icon">
-                👤
-            </span>
-
-            <span>
-                Profile
-            </span>
-
+        <button class="nav-item" onclick="showPage('profile')">
+            <span>👤</span>
+            Profile
         </button>
 
     </nav>
 
 </div>
+
+<div id="toast"></div>
 
 <script src="app.js"></script>
 
