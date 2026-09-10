@@ -6,10 +6,7 @@ if (tg) {
 }
 
 const CONFIG = window.QUIZBEE_CONFIG || {};
-
-const API_URL = (
-    CONFIG.API_URL || ""
-).replace(/\/$/, "");
+const API_URL = (CONFIG.API_URL || "").replace(/\/$/, "");
 
 let currentUser = null;
 let games = [];
@@ -20,45 +17,35 @@ let adsWatched = 0;
 let selectedChoice = null;
 
 
-/* ============================================================
-   TELEGRAM
-   ============================================================ */
+// ============================================================
+// TELEGRAM
+// ============================================================
+
+function getInitData() {
+    return tg?.initData || "";
+}
 
 function getTelegramUser() {
+    const telegramUser = tg?.initDataUnsafe?.user;
 
-    if (!tg?.initDataUnsafe?.user) {
+    if (!telegramUser) {
         return null;
     }
 
-    const user =
-        tg.initDataUnsafe.user;
-
     return {
-        telegram_id: user.id,
-        first_name:
-            user.first_name || "",
-        last_name:
-            user.last_name || "",
-        username:
-            user.username || ""
+        telegram_id: telegramUser.id,
+        first_name: telegramUser.first_name || "",
+        last_name: telegramUser.last_name || "",
+        username: telegramUser.username || ""
     };
 }
 
 
-function getInitData() {
+// ============================================================
+// API
+// ============================================================
 
-    return tg?.initData || "";
-}
-
-
-/* ============================================================
-   API
-   ============================================================ */
-
-async function api(
-    path,
-    options = {}
-) {
+async function api(path, options = {}) {
 
     if (!API_URL) {
         throw new Error(
@@ -67,101 +54,68 @@ async function api(
     }
 
     const headers = {
-        "Content-Type":
-            "application/json",
-
+        "Content-Type": "application/json",
         ...(options.headers || {})
     };
 
-    const initData =
-        getInitData();
+    const initData = getInitData();
 
     if (initData) {
-
-        headers[
-            "X-Telegram-Init-Data"
-        ] = initData;
-
+        headers["X-Telegram-Init-Data"] = initData;
     }
 
-    const response =
-        await fetch(
-            `${API_URL}${path}`,
-            {
-                ...options,
-                headers
-            }
-        );
+    const response = await fetch(
+        `${API_URL}${path}`,
+        {
+            ...options,
+            headers
+        }
+    );
 
     let data;
 
     try {
-
-        data =
-            await response.json();
-
+        data = await response.json();
     } catch {
-
         throw new Error(
             `Server returned HTTP ${response.status}`
         );
-
     }
 
     if (!response.ok) {
-
         throw new Error(
             data.error ||
             data.message ||
             `HTTP ${response.status}`
         );
-
     }
 
     return data;
 }
 
 
-/* ============================================================
-   UI HELPERS
-   ============================================================ */
+// ============================================================
+// UI HELPERS
+// ============================================================
 
 function showToast(message) {
 
-    let toast =
-        document.getElementById(
-            "toast"
-        );
+    const toast =
+        document.getElementById("toast");
 
     if (!toast) {
-
-        toast =
-            document.createElement(
-                "div"
-            );
-
-        toast.id = "toast";
-
-        toast.className =
-            "toast";
-
-        document.body.appendChild(
-            toast
-        );
+        return;
     }
 
-    toast.textContent =
-        message;
+    toast.textContent = message;
 
-    toast.classList.add(
-        "show"
-    );
+    toast.classList.add("show");
 
-    setTimeout(() => {
+    clearTimeout(showToast.timer);
 
-        toast.classList.remove(
-            "show"
-        );
+    showToast.timer = setTimeout(() => {
+
+        toast.classList.remove("show");
 
     }, 2500);
 }
@@ -169,100 +123,102 @@ function showToast(message) {
 
 function escapeHtml(value) {
 
-    return String(
-        value ?? ""
-    )
-        .replace(
-            /&/g,
-            "&amp;"
-        )
-        .replace(
-            /</g,
-            "&lt;"
-        )
-        .replace(
-            />/g,
-            "&gt;"
-        )
-        .replace(
-            /"/g,
-            "&quot;"
-        )
-        .replace(
-            /'/g,
-            "&#039;"
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+
+function escapeAttribute(value) {
+    return escapeHtml(value);
+}
+
+
+function escapeJs(value) {
+
+    return String(value ?? "")
+        .replace(/\\/g, "\\\\")
+        .replace(/'/g, "\\'");
+}
+
+
+// ============================================================
+// GAME NORMALIZATION
+// ============================================================
+
+function normalizeGames(serverGames) {
+
+    return (serverGames || [])
+        .map(game => ({
+
+            ...game,
+
+            id:
+                game.id,
+
+            name:
+                game.name ||
+                "Game",
+
+            description:
+                game.description ||
+                "",
+
+            emoji:
+                game.icon ||
+                game.emoji ||
+                "🎮",
+
+            active:
+                game.active === true,
+
+            status:
+                game.active === true
+                    ? "active"
+                    : "locked",
+
+            entry_points:
+                Number(
+                    game.entry_fee ??
+                    game.entry_points ??
+                    10
+                ),
+
+            reward_points:
+                Number(
+                    game.reward_points ??
+                    game.reward ??
+                    0
+                ),
+
+            sort_order:
+                Number(
+                    game.sort_order || 0
+                )
+
+        }))
+        .sort(
+            (a, b) =>
+                a.sort_order -
+                b.sort_order
         );
 }
 
 
-/* ============================================================
-   GAME NORMALIZATION
-   ============================================================ */
+// ============================================================
+// USER STATE
+// ============================================================
 
-function normalizeGames(
-    serverGames
-) {
+function updateUserState(user) {
 
-    return (
-        serverGames || []
-    ).map(game => ({
+    if (!user) {
+        return;
+    }
 
-        ...game,
-
-        id:
-            game.id,
-
-        name:
-            game.name ||
-            "Game",
-
-        description:
-            game.description ||
-            "",
-
-        emoji:
-            game.icon ||
-            game.emoji ||
-            "🎮",
-
-        status:
-            game.active === true
-                ? "active"
-                : "locked",
-
-        active:
-            game.active === true,
-
-        entry_points:
-            Number(
-                game.entry_fee ??
-                game.entry_points ??
-                0
-            ),
-
-        reward_points:
-            Number(
-                game.reward_points ??
-                game.reward ??
-                0
-            )
-
-    }));
-}
-
-
-/* ============================================================
-   USER STATE
-   ============================================================ */
-
-function updateUserState(
-    user
-) {
-
-    if (!user) return;
-
-    currentUser =
-        user;
+    currentUser = user;
 
     const points =
         Number(
@@ -309,38 +265,10 @@ function updateUserState(
             "prizeBalance"
         );
 
-
-    if (pointsEl) {
-
-        pointsEl.textContent =
-            points.toLocaleString();
-
-    }
-
-
-    if (prizeEl) {
-
-        prizeEl.textContent =
-            `₦${prizeBalance.toLocaleString()}`;
-
-    }
-
-
-    const welcome =
+    const welcomeEl =
         document.getElementById(
             "welcomeText"
         );
-
-
-    if (welcome) {
-
-        welcome.textContent =
-            `Welcome, ${
-                user.first_name ||
-                "Player"
-            }!`;
-
-    }
 
 
     const profileName =
@@ -367,6 +295,38 @@ function updateUserState(
         document.getElementById(
             "profileReferrals"
         );
+
+    const profileAvatar =
+        document.getElementById(
+            "profileAvatar"
+        );
+
+
+    if (pointsEl) {
+
+        pointsEl.textContent =
+            points.toLocaleString();
+
+    }
+
+
+    if (prizeEl) {
+
+        prizeEl.textContent =
+            `₦${prizeBalance.toLocaleString()}`;
+
+    }
+
+
+    if (welcomeEl) {
+
+        welcomeEl.textContent =
+            `Welcome, ${
+                user.first_name ||
+                "Player"
+            }!`;
+
+    }
 
 
     if (profileName) {
@@ -410,12 +370,30 @@ function updateUserState(
             referrals;
 
     }
+
+
+    if (profileAvatar) {
+
+        const first =
+            (
+                user.first_name ||
+                "Q"
+            )
+            .trim()
+            .charAt(0);
+
+        profileAvatar.textContent =
+            first
+                ? first.toUpperCase()
+                : "🐝";
+
+    }
 }
 
 
-/* ============================================================
-   BOOTSTRAP
-   ============================================================ */
+// ============================================================
+// BOOTSTRAP
+// ============================================================
 
 async function bootstrap() {
 
@@ -429,18 +407,13 @@ async function bootstrap() {
 
         }
 
+
         const data =
             await api(
                 "/api/bootstrap",
                 {
-                    method:
-                        "POST",
-
-                    body:
-                        JSON.stringify({
-                            telegram_user:
-                                getTelegramUser()
-                        })
+                    method: "POST",
+                    body: JSON.stringify({})
                 }
             );
 
@@ -488,9 +461,9 @@ async function bootstrap() {
 }
 
 
-/* ============================================================
-   GAMES
-   ============================================================ */
+// ============================================================
+// GAMES
+// ============================================================
 
 function renderGames() {
 
@@ -505,160 +478,233 @@ function renderGames() {
         );
 
 
-    const activeGames =
-        games.filter(
-            game =>
-                game.active
-        );
-
+    /*
+     * HOME
+     *
+     * Always show the first 4 games,
+     * including locked games.
+     */
 
     if (homeGames) {
 
         homeGames.innerHTML =
-            activeGames
+            games
                 .slice(0, 4)
-                .map(
-                    game =>
-                        gameCard(game)
-                )
+                .map(gameCard)
                 .join("");
+
+
+        if (!homeGames.innerHTML) {
+
+            homeGames.innerHTML = `
+                <div class="info-box">
+                    No games available yet.
+                </div>
+            `;
+
+        }
 
     }
 
+
+    /*
+     * GAMES PAGE
+     *
+     * Use the actual CSS class
+     * that exists in style.css.
+     */
 
     if (gamesList) {
 
         gamesList.innerHTML =
             games
-                .map(
-                    game =>
-                        gameListItem(
-                            game
-                        )
-                )
+                .map(gameListCard)
                 .join("");
+
+
+        if (!gamesList.innerHTML) {
+
+            gamesList.innerHTML = `
+                <div class="info-box">
+                    No games available yet.
+                </div>
+            `;
+
+        }
 
     }
 }
 
 
+// ============================================================
+// HOME GAME CARD
+// ============================================================
+
 function gameCard(game) {
 
-    return `
+    const locked =
+        !game.active;
 
+
+    return `
         <div
             class="game-card ${
-                game.active
-                    ? ""
-                    : "locked"
+                locked
+                    ? "locked"
+                    : ""
             }"
-            onclick="openGame('${escapeHtml(game.id)}')"
+            onclick="${
+                locked
+                    ? "lockedGame()"
+                    : `openGame('${escapeJs(game.id)}')`
+            }"
         >
 
+            <span
+                class="status ${
+                    locked
+                        ? "locked"
+                        : "unlocked"
+                }"
+            >
+                ${
+                    locked
+                        ? "🔒 LOCKED"
+                        : "● LIVE"
+                }
+            </span>
+
+
             <div class="game-icon">
+
                 ${escapeHtml(
                     game.emoji
                 )}
-            </div>
-
-            <div class="game-info">
-
-                <h3>
-                    ${escapeHtml(
-                        game.name
-                    )}
-                </h3>
-
-                <p>
-                    ${escapeHtml(
-                        game.description
-                    )}
-                </p>
 
             </div>
 
-            ${
-                game.active
-                    ? `
-                        <span class="game-entry">
-                            ${game.entry_points} pts
-                        </span>
-                    `
-                    : `
-                        <span class="lock-label">
-                            🔒
-                        </span>
-                    `
-            }
+
+            <h3>
+
+                ${escapeHtml(
+                    game.name
+                )}
+
+            </h3>
+
+
+            <p>
+
+                ${escapeHtml(
+                    game.description
+                )}
+
+            </p>
 
         </div>
-
     `;
 }
 
 
-function gameListItem(game) {
+// ============================================================
+// GAMES LIST CARD
+// ============================================================
+
+function gameListCard(game) {
+
+    const locked =
+        !game.active;
+
 
     return `
-
         <div
-            class="game-list-item ${
-                game.active
-                    ? ""
-                    : "locked"
+            class="game-list-card ${
+                locked
+                    ? "locked-card"
+                    : ""
             }"
-            onclick="openGame('${escapeHtml(game.id)}')"
+            onclick="${
+                locked
+                    ? "lockedGame()"
+                    : `openGame('${escapeJs(game.id)}')`
+            }"
         >
 
             <div class="game-icon">
+
                 ${escapeHtml(
                     game.emoji
                 )}
+
             </div>
+
 
             <div class="game-info">
 
                 <h3>
+
                     ${escapeHtml(
                         game.name
                     )}
+
                 </h3>
 
+
                 <p>
+
                     ${escapeHtml(
                         game.description
                     )}
+
                 </p>
+
+
+                <div class="entry">
+
+                    ${
+                        locked
+                            ? "🔒 Coming Soon"
+                            : `Entry: ${game.entry_points} Points`
+                    }
+
+                </div>
 
             </div>
 
-            ${
-                game.active
-                    ? `
-                        <div class="game-entry">
-                            ${game.entry_points} pts
-                        </div>
-                    `
-                    : `
-                        <div class="coming-soon">
-                            🔒 Coming Soon
-                        </div>
-                    `
-            }
+
+            <div>
+
+                ${
+                    locked
+                        ? "🔒"
+                        : "›"
+                }
+
+            </div>
 
         </div>
-
     `;
 }
 
 
-/* ============================================================
-   OPEN GAME
-   ============================================================ */
+// ============================================================
+// LOCKED GAME
+// ============================================================
 
-async function openGame(
-    gameId
-) {
+function lockedGame() {
+
+    showToast(
+        "🔒 Coming Soon — this game is currently locked."
+    );
+
+}
+
+
+// ============================================================
+// OPEN GAME
+// ============================================================
+
+async function openGame(gameId) {
 
     const game =
         games.find(
@@ -677,42 +723,132 @@ async function openGame(
     }
 
 
-    currentGame =
-        game;
-
-
     if (!game.active) {
 
-        showToast(
-            "🔒 This game is coming soon."
-        );
+        lockedGame();
 
         return;
     }
 
 
-    document.getElementById(
-        "gameTitle"
-    ).textContent =
-        game.name;
+    currentGame =
+        game;
+
+    currentChallenge =
+        null;
+
+    selectedChoice =
+        null;
+
+
+    const title =
+        document.getElementById(
+            "gameTitle"
+        );
+
+
+    if (title) {
+
+        title.textContent =
+            `${game.emoji} ${game.name}`;
+
+    }
+
+
+    const content =
+        document.getElementById(
+            "gameContent"
+        );
+
+
+    if (content) {
+
+        content.innerHTML = `
+
+            <div class="game-detail-card">
+
+                <div class="game-detail-icon">
+
+                    ${escapeHtml(
+                        game.emoji
+                    )}
+
+                </div>
+
+
+                <h2>
+
+                    ${escapeHtml(
+                        game.name
+                    )}
+
+                </h2>
+
+
+                <p class="game-description">
+
+                    ${escapeHtml(
+                        game.description
+                    )}
+
+                </p>
+
+
+                <div class="info-box">
+
+                    Entry fee:
+
+                    <strong>
+
+                        ${game.entry_points}
+
+                        QuizBee Points
+
+                    </strong>
+
+                </div>
+
+
+                <button
+                    class="primary-btn"
+                    onclick="enterGame()"
+                >
+
+                    ENTER GAME —
+
+                    ${game.entry_points}
+
+                    POINTS
+
+                </button>
+
+            </div>
+
+        `;
+
+    }
 
 
     showPage("game");
 
-
-    await enterGame(
-        game.id
-    );
 }
 
 
-/* ============================================================
-   ENTER GAME
-   ============================================================ */
+// ============================================================
+// ENTER GAME
+// ============================================================
 
-async function enterGame(
-    gameId
-) {
+async function enterGame() {
+
+    if (!currentGame) {
+
+        showToast(
+            "No game selected."
+        );
+
+        return;
+    }
+
 
     const container =
         document.getElementById(
@@ -720,21 +856,35 @@ async function enterGame(
         );
 
 
-    container.innerHTML = `
-        <div class="loading">
-            Entering game...
-        </div>
-    `;
+    if (container) {
+
+        container.innerHTML = `
+
+            <div class="game-detail-card">
+
+                <div class="info-box">
+
+                    Entering game...
+
+                </div>
+
+            </div>
+
+        `;
+
+    }
 
 
     try {
 
         const data =
             await api(
-                `/api/games/${encodeURIComponent(gameId)}/enter`,
+                `/api/games/${encodeURIComponent(
+                    currentGame.id
+                )}/enter`,
                 {
-                    method:
-                        "POST"
+                    method: "POST",
+                    body: JSON.stringify({})
                 }
             );
 
@@ -759,14 +909,39 @@ async function enterGame(
 
 
         currentChallenge =
-            data.challenge;
-
+            data.challenge ||
+            null;
 
         selectedChoice =
             null;
 
 
-        renderChallenge();
+        if (!currentChallenge) {
+
+            await loadChallenge(
+                currentGame.id
+            );
+
+        } else {
+
+            renderChallenge();
+
+        }
+
+
+        if (data.already_entered) {
+
+            showToast(
+                "You already entered this challenge."
+            );
+
+        } else {
+
+            showToast(
+                "Entry successful! 🎉"
+            );
+
+        }
 
 
     } catch (error) {
@@ -777,37 +952,49 @@ async function enterGame(
         );
 
 
-        container.innerHTML = `
+        if (container) {
 
-            <div class="empty-state">
+            container.innerHTML = `
 
-                <h3>
-                    Unable to enter game
-                </h3>
+                <div class="game-detail-card">
 
-                <p>
-                    ${escapeHtml(
-                        error.message
-                    )}
-                </p>
+                    <div class="info-box">
 
-                <button
-                    class="primary-btn"
-                    onclick="enterGame('${escapeHtml(gameId)}')"
-                >
-                    TRY AGAIN
-                </button>
+                        <strong>
+                            Unable to enter game
+                        </strong>
 
-            </div>
+                        <br><br>
 
-        `;
+                        ${escapeHtml(
+                            error.message
+                        )}
+
+                    </div>
+
+
+                    <button
+                        class="primary-btn"
+                        onclick="enterGame()"
+                    >
+
+                        TRY AGAIN
+
+                    </button>
+
+                </div>
+
+            `;
+
+        }
+
     }
 }
 
 
-/* ============================================================
-   LOAD CHALLENGE
-   ============================================================ */
+// ============================================================
+// LOAD CHALLENGE
+// ============================================================
 
 async function loadChallenge(
     gameId
@@ -819,18 +1006,32 @@ async function loadChallenge(
         );
 
 
-    container.innerHTML = `
-        <div class="loading">
-            Loading challenge...
-        </div>
-    `;
+    if (container) {
+
+        container.innerHTML = `
+
+            <div class="game-detail-card">
+
+                <div class="info-box">
+
+                    Loading challenge...
+
+                </div>
+
+            </div>
+
+        `;
+
+    }
 
 
     try {
 
         const data =
             await api(
-                `/api/games/${encodeURIComponent(gameId)}/challenge`
+                `/api/games/${encodeURIComponent(
+                    gameId
+                )}/challenge`
             );
 
 
@@ -850,7 +1051,6 @@ async function loadChallenge(
         currentChallenge =
             data.challenge;
 
-
         selectedChoice =
             null;
 
@@ -866,37 +1066,68 @@ async function loadChallenge(
         );
 
 
-        container.innerHTML = `
+        if (container) {
 
-            <div class="empty-state">
+            container.innerHTML = `
 
-                <h3>
-                    Challenge unavailable
-                </h3>
+                <div class="game-detail-card">
 
-                <p>
-                    ${escapeHtml(
-                        error.message
-                    )}
-                </p>
+                    <div class="info-box">
 
-                <button
-                    class="primary-btn"
-                    onclick="loadChallenge('${escapeHtml(gameId)}')"
-                >
-                    TRY AGAIN
-                </button>
+                        <strong>
+                            Challenge unavailable
+                        </strong>
 
-            </div>
+                        <br><br>
 
-        `;
+                        ${escapeHtml(
+                            error.message
+                        )}
+
+                    </div>
+
+
+                    <button
+                        class="primary-btn"
+                        onclick="loadChallenge('${escapeJs(
+                            gameId
+                        )}')"
+                    >
+
+                        TRY AGAIN
+
+                    </button>
+
+                </div>
+
+            `;
+
+        }
+
     }
 }
 
 
-/* ============================================================
-   RENDER CHALLENGE
-   ============================================================ */
+// ============================================================
+// CHALLENGE IMAGE
+// ============================================================
+
+function getChallengeImage(
+    challenge
+) {
+
+    return (
+        challenge.image_url ||
+        challenge.metadata?.image_url ||
+        ""
+    );
+
+}
+
+
+// ============================================================
+// RENDER CHALLENGE
+// ============================================================
 
 function renderChallenge() {
 
@@ -906,6 +1137,11 @@ function renderChallenge() {
         );
 
 
+    if (!container) {
+        return;
+    }
+
+
     if (
         !currentChallenge ||
         !currentGame
@@ -913,8 +1149,14 @@ function renderChallenge() {
 
         container.innerHTML = `
 
-            <div class="empty-state">
-                No challenge available.
+            <div class="game-detail-card">
+
+                <div class="info-box">
+
+                    No challenge available.
+
+                </div>
+
             </div>
 
         `;
@@ -923,14 +1165,30 @@ function renderChallenge() {
     }
 
 
+    const challenge =
+        currentChallenge;
+
+
     const question =
-        currentChallenge.question ||
+        challenge.question ||
+        challenge.title ||
         "Question unavailable.";
 
 
     const options =
-        currentChallenge.options ||
-        [];
+        Array.isArray(
+            challenge.options
+        )
+            ? challenge.options
+            : [];
+
+
+    const reward =
+        Number(
+            challenge.reward_points ??
+            challenge.reward ??
+            0
+        );
 
 
     if (
@@ -938,63 +1196,11 @@ function renderChallenge() {
         "guess_it"
     ) {
 
-        container.innerHTML = `
-
-            <div class="challenge-card">
-
-                <div class="challenge-icon">
-                    🎯
-                </div>
-
-                <div class="challenge-reward">
-                    Reward:
-                    +${
-                        Number(
-                            currentChallenge.reward_points ||
-                            0
-                        )
-                    } points
-                </div>
-
-                <h2>
-                    ${escapeHtml(
-                        question
-                    )}
-                </h2>
-
-                ${
-                    currentChallenge
-                        .image_url
-                        ? `
-                            <img
-                                src="${escapeHtml(
-                                    currentChallenge.image_url
-                                )}"
-                                class="challenge-image"
-                                alt="Challenge"
-                            >
-                        `
-                        : ""
-                }
-
-                <input
-                    id="answerInput"
-                    class="answer-input"
-                    type="text"
-                    placeholder="Enter your answer"
-                    autocomplete="off"
-                >
-
-                <button
-                    class="primary-btn"
-                    onclick="submitGameAnswer()"
-                >
-                    SUBMIT ANSWER
-                </button>
-
-            </div>
-
-        `;
+        renderGuessIt(
+            question,
+            reward,
+            challenge
+        );
 
         return;
     }
@@ -1005,172 +1211,167 @@ function renderChallenge() {
         "impossible_question"
     ) {
 
-        container.innerHTML = `
-
-            <div class="challenge-card">
-
-                <div class="challenge-icon">
-                    💀
-                </div>
-
-                <div class="challenge-reward">
-                    Reward:
-                    +${
-                        Number(
-                            currentChallenge.reward_points ||
-                            0
-                        )
-                    } points
-                </div>
-
-                <h2>
-                    ${escapeHtml(
-                        question
-                    )}
-                </h2>
-
-                <input
-                    id="answerInput"
-                    class="answer-input"
-                    type="text"
-                    placeholder="Your answer..."
-                    autocomplete="off"
-                >
-
-                <button
-                    class="primary-btn"
-                    onclick="submitGameAnswer()"
-                >
-                    SUBMIT ANSWER
-                </button>
-
-                <p class="attempt-note">
-                    You can try again if your answer is wrong.
-                </p>
-
-            </div>
-
-        `;
+        renderImpossibleQuestion(
+            question,
+            reward
+        );
 
         return;
     }
 
 
     if (
-
         currentGame.id ===
-            "crowd_trap"
-
-        ||
-
-        currentGame.id ===
-            "survivor"
-
-        ||
-
+            "crowd_trap" ||
         currentGame.id ===
             "dead_number"
-
-        ||
-
-        currentGame.id ===
-            "impossible_choice"
-
     ) {
 
-        container.innerHTML = `
-
-            <div class="challenge-card">
-
-                <div class="challenge-icon">
-                    ${escapeHtml(
-                        currentGame.emoji
-                    )}
-                </div>
-
-                <div class="challenge-reward">
-                    Reward:
-                    +${
-                        Number(
-                            currentChallenge.reward_points ||
-                            0
-                        )
-                    } points
-                </div>
-
-                <h2>
-                    ${escapeHtml(
-                        question
-                    )}
-                </h2>
-
-                <div class="choice-grid">
-
-                    ${
-                        options
-                            .map(
-                                (
-                                    option,
-                                    index
-                                ) => `
-
-                                    <button
-                                        class="choice-btn"
-                                        onclick="selectChoice(${index})"
-                                        data-option-index="${index}"
-                                    >
-                                        ${escapeHtml(
-                                            option
-                                        )}
-                                    </button>
-
-                                `
-                            )
-                            .join("")
-                    }
-
-                </div>
-
-                <button
-                    id="submitChoiceButton"
-                    class="primary-btn"
-                    onclick="submitSelectedChoice()"
-                    disabled
-                >
-                    SUBMIT CHOICE
-                </button>
-
-            </div>
-
-        `;
+        renderNumberChoice(
+            question,
+            reward,
+            challenge
+        );
 
         return;
     }
 
 
+    if (
+        currentGame.id ===
+            "survivor" ||
+        currentGame.id ===
+            "impossible_choice"
+    ) {
+
+        renderChoiceGame(
+            question,
+            reward,
+            options
+        );
+
+        return;
+    }
+
+
+    renderTextChallenge(
+        question,
+        reward
+    );
+
+}
+
+
+// ============================================================
+// GUESS IT
+// ============================================================
+
+function renderGuessIt(
+    question,
+    reward,
+    challenge
+) {
+
+    const container =
+        document.getElementById(
+            "gameContent"
+        );
+
+
+    const imageUrl =
+        getChallengeImage(
+            challenge
+        );
+
+
     container.innerHTML = `
 
-        <div class="challenge-card">
+        <div class="game-detail-card">
 
-            <h2>
-                ${escapeHtml(
-                    question
-                )}
-            </h2>
+            <div class="challenge-box">
 
-            <input
-                id="answerInput"
-                class="answer-input"
-                type="text"
-                placeholder="Your answer..."
-            >
+                <h3>
+                    🎯 Guess It
+                </h3>
 
-            <button
-                class="primary-btn"
-                onclick="submitGameAnswer()"
-            >
-                SUBMIT ANSWER
-            </button>
+
+                <div class="info-box">
+
+                    Reward:
+
+                    <strong>
+                        +${reward} Points
+                    </strong>
+
+                </div>
+
+
+                <div class="question">
+
+                    ${escapeHtml(
+                        question
+                    )}
+
+                </div>
+
+
+                ${
+                    imageUrl
+                        ? `
+
+                            <img
+                                src="${escapeAttribute(
+                                    imageUrl
+                                )}"
+                                alt="Guess It"
+                                style="
+                                    width:100%;
+                                    border-radius:16px;
+                                    margin:15px 0;
+                                "
+                            >
+
+                        `
+                        : ""
+                }
+
+
+                ${
+                    challenge.clue
+                        ? `
+
+                            <div class="info-box">
+
+                                ${escapeHtml(
+                                    challenge.clue
+                                )}
+
+                            </div>
+
+                        `
+                        : ""
+                }
+
+
+                <input
+                    id="answerInput"
+                    class="number-input"
+                    type="text"
+                    placeholder="Type your answer..."
+                    autocomplete="off"
+                >
+
+
+                <button
+                    class="primary-btn"
+                    onclick="submitGameAnswer()"
+                >
+
+                    SUBMIT ANSWER
+
+                </button>
+
+            </div>
 
         </div>
 
@@ -1178,9 +1379,456 @@ function renderChallenge() {
 }
 
 
-/* ============================================================
-   CHOICE
-   ============================================================ */
+// ============================================================
+// IMPOSSIBLE QUESTION
+// ============================================================
+
+function renderImpossibleQuestion(
+    question,
+    reward
+) {
+
+    const container =
+        document.getElementById(
+            "gameContent"
+        );
+
+
+    container.innerHTML = `
+
+        <div class="game-detail-card">
+
+            <div class="challenge-box">
+
+                <h3>
+                    💀 Weekly Impossible Question
+                </h3>
+
+
+                <div class="info-box">
+
+                    Reward:
+
+                    <strong>
+                        +${reward} Points
+                    </strong>
+
+                </div>
+
+
+                <div class="question">
+
+                    ${escapeHtml(
+                        question
+                    )}
+
+                </div>
+
+
+                <div class="info-box">
+
+                    You can keep trying until
+                    the challenge ends.
+
+                    A wrong answer does not
+                    remove your entry.
+
+                </div>
+
+
+                <input
+                    id="answerInput"
+                    class="number-input"
+                    type="text"
+                    placeholder="Your answer..."
+                    autocomplete="off"
+                >
+
+
+                <button
+                    class="primary-btn"
+                    onclick="submitGameAnswer()"
+                >
+
+                    TRY ANSWER
+
+                </button>
+
+            </div>
+
+        </div>
+
+    `;
+}
+
+
+// ============================================================
+// NUMBER GAMES
+// ============================================================
+
+function renderNumberChoice(
+    question,
+    reward,
+    challenge
+) {
+
+    const container =
+        document.getElementById(
+            "gameContent"
+        );
+
+
+    const options =
+        Array.isArray(
+            challenge.options
+        )
+            ? challenge.options
+            : [];
+
+
+    let min =
+        challenge.min;
+
+
+    let max =
+        challenge.max;
+
+
+    if (
+        (
+            min === undefined ||
+            max === undefined
+        ) &&
+        options.length
+    ) {
+
+        const numbers =
+            options
+                .map(Number)
+                .filter(
+                    number =>
+                        !Number.isNaN(
+                            number
+                        )
+                );
+
+
+        if (numbers.length) {
+
+            min =
+                Math.min(
+                    ...numbers
+                );
+
+            max =
+                Math.max(
+                    ...numbers
+                );
+
+        }
+
+    }
+
+
+    if (min === undefined) {
+        min = 1;
+    }
+
+
+    if (max === undefined) {
+        max = 20;
+    }
+
+
+    const title =
+        currentGame.id ===
+        "crowd_trap"
+
+            ? "🧠 The Crowd Trap"
+
+            : "☠️ Dead Number";
+
+
+    container.innerHTML = `
+
+        <div class="game-detail-card">
+
+            <div class="challenge-box">
+
+                <h3>
+
+                    ${title}
+
+                </h3>
+
+
+                <div class="info-box">
+
+                    Reward:
+
+                    <strong>
+                        +${reward} Points
+                    </strong>
+
+                </div>
+
+
+                <div class="question">
+
+                    ${escapeHtml(
+                        question
+                    )}
+
+                </div>
+
+
+                <div class="info-box">
+
+                    Choose between
+
+                    <strong>
+                        ${min}
+                    </strong>
+
+                    and
+
+                    <strong>
+                        ${max}
+                    </strong>.
+
+                </div>
+
+
+                <input
+                    id="numberInput"
+                    class="number-input"
+                    type="number"
+                    min="${Number(min)}"
+                    max="${Number(max)}"
+                    placeholder="Enter your number"
+                >
+
+
+                <button
+                    class="primary-btn"
+                    onclick="submitNumber()"
+                >
+
+                    LOCK MY CHOICE
+
+                </button>
+
+            </div>
+
+        </div>
+
+    `;
+}
+
+
+// ============================================================
+// SURVIVOR / IMPOSSIBLE CHOICE
+// ============================================================
+
+function renderChoiceGame(
+    question,
+    reward,
+    options
+) {
+
+    const container =
+        document.getElementById(
+            "gameContent"
+        );
+
+
+    const title =
+        currentGame.id ===
+        "survivor"
+
+            ? "🏆 The Survivor"
+
+            : "🤔 Impossible Choice";
+
+
+    const description =
+        currentGame.id ===
+        "survivor"
+
+            ? "Choose carefully. Only one option is safe."
+
+            : "Predict what the crowd will do. Your personal preference does not matter.";
+
+
+    container.innerHTML = `
+
+        <div class="game-detail-card">
+
+            <div class="challenge-box">
+
+                <h3>
+                    ${title}
+                </h3>
+
+
+                <div class="info-box">
+
+                    Reward:
+
+                    <strong>
+                        +${reward} Points
+                    </strong>
+
+                </div>
+
+
+                <div class="question">
+
+                    ${escapeHtml(
+                        question
+                    )}
+
+                </div>
+
+
+                <div class="info-box">
+
+                    ${description}
+
+                </div>
+
+
+                <div class="options">
+
+                    ${
+                        options.length
+
+                            ? options
+                                .map(
+                                    (
+                                        option,
+                                        index
+                                    ) => `
+
+                                        <button
+                                            class="option-btn"
+                                            data-option-index="${index}"
+                                            onclick="selectChoice(${index})"
+                                        >
+
+                                            ${escapeHtml(
+                                                option
+                                            )}
+
+                                        </button>
+
+                                    `
+                                )
+                                .join("")
+
+                            : `
+
+                                <div class="info-box">
+
+                                    No options available.
+
+                                </div>
+
+                            `
+                    }
+
+                </div>
+
+
+                <button
+                    id="submitChoiceButton"
+                    class="primary-btn"
+                    onclick="submitSelectedChoice()"
+                    disabled
+                >
+
+                    SUBMIT CHOICE
+
+                </button>
+
+            </div>
+
+        </div>
+
+    `;
+}
+
+
+// ============================================================
+// GENERIC TEXT CHALLENGE
+// ============================================================
+
+function renderTextChallenge(
+    question,
+    reward
+) {
+
+    const container =
+        document.getElementById(
+            "gameContent"
+        );
+
+
+    container.innerHTML = `
+
+        <div class="game-detail-card">
+
+            <div class="challenge-box">
+
+                <div class="info-box">
+
+                    Reward:
+
+                    <strong>
+                        +${reward} Points
+                    </strong>
+
+                </div>
+
+
+                <div class="question">
+
+                    ${escapeHtml(
+                        question
+                    )}
+
+                </div>
+
+
+                <input
+                    id="answerInput"
+                    class="number-input"
+                    type="text"
+                    placeholder="Your answer..."
+                    autocomplete="off"
+                >
+
+
+                <button
+                    class="primary-btn"
+                    onclick="submitGameAnswer()"
+                >
+
+                    SUBMIT ANSWER
+
+                </button>
+
+            </div>
+
+        </div>
+
+    `;
+}
+
+
+// ============================================================
+// CHOICE SELECTION
+// ============================================================
 
 function selectChoice(
     index
@@ -1192,14 +1840,16 @@ function selectChoice(
 
     document
         .querySelectorAll(
-            ".choice-btn"
+            ".option-btn"
         )
         .forEach(
             button => {
 
-                button.classList.remove(
-                    "selected"
-                );
+                button.style.borderColor =
+                    "";
+
+                button.style.background =
+                    "";
 
             }
         );
@@ -1213,9 +1863,11 @@ function selectChoice(
 
     if (selected) {
 
-        selected.classList.add(
-            "selected"
-        );
+        selected.style.borderColor =
+            "var(--yellow)";
+
+        selected.style.background =
+            "#303642";
 
     }
 
@@ -1232,18 +1884,20 @@ function selectChoice(
             false;
 
     }
+
 }
 
 
-/* ============================================================
-   ANSWERS
-   ============================================================ */
+// ============================================================
+// SUBMIT CHOICE
+// ============================================================
 
 async function submitSelectedChoice() {
 
     if (
         selectedChoice ===
-        null
+        null ||
+        !currentChallenge
     ) {
 
         showToast(
@@ -1255,8 +1909,11 @@ async function submitSelectedChoice() {
 
 
     const options =
-        currentChallenge.options ||
-        [];
+        Array.isArray(
+            currentChallenge.options
+        )
+            ? currentChallenge.options
+            : [];
 
 
     const answer =
@@ -1265,11 +1922,74 @@ async function submitSelectedChoice() {
         ];
 
 
+    if (answer === undefined) {
+
+        showToast(
+            "Invalid choice."
+        );
+
+        return;
+    }
+
+
     await submitAnswer(
         answer
     );
+
 }
 
+
+// ============================================================
+// SUBMIT NUMBER
+// ============================================================
+
+async function submitNumber() {
+
+    const input =
+        document.getElementById(
+            "numberInput"
+        );
+
+
+    if (
+        !input ||
+        input.value === ""
+    ) {
+
+        showToast(
+            "Enter a number."
+        );
+
+        return;
+    }
+
+
+    const number =
+        Number(
+            input.value
+        );
+
+
+    if (!Number.isFinite(number)) {
+
+        showToast(
+            "Enter a valid number."
+        );
+
+        return;
+    }
+
+
+    await submitAnswer(
+        String(number)
+    );
+
+}
+
+
+// ============================================================
+// SUBMIT TEXT ANSWER
+// ============================================================
 
 async function submitGameAnswer() {
 
@@ -1280,6 +2000,11 @@ async function submitGameAnswer() {
 
 
     if (!input) {
+
+        showToast(
+            "Answer field not found."
+        );
+
         return;
     }
 
@@ -1301,8 +2026,13 @@ async function submitGameAnswer() {
     await submitAnswer(
         answer
     );
+
 }
 
+
+// ============================================================
+// SUBMIT ANSWER
+// ============================================================
 
 async function submitAnswer(
     answer
@@ -1323,31 +2053,15 @@ async function submitAnswer(
 
     const buttons =
         document.querySelectorAll(
-            "button"
+            "#gameContent button"
         );
 
 
     buttons.forEach(
         button => {
 
-            if (
-
-                button.classList.contains(
-                    "primary-btn"
-                )
-
-                ||
-
-                button.classList.contains(
-                    "choice-btn"
-                )
-
-            ) {
-
-                button.disabled =
-                    true;
-
-            }
+            button.disabled =
+                true;
 
         }
     );
@@ -1357,20 +2071,19 @@ async function submitAnswer(
 
         const data =
             await api(
-                `/api/games/${encodeURIComponent(currentGame.id)}/answer`,
+                `/api/games/${encodeURIComponent(
+                    currentGame.id
+                )}/answer`,
                 {
-                    method:
-                        "POST",
+                    method: "POST",
 
                     body:
                         JSON.stringify({
-
                             challenge_id:
                                 currentChallenge.id,
 
                             answer:
                                 answer
-
                         })
                 }
             );
@@ -1387,15 +2100,60 @@ async function submitAnswer(
 
         if (data.correct) {
 
+            const reward =
+                Number(
+                    data.reward_points ??
+                    data.reward ??
+                    0
+                );
+
+
+            /*
+             * The current backend does not return
+             * the updated user on a successful reward,
+             * so update the displayed points locally.
+             */
+
+            if (
+                reward > 0 &&
+                currentUser
+            ) {
+
+                const currentPoints =
+                    Number(
+                        currentUser.quizbee_points ??
+                        currentUser.points ??
+                        0
+                    );
+
+
+                currentUser.quizbee_points =
+                    currentPoints +
+                    reward;
+
+
+                currentUser.total_earned =
+                    Number(
+                        currentUser.total_earned ||
+                        0
+                    ) +
+                    reward;
+
+
+                updateUserState(
+                    currentUser
+                );
+
+            }
+
+
             showToast(
 
-                `🎉 Correct! +${
-                    Number(
-                        data.reward_points ??
-                        data.reward ??
-                        0
-                    )
-                } points`
+                data.already_rewarded
+
+                    ? "✅ Correct answer!"
+
+                    : `🎉 Correct! +${reward} Points`
 
             );
 
@@ -1411,28 +2169,26 @@ async function submitAnswer(
                 1200
             );
 
+
         } else {
 
             showToast(
 
                 data.message ||
+
                 "❌ Wrong answer. Try again."
 
             );
 
 
-            document
-                .querySelectorAll(
-                    "button"
-                )
-                .forEach(
-                    button => {
+            buttons.forEach(
+                button => {
 
-                        button.disabled =
-                            false;
+                    button.disabled =
+                        false;
 
-                    }
-                );
+                }
+            );
 
         }
 
@@ -1446,31 +2202,31 @@ async function submitAnswer(
 
 
         showToast(
+
             error.message ||
+
             "Unable to submit answer."
+
         );
 
 
-        document
-            .querySelectorAll(
-                "button"
-            )
-            .forEach(
-                button => {
+        buttons.forEach(
+            button => {
 
-                    button.disabled =
-                        false;
+                button.disabled =
+                    false;
 
-                }
-            );
+            }
+        );
 
     }
+
 }
 
 
-/* ============================================================
-   ADS
-   ============================================================ */
+// ============================================================
+// ADS
+// ============================================================
 
 async function watchAd() {
 
@@ -1485,6 +2241,9 @@ async function watchAd() {
         button.disabled =
             true;
 
+        button.textContent =
+            "📺 COMPLETING...";
+
     }
 
 
@@ -1494,8 +2253,8 @@ async function watchAd() {
             await api(
                 "/api/ads/mock-complete",
                 {
-                    method:
-                        "POST"
+                    method: "POST",
+                    body: JSON.stringify({})
                 }
             );
 
@@ -1509,6 +2268,14 @@ async function watchAd() {
         }
 
 
+        const reward =
+            Number(
+                data.reward_points ??
+                data.reward ??
+                1
+            );
+
+
         adsWatched =
             Number(
                 data.ads_watched ??
@@ -1520,15 +2287,7 @@ async function watchAd() {
 
 
         showToast(
-
-            `📺 Ad completed! +${
-                Number(
-                    data.reward_points ??
-                    data.reward ??
-                    1
-                )
-            } point`
-
+            `📺 Ad completed! +${reward} point`
         );
 
 
@@ -1541,19 +2300,28 @@ async function watchAd() {
 
 
         showToast(
+
             error.message ||
+
             "Unable to complete ad."
+
         );
 
+
+    } finally {
+
+        if (button) {
+
+            button.disabled =
+                false;
+
+            button.textContent =
+                "📺 WATCH AD";
+
+        }
+
     }
 
-
-    if (button) {
-
-        button.disabled =
-            false;
-
-    }
 }
 
 
@@ -1582,20 +2350,19 @@ function updateAdsUI() {
     if (progressBar) {
 
         progressBar.style.width =
-            `${
-                Math.min(
-                    adsWatched / 10 * 100,
-                    100
-                )
-            }%`;
+            `${Math.min(
+                adsWatched / 10 * 100,
+                100
+            )}%`;
 
     }
+
 }
 
 
-/* ============================================================
-   LEADERBOARD
-   ============================================================ */
+// ============================================================
+// LEADERBOARD
+// ============================================================
 
 async function loadLeaderboard(
     type = "weekly",
@@ -1613,8 +2380,15 @@ async function loadLeaderboard(
     }
 
 
-    container.innerHTML =
-        "Loading...";
+    container.innerHTML = `
+
+        <div class="info-box">
+
+            Loading leaderboard...
+
+        </div>
+
+    `;
 
 
     document
@@ -1645,7 +2419,9 @@ async function loadLeaderboard(
 
         const data =
             await api(
-                `/api/leaderboard?period=${encodeURIComponent(type)}`
+                `/api/leaderboard?period=${encodeURIComponent(
+                    type
+                )}`
             );
 
 
@@ -1658,8 +2434,10 @@ async function loadLeaderboard(
 
             container.innerHTML = `
 
-                <div class="empty-state">
+                <div class="info-box">
+
                     No leaderboard data yet.
+
                 </div>
 
             `;
@@ -1668,57 +2446,113 @@ async function loadLeaderboard(
         }
 
 
+        /*
+         * IMPORTANT:
+         *
+         * These are the CSS classes that
+         * actually exist in style.css:
+         *
+         * rank-row
+         * rank-number
+         * rank-name
+         * rank-score
+         */
+
         container.innerHTML =
             leaderboard
                 .map(
                     (
                         player,
                         index
-                    ) => `
+                    ) => {
 
-                        <div class="leaderboard-row">
+                        const rank =
+                            Number(
+                                player.rank
+                            ) ||
+                            index + 1;
 
-                            <div class="leaderboard-rank">
-                                #${index + 1}
+
+                        const name =
+                            player.first_name ||
+                            player.username ||
+                            "Player";
+
+
+                        const username =
+                            player.username
+                                ? `@${player.username}`
+                                : "";
+
+
+                        const score =
+                            Number(
+                                player.total_earned ||
+                                0
+                            )
+                            .toLocaleString();
+
+
+                        return `
+
+                            <div class="rank-row">
+
+                                <div class="rank-number">
+
+                                    #${rank}
+
+                                </div>
+
+
+                                <div class="rank-name">
+
+                                    <strong>
+
+                                        ${escapeHtml(
+                                            name
+                                        )}
+
+                                    </strong>
+
+
+                                    ${
+                                        username
+                                            ? `
+
+                                                <div
+                                                    style="
+                                                        color:var(--muted);
+                                                        font-size:10px;
+                                                        margin-top:3px;
+                                                    "
+                                                >
+
+                                                    ${escapeHtml(
+                                                        username
+                                                    )}
+
+                                                </div>
+
+                                            `
+                                            : ""
+                                    }
+
+                                </div>
+
+
+                                <div class="rank-score">
+
+                                    ${score}
+
+                                </div>
+
                             </div>
 
-                            <div class="leaderboard-player">
+                        `;
 
-                                <strong>
-                                    ${escapeHtml(
-                                        player.first_name ||
-                                        player.username ||
-                                        "Player"
-                                    )}
-                                </strong>
-
-                                ${
-                                    player.username
-                                        ? `
-                                            <span>
-                                                @${escapeHtml(
-                                                    player.username
-                                                )}
-                                            </span>
-                                        `
-                                        : ""
-                                }
-
-                            </div>
-
-                            <div class="leaderboard-score">
-                                ${Number(
-                                    player.total_earned ||
-                                    0
-                                ).toLocaleString()}
-                            </div>
-
-                        </div>
-
-                    `
+                    }
                 )
                 .join("");
-
 
     } catch (error) {
 
@@ -1730,19 +2564,22 @@ async function loadLeaderboard(
 
         container.innerHTML = `
 
-            <div class="empty-state">
+            <div class="info-box">
+
                 Unable to load leaderboard.
+
             </div>
 
         `;
 
     }
+
 }
 
 
-/* ============================================================
-   PROFILE
-   ============================================================ */
+// ============================================================
+// PROFILE
+// ============================================================
 
 async function loadProfile() {
 
@@ -1773,33 +2610,54 @@ async function loadProfile() {
             error
         );
 
+
+        /*
+         * Bootstrap already loaded the
+         * user information.
+         *
+         * Do not replace it with
+         * "Player" if this refresh
+         * temporarily fails.
+         */
+
+        if (!currentUser) {
+
+            showToast(
+
+                error.message ||
+
+                "Unable to load profile."
+
+            );
+
+        }
+
     }
+
 }
 
 
-/* ============================================================
-   NAVIGATION
-   ============================================================ */
+// ============================================================
+// NAVIGATION
+// ============================================================
 
 function showPage(
     page
 ) {
 
-    const pages =
-        document.querySelectorAll(
+    document
+        .querySelectorAll(
             ".page"
+        )
+        .forEach(
+            section => {
+
+                section.classList.remove(
+                    "active"
+                );
+
+            }
         );
-
-
-    pages.forEach(
-        section => {
-
-            section.classList.remove(
-                "active"
-            );
-
-        }
-    );
 
 
     const target =
@@ -1856,7 +2714,8 @@ function showPage(
 
 
     if (
-        navIndex !== undefined
+        navIndex !==
+        undefined
     ) {
 
         const navItems =
@@ -1865,7 +2724,9 @@ function showPage(
             );
 
 
-        if (navItems[navIndex]) {
+        if (
+            navItems[navIndex]
+        ) {
 
             navItems[
                 navIndex
@@ -1874,6 +2735,16 @@ function showPage(
             );
 
         }
+
+    }
+
+
+    if (
+        page ===
+        "games"
+    ) {
+
+        renderGames();
 
     }
 
@@ -1895,6 +2766,20 @@ function showPage(
         "profile"
     ) {
 
+        /*
+         * Display the already-loaded
+         * user immediately.
+         */
+
+        if (currentUser) {
+
+            updateUserState(
+                currentUser
+            );
+
+        }
+
+
         loadProfile();
 
     }
@@ -1914,18 +2799,23 @@ function showPage(
 
         top: 0,
 
-        behavior:
-            "smooth"
+        behavior: "smooth"
 
     });
+
 }
 
+
+// ============================================================
+// OTHER ACTIONS
+// ============================================================
 
 function goHome() {
 
     showPage(
         "home"
     );
+
 }
 
 
@@ -1934,6 +2824,7 @@ function buyPoints() {
     showToast(
         "Point purchases will be connected next."
     );
+
 }
 
 
@@ -1942,12 +2833,13 @@ function withdrawPrize() {
     showToast(
         "Prize withdrawal will be connected next."
     );
+
 }
 
 
-/* ============================================================
-   START
-   ============================================================ */
+// ============================================================
+// START
+// ============================================================
 
 document.addEventListener(
     "DOMContentLoaded",
@@ -1956,6 +2848,7 @@ document.addEventListener(
         console.log(
             "QuizBee frontend loaded."
         );
+
 
         console.log(
             "API URL:",
@@ -1978,6 +2871,7 @@ document.addEventListener(
             console.warn(
                 "Telegram initData is missing."
             );
+
 
             showToast(
                 "Open QuizBee from Telegram."
