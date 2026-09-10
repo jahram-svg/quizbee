@@ -2,15 +2,20 @@ import os
 import time
 import hmac
 import hashlib
+import json
+
 from urllib.parse import parse_qsl
 
 
-def validate_telegram_init_data(init_data: str, max_age: int = 86400):
+def validate_telegram_init_data(
+    init_data: str,
+    max_age: int = 86400
+):
     """
     Validate Telegram Mini App initData.
 
-    Returns the Telegram user object if valid.
-    Returns None if invalid.
+    Returns the Telegram user dictionary if valid.
+    Returns None if invalid or expired.
     """
 
     if not init_data:
@@ -22,7 +27,12 @@ def validate_telegram_init_data(init_data: str, max_age: int = 86400):
         raise RuntimeError("BOT_TOKEN is missing.")
 
     try:
-        parsed = dict(parse_qsl(init_data, keep_blank_values=True))
+        parsed = dict(
+            parse_qsl(
+                init_data,
+                keep_blank_values=True
+            )
+        )
 
         received_hash = parsed.pop("hash", None)
 
@@ -35,15 +45,15 @@ def validate_telegram_init_data(init_data: str, max_age: int = 86400):
         )
 
         secret_key = hmac.new(
-            b"WebAppData",
-            bot_token.encode(),
-            hashlib.sha256
+            key=b"WebAppData",
+            msg=bot_token.encode("utf-8"),
+            digestmod=hashlib.sha256
         ).digest()
 
         calculated_hash = hmac.new(
-            secret_key,
-            data_check_string.encode(),
-            hashlib.sha256
+            key=secret_key,
+            msg=data_check_string.encode("utf-8"),
+            digestmod=hashlib.sha256
         ).hexdigest()
 
         if not hmac.compare_digest(
@@ -59,7 +69,7 @@ def validate_telegram_init_data(init_data: str, max_age: int = 86400):
 
         try:
             auth_timestamp = int(auth_date)
-        except ValueError:
+        except (TypeError, ValueError):
             return None
 
         current_time = int(time.time())
@@ -67,15 +77,13 @@ def validate_telegram_init_data(init_data: str, max_age: int = 86400):
         if current_time - auth_timestamp > max_age:
             return None
 
-        if current_time < auth_timestamp - 60:
+        if auth_timestamp > current_time + 60:
             return None
 
         user_data = parsed.get("user")
 
         if not user_data:
             return None
-
-        import json
 
         user = json.loads(user_data)
 
