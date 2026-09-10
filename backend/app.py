@@ -1071,3 +1071,13 @@ if __name__ == "__main__":
         port=port,
         debug=False
     )
+
+def get_authenticated_telegram_user():
+    init_data = request.headers.get("X-Telegram-Init-Data", "")
+
+    user = validate_telegram_init_data(init_data)
+
+    if not user:
+        return None
+
+    return user
