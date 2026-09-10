@@ -5,1087 +5,1472 @@ if (tg) {
     tg.expand();
 }
 
-const API_URL = window.QUIZBEE_CONFIG?.API_URL || "";
+const CONFIG = window.QUIZBEE_CONFIG || {};
 
-let user = {
-    telegram_id: 999000001,
-    first_name: "Demo",
-    username: "demo_player"
-};
+const API_URL = (
+    CONFIG.API_URL || ""
+).replace(/\/$/, "");
 
-let state = {
-    points: 0,
-    prize_balance: 0,
-    score: 0,
-    streak: 0,
-    referrals: 0,
-    ads_watched: 0,
-    games: []
-};
-
+let currentUser = null;
+let games = [];
 let currentGame = null;
 let currentChallenge = null;
+let currentPage = "home";
+let adsWatched = 0;
+let selectedChoice = null;
 
 
-// ============================================================
-// TELEGRAM USER
-// ============================================================
+/* ============================================================
+   TELEGRAM
+   ============================================================ */
 
 function getTelegramUser() {
 
-    if (tg?.initDataUnsafe?.user) {
-        return tg.initDataUnsafe.user;
+    if (!tg?.initDataUnsafe?.user) {
+        return null;
     }
 
-    return user;
+    const user =
+        tg.initDataUnsafe.user;
+
+    return {
+        telegram_id: user.id,
+        first_name:
+            user.first_name || "",
+        last_name:
+            user.last_name || "",
+        username:
+            user.username || ""
+    };
 }
 
-user = getTelegramUser();
+
+function getInitData() {
+
+    return tg?.initData || "";
+}
 
 
-// ============================================================
-// API
-// ============================================================
+/* ============================================================
+   API
+   ============================================================ */
 
-async function api(path, options = {}) {
+async function api(
+    path,
+    options = {}
+) {
 
-    const url = `${API_URL}${path}`;
-
-    const headers = {
-        "Content-Type": "application/json"
-    };
-
-    if (tg?.initData) {
-        headers["X-Telegram-Init-Data"] = tg.initData;
+    if (!API_URL) {
+        throw new Error(
+            "API_URL is not configured."
+        );
     }
 
-    const response = await fetch(url, {
-        ...options,
-        headers: {
-            ...headers,
-            ...(options.headers || {})
-        }
-    });
+    const headers = {
+        "Content-Type":
+            "application/json",
+
+        ...(options.headers || {})
+    };
+
+    const initData =
+        getInitData();
+
+    if (initData) {
+
+        headers[
+            "X-Telegram-Init-Data"
+        ] = initData;
+
+    }
+
+    const response =
+        await fetch(
+            `${API_URL}${path}`,
+            {
+                ...options,
+                headers
+            }
+        );
 
     let data;
 
     try {
-        data = await response.json();
+
+        data =
+            await response.json();
+
     } catch {
-        throw new Error(`Server returned ${response.status}`);
+
+        throw new Error(
+            `Server returned HTTP ${response.status}`
+        );
+
     }
 
     if (!response.ok) {
+
         throw new Error(
             data.error ||
             data.message ||
-            "Request failed"
+            `HTTP ${response.status}`
         );
+
     }
 
     return data;
 }
 
 
-// ============================================================
-// UI HELPERS
-// ============================================================
+/* ============================================================
+   UI HELPERS
+   ============================================================ */
 
-function toast(message) {
+function showToast(message) {
 
-    const el = document.getElementById("toast");
+    let toast =
+        document.getElementById(
+            "toast"
+        );
 
-    if (!el) return;
+    if (!toast) {
 
-    el.textContent = message;
+        toast =
+            document.createElement(
+                "div"
+            );
 
-    el.classList.add("show");
+        toast.id = "toast";
+
+        toast.className =
+            "toast";
+
+        document.body.appendChild(
+            toast
+        );
+    }
+
+    toast.textContent =
+        message;
+
+    toast.classList.add(
+        "show"
+    );
 
     setTimeout(() => {
-        el.classList.remove("show");
+
+        toast.classList.remove(
+            "show"
+        );
+
     }, 2500);
 }
 
 
-function showPage(page) {
+function escapeHtml(value) {
 
-    document.querySelectorAll(".page").forEach(el => {
-        el.classList.remove("active");
-    });
+    return String(
+        value ?? ""
+    )
+        .replace(
+            /&/g,
+            "&amp;"
+        )
+        .replace(
+            /</g,
+            "&lt;"
+        )
+        .replace(
+            />/g,
+            "&gt;"
+        )
+        .replace(
+            /"/g,
+            "&quot;"
+        )
+        .replace(
+            /'/g,
+            "&#039;"
+        );
+}
 
-    const target =
-        document.getElementById(`${page}Page`);
 
-    if (target) {
-        target.classList.add("active");
+/* ============================================================
+   GAME NORMALIZATION
+   ============================================================ */
+
+function normalizeGames(
+    serverGames
+) {
+
+    return (
+        serverGames || []
+    ).map(game => ({
+
+        ...game,
+
+        id:
+            game.id,
+
+        name:
+            game.name ||
+            "Game",
+
+        description:
+            game.description ||
+            "",
+
+        emoji:
+            game.icon ||
+            game.emoji ||
+            "🎮",
+
+        status:
+            game.active === true
+                ? "active"
+                : "locked",
+
+        active:
+            game.active === true,
+
+        entry_points:
+            Number(
+                game.entry_fee ??
+                game.entry_points ??
+                0
+            ),
+
+        reward_points:
+            Number(
+                game.reward_points ??
+                game.reward ??
+                0
+            )
+
+    }));
+}
+
+
+/* ============================================================
+   USER STATE
+   ============================================================ */
+
+function updateUserState(
+    user
+) {
+
+    if (!user) return;
+
+    currentUser =
+        user;
+
+    const points =
+        Number(
+            user.quizbee_points ??
+            user.points ??
+            0
+        );
+
+    const prizeBalance =
+        Number(
+            user.prize_balance ??
+            0
+        );
+
+    const streak =
+        Number(
+            user.streak_days ??
+            user.streak ??
+            0
+        );
+
+    const referrals =
+        Number(
+            user.referrals_count ??
+            user.referrals ??
+            0
+        );
+
+    const totalEarned =
+        Number(
+            user.total_earned ??
+            user.score ??
+            0
+        );
+
+
+    const pointsEl =
+        document.getElementById(
+            "pointsBalance"
+        );
+
+    const prizeEl =
+        document.getElementById(
+            "prizeBalance"
+        );
+
+
+    if (pointsEl) {
+
+        pointsEl.textContent =
+            points.toLocaleString();
+
     }
 
-    document.querySelectorAll(".nav-item").forEach(el => {
-        el.classList.remove("active");
-    });
 
-    const navMap = {
-        home: 0,
-        games: 1,
-        ads: 2,
-        leaderboard: 3,
-        profile: 4
-    };
+    if (prizeEl) {
 
-    if (navMap[page] !== undefined) {
+        prizeEl.textContent =
+            `₦${prizeBalance.toLocaleString()}`;
 
-        document
-            .querySelectorAll(".nav-item")[navMap[page]]
-            ?.classList.add("active");
     }
 
-    if (page === "games") {
+
+    const welcome =
+        document.getElementById(
+            "welcomeText"
+        );
+
+
+    if (welcome) {
+
+        welcome.textContent =
+            `Welcome, ${
+                user.first_name ||
+                "Player"
+            }!`;
+
+    }
+
+
+    const profileName =
+        document.getElementById(
+            "profileName"
+        );
+
+    const profileUsername =
+        document.getElementById(
+            "profileUsername"
+        );
+
+    const profileScore =
+        document.getElementById(
+            "profileScore"
+        );
+
+    const profileStreak =
+        document.getElementById(
+            "profileStreak"
+        );
+
+    const profileReferrals =
+        document.getElementById(
+            "profileReferrals"
+        );
+
+
+    if (profileName) {
+
+        profileName.textContent =
+            user.first_name ||
+            "Player";
+
+    }
+
+
+    if (profileUsername) {
+
+        profileUsername.textContent =
+            user.username
+                ? `@${user.username}`
+                : "@player";
+
+    }
+
+
+    if (profileScore) {
+
+        profileScore.textContent =
+            totalEarned.toLocaleString();
+
+    }
+
+
+    if (profileStreak) {
+
+        profileStreak.textContent =
+            streak;
+
+    }
+
+
+    if (profileReferrals) {
+
+        profileReferrals.textContent =
+            referrals;
+
+    }
+}
+
+
+/* ============================================================
+   BOOTSTRAP
+   ============================================================ */
+
+async function bootstrap() {
+
+    try {
+
+        if (!getInitData()) {
+
+            throw new Error(
+                "QuizBee must be opened inside Telegram."
+            );
+
+        }
+
+        const data =
+            await api(
+                "/api/bootstrap",
+                {
+                    method:
+                        "POST",
+
+                    body:
+                        JSON.stringify({
+                            telegram_user:
+                                getTelegramUser()
+                        })
+                }
+            );
+
+
+        if (!data.success) {
+
+            throw new Error(
+                data.error ||
+                "Bootstrap failed."
+            );
+
+        }
+
+
+        updateUserState(
+            data.user
+        );
+
+
+        games =
+            normalizeGames(
+                data.games
+            );
+
+
         renderGames();
-    }
 
-    if (page === "leaderboard") {
-        loadLeaderboard("weekly");
-    }
+        showPage("home");
 
-    if (page === "ads") {
-        updateAds();
-    }
 
-    if (page === "profile") {
-        updateProfile();
+    } catch (error) {
+
+        console.error(
+            "Bootstrap error:",
+            error
+        );
+
+
+        showToast(
+            error.message ||
+            "Unable to connect to QuizBee."
+        );
+
     }
 }
 
 
-function goHome() {
-    showPage("home");
+/* ============================================================
+   GAMES
+   ============================================================ */
+
+function renderGames() {
+
+    const homeGames =
+        document.getElementById(
+            "homeGames"
+        );
+
+    const gamesList =
+        document.getElementById(
+            "gamesList"
+        );
+
+
+    const activeGames =
+        games.filter(
+            game =>
+                game.active
+        );
+
+
+    if (homeGames) {
+
+        homeGames.innerHTML =
+            activeGames
+                .slice(0, 4)
+                .map(
+                    game =>
+                        gameCard(game)
+                )
+                .join("");
+
+    }
+
+
+    if (gamesList) {
+
+        gamesList.innerHTML =
+            games
+                .map(
+                    game =>
+                        gameListItem(
+                            game
+                        )
+                )
+                .join("");
+
+    }
 }
 
 
-// ============================================================
-// GAME INFORMATION
-// ============================================================
-
-function gameDescription(id) {
-
-    const descriptions = {
-
-        guess_it:
-            "Use clues to identify the hidden answer before everyone else.",
-
-        impossible_question:
-            "A brutally difficult weekly brain teaser. Keep trying until you solve it.",
-
-        crowd_trap:
-            "Pick a number nobody else picks. Outsmart the crowd.",
-
-        survivor:
-            "Choose one option each round. Pick the safe one or get eliminated.",
-
-        dead_number:
-            "Avoid the hidden Dead Numbers. One wrong choice can eliminate you.",
-
-        impossible_choice:
-            "Predict what the crowd will do. Your personal preference does not matter."
-    };
-
-    return descriptions[id] || "";
-}
-
-
-// ============================================================
-// NORMALIZE FIREBASE GAME DATA
-// ============================================================
-
-function normalizeGames(games) {
-
-    return (games || []).map(game => {
-
-        return {
-            id: game.id,
-
-            name: game.name,
-
-            emoji:
-                game.icon ||
-                game.emoji ||
-                "🎮",
-
-            status:
-                game.active === true
-                    ? "active"
-                    : "locked",
-
-            entry_points:
-                Number(
-                    game.entry_fee ??
-                    game.entry_points ??
-                    10
-                ),
-
-            description:
-                game.description ||
-                gameDescription(game.id),
-
-            sort_order:
-                Number(game.sort_order || 0)
-        };
-
-    });
-}
-
-
-// ============================================================
-// GAME RENDERING
-// ============================================================
-
-function renderGameCard(game) {
-
-    const locked = game.status !== "active";
+function gameCard(game) {
 
     return `
+
         <div
-            class="game-card ${locked ? "locked" : ""}"
-            onclick="${
-                locked
-                    ? "lockedGame()"
-                    : `openGame('${game.id}')`
+            class="game-card ${
+                game.active
+                    ? ""
+                    : "locked"
             }"
+            onclick="openGame('${escapeHtml(game.id)}')"
         >
 
-            <span class="status ${locked ? "locked" : "unlocked"}">
-                ${locked ? "🔒 LOCKED" : "● LIVE"}
-            </span>
-
             <div class="game-icon">
-                ${game.emoji}
+                ${escapeHtml(
+                    game.emoji
+                )}
             </div>
 
-            <h3>
-                ${game.name}
-            </h3>
+            <div class="game-info">
 
-            <p>
-                ${gameDescription(game.id)}
-            </p>
+                <h3>
+                    ${escapeHtml(
+                        game.name
+                    )}
+                </h3>
+
+                <p>
+                    ${escapeHtml(
+                        game.description
+                    )}
+                </p>
+
+            </div>
+
+            ${
+                game.active
+                    ? `
+                        <span class="game-entry">
+                            ${game.entry_points} pts
+                        </span>
+                    `
+                    : `
+                        <span class="lock-label">
+                            🔒
+                        </span>
+                    `
+            }
 
         </div>
+
     `;
 }
 
 
-function renderGames() {
+function gameListItem(game) {
+
+    return `
+
+        <div
+            class="game-list-item ${
+                game.active
+                    ? ""
+                    : "locked"
+            }"
+            onclick="openGame('${escapeHtml(game.id)}')"
+        >
+
+            <div class="game-icon">
+                ${escapeHtml(
+                    game.emoji
+                )}
+            </div>
+
+            <div class="game-info">
+
+                <h3>
+                    ${escapeHtml(
+                        game.name
+                    )}
+                </h3>
+
+                <p>
+                    ${escapeHtml(
+                        game.description
+                    )}
+                </p>
+
+            </div>
+
+            ${
+                game.active
+                    ? `
+                        <div class="game-entry">
+                            ${game.entry_points} pts
+                        </div>
+                    `
+                    : `
+                        <div class="coming-soon">
+                            🔒 Coming Soon
+                        </div>
+                    `
+            }
+
+        </div>
+
+    `;
+}
+
+
+/* ============================================================
+   OPEN GAME
+   ============================================================ */
+
+async function openGame(
+    gameId
+) {
+
+    const game =
+        games.find(
+            item =>
+                item.id === gameId
+        );
+
+
+    if (!game) {
+
+        showToast(
+            "Game not found."
+        );
+
+        return;
+    }
+
+
+    currentGame =
+        game;
+
+
+    if (!game.active) {
+
+        showToast(
+            "🔒 This game is coming soon."
+        );
+
+        return;
+    }
+
+
+    document.getElementById(
+        "gameTitle"
+    ).textContent =
+        game.name;
+
+
+    showPage("game");
+
+
+    await enterGame(
+        game.id
+    );
+}
+
+
+/* ============================================================
+   ENTER GAME
+   ============================================================ */
+
+async function enterGame(
+    gameId
+) {
 
     const container =
-        document.getElementById("gamesList");
+        document.getElementById(
+            "gameContent"
+        );
 
-    if (!container) return;
 
-    if (!state.games.length) {
+    container.innerHTML = `
+        <div class="loading">
+            Entering game...
+        </div>
+    `;
+
+
+    try {
+
+        const data =
+            await api(
+                `/api/games/${encodeURIComponent(gameId)}/enter`,
+                {
+                    method:
+                        "POST"
+                }
+            );
+
+
+        if (!data.success) {
+
+            throw new Error(
+                data.error ||
+                "Unable to enter game."
+            );
+
+        }
+
+
+        if (data.user) {
+
+            updateUserState(
+                data.user
+            );
+
+        }
+
+
+        currentChallenge =
+            data.challenge;
+
+
+        selectedChoice =
+            null;
+
+
+        renderChallenge();
+
+
+    } catch (error) {
+
+        console.error(
+            "Game entry error:",
+            error
+        );
+
 
         container.innerHTML = `
-            <div class="info-box">
-                No games available yet.
+
+            <div class="empty-state">
+
+                <h3>
+                    Unable to enter game
+                </h3>
+
+                <p>
+                    ${escapeHtml(
+                        error.message
+                    )}
+                </p>
+
+                <button
+                    class="primary-btn"
+                    onclick="enterGame('${escapeHtml(gameId)}')"
+                >
+                    TRY AGAIN
+                </button>
+
             </div>
+
+        `;
+    }
+}
+
+
+/* ============================================================
+   LOAD CHALLENGE
+   ============================================================ */
+
+async function loadChallenge(
+    gameId
+) {
+
+    const container =
+        document.getElementById(
+            "gameContent"
+        );
+
+
+    container.innerHTML = `
+        <div class="loading">
+            Loading challenge...
+        </div>
+    `;
+
+
+    try {
+
+        const data =
+            await api(
+                `/api/games/${encodeURIComponent(gameId)}/challenge`
+            );
+
+
+        if (
+            !data.success ||
+            !data.challenge
+        ) {
+
+            throw new Error(
+                data.error ||
+                "No challenge available."
+            );
+
+        }
+
+
+        currentChallenge =
+            data.challenge;
+
+
+        selectedChoice =
+            null;
+
+
+        renderChallenge();
+
+
+    } catch (error) {
+
+        console.error(
+            "Challenge error:",
+            error
+        );
+
+
+        container.innerHTML = `
+
+            <div class="empty-state">
+
+                <h3>
+                    Challenge unavailable
+                </h3>
+
+                <p>
+                    ${escapeHtml(
+                        error.message
+                    )}
+                </p>
+
+                <button
+                    class="primary-btn"
+                    onclick="loadChallenge('${escapeHtml(gameId)}')"
+                >
+                    TRY AGAIN
+                </button>
+
+            </div>
+
+        `;
+    }
+}
+
+
+/* ============================================================
+   RENDER CHALLENGE
+   ============================================================ */
+
+function renderChallenge() {
+
+    const container =
+        document.getElementById(
+            "gameContent"
+        );
+
+
+    if (
+        !currentChallenge ||
+        !currentGame
+    ) {
+
+        container.innerHTML = `
+
+            <div class="empty-state">
+                No challenge available.
+            </div>
+
         `;
 
         return;
     }
 
-    container.innerHTML =
-        state.games.map(game => {
 
-            const locked =
-                game.status !== "active";
+    const question =
+        currentChallenge.question ||
+        "Question unavailable.";
 
-            return `
-                <div
-                    class="game-list-card ${locked ? "locked-card" : ""}"
-                    onclick="${
-                        locked
-                            ? "lockedGame()"
-                            : `openGame('${game.id}')`
-                    }"
-                >
 
-                    <div class="game-icon">
-                        ${game.emoji}
-                    </div>
+    const options =
+        currentChallenge.options ||
+        [];
 
-                    <div class="game-info">
-
-                        <h3>
-                            ${game.name}
-                        </h3>
-
-                        <p>
-                            ${gameDescription(game.id)}
-                        </p>
-
-                        <div class="entry">
-                            Entry:
-                            ${game.entry_points}
-                            Points
-                        </div>
-
-                    </div>
-
-                    <div>
-                        ${locked ? "🔒" : "›"}
-                    </div>
-
-                </div>
-            `;
-        }).join("");
-}
-
-
-function renderHomeGames() {
-
-    const container =
-        document.getElementById("homeGames");
-
-    if (!container) return;
-
-    container.innerHTML =
-        state.games
-            .slice(0, 4)
-            .map(renderGameCard)
-            .join("");
-}
-
-
-function lockedGame() {
-
-    toast(
-        "🔒 Coming Soon — this game is currently locked."
-    );
-}
-
-
-// ============================================================
-// OPEN GAME
-// ============================================================
-
-async function openGame(gameId) {
-
-    const game =
-        state.games.find(g => g.id === gameId);
-
-    if (!game) {
-        toast("Game not found.");
-        return;
-    }
-
-    if (game.status !== "active") {
-        lockedGame();
-        return;
-    }
-
-    currentGame = game;
-
-    const title =
-        document.getElementById("gameTitle");
-
-    if (title) {
-        title.textContent =
-            `${game.emoji} ${game.name}`;
-    }
-
-    const content =
-        document.getElementById("gameContent");
-
-    if (!content) return;
-
-    content.innerHTML = `
-
-        <div class="game-detail-card">
-
-            <div class="game-detail-icon">
-                ${game.emoji}
-            </div>
-
-            <h2>
-                ${game.name}
-            </h2>
-
-            <p class="game-description">
-                ${gameDescription(game.id)}
-            </p>
-
-            <div class="info-box">
-                Entry fee:
-                <strong>
-                    ${game.entry_points}
-                    QuizBee Points
-                </strong>
-            </div>
-
-            <button
-                class="primary-btn"
-                onclick="enterGame()"
-            >
-                ENTER GAME —
-                ${game.entry_points}
-                POINTS
-            </button>
-
-        </div>
-    `;
-
-    showPage("game");
-}
-
-
-// ============================================================
-// ENTER GAME
-// ============================================================
-
-async function enterGame() {
-
-    if (!currentGame) return;
-
-    try {
-
-        const result = await api(
-            `/api/games/${currentGame.id}/enter`,
-            {
-                method: "POST",
-                body: JSON.stringify({})
-            }
-        );
-
-        if (result.user) {
-            updateUserState(result.user);
-        }
-
-        updateBalances();
-
-        if (result.already_entered) {
-
-            toast(
-                "You already entered this challenge."
-            );
-
-        } else {
-
-            toast("Entry successful! 🎉");
-        }
-
-        await loadChallenge();
-
-    } catch (error) {
-
-        console.error(error);
-
-        toast(error.message);
-    }
-}
-
-
-// ============================================================
-// LOAD CHALLENGE
-// ============================================================
-
-async function loadChallenge() {
-
-    if (!currentGame) return;
-
-    try {
-
-        const data = await api(
-            `/api/games/${currentGame.id}/challenge`
-        );
-
-        /*
-         * Backend returns:
-         *
-         * {
-         *   success: true,
-         *   game: {...},
-         *   challenge: {...}
-         * }
-         *
-         * We only want the challenge object here.
-         */
-
-        currentChallenge = data.challenge;
-
-        if (!currentChallenge) {
-            throw new Error(
-                "No challenge data received."
-            );
-        }
-
-        renderChallenge(currentChallenge);
-
-    } catch (error) {
-
-        console.error(error);
-
-        toast(error.message);
-    }
-}
-
-
-// ============================================================
-// RENDER CHALLENGE
-// ============================================================
-
-function renderChallenge(challenge) {
-
-    if (!currentGame) return;
-
-    /*
-     * We use the GAME ID rather than challenge.type.
-     *
-     * Firebase demo challenges use types like:
-     * "guess", "text", and "choice".
-     *
-     * The game ID tells us exactly which UI to display.
-     */
-
-    if (currentGame.id === "guess_it") {
-
-        renderGuessIt(challenge);
-        return;
-    }
 
     if (
         currentGame.id ===
-        "impossible_question"
+        "guess_it"
     ) {
 
-        renderImpossibleQuestion(challenge);
-        return;
-    }
+        container.innerHTML = `
 
-    if (currentGame.id === "crowd_trap") {
+            <div class="challenge-card">
 
-        renderNumberChoice(
-            challenge,
-            "crowd"
-        );
-
-        return;
-    }
-
-    if (currentGame.id === "survivor") {
-
-        renderSurvivor(challenge);
-        return;
-    }
-
-    if (currentGame.id === "dead_number") {
-
-        renderNumberChoice(
-            challenge,
-            "dead"
-        );
-
-        return;
-    }
-
-    if (
-        currentGame.id ===
-        "impossible_choice"
-    ) {
-
-        renderImpossibleChoice(challenge);
-        return;
-    }
-
-    toast("Unsupported game type.");
-}
-
-
-// ============================================================
-// GUESS IT
-// ============================================================
-
-function renderGuessIt(challenge) {
-
-    const container =
-        document.getElementById("gameContent");
-
-    container.innerHTML = `
-
-        <div class="game-detail-card">
-
-            <div class="challenge-box">
-
-                <h3>
-                    🎯 Guess It
-                </h3>
-
-                <div class="question">
-                    ${
-                        challenge.question ||
-                        "Identify the hidden answer."
-                    }
+                <div class="challenge-icon">
+                    🎯
                 </div>
 
-                ${
-                    challenge.metadata?.image_url
-                        ? `
-                        <img
-                            src="${challenge.metadata.image_url}"
-                            alt="Guess It"
-                            style="
-                                width:100%;
-                                border-radius:16px;
-                                margin:15px 0;
-                            "
-                        >
-                        `
-                        : ""
-                }
+                <div class="challenge-reward">
+                    Reward:
+                    +${
+                        Number(
+                            currentChallenge.reward_points ||
+                            0
+                        )
+                    } points
+                </div>
+
+                <h2>
+                    ${escapeHtml(
+                        question
+                    )}
+                </h2>
 
                 ${
-                    challenge.clue
+                    currentChallenge
+                        .image_url
                         ? `
-                        <div class="info-box">
-                            ${challenge.clue}
-                        </div>
+                            <img
+                                src="${escapeHtml(
+                                    currentChallenge.image_url
+                                )}"
+                                class="challenge-image"
+                                alt="Challenge"
+                            >
                         `
                         : ""
                 }
 
                 <input
                     id="answerInput"
-                    class="number-input"
+                    class="answer-input"
                     type="text"
-                    placeholder="Type your answer..."
+                    placeholder="Enter your answer"
+                    autocomplete="off"
                 >
 
                 <button
                     class="primary-btn"
-                    onclick="submitAnswer()"
+                    onclick="submitGameAnswer()"
                 >
                     SUBMIT ANSWER
                 </button>
 
             </div>
 
-        </div>
-    `;
-}
+        `;
+
+        return;
+    }
 
 
-// ============================================================
-// IMPOSSIBLE QUESTION
-// ============================================================
+    if (
+        currentGame.id ===
+        "impossible_question"
+    ) {
 
-function renderImpossibleQuestion(challenge) {
+        container.innerHTML = `
 
-    const container =
-        document.getElementById("gameContent");
+            <div class="challenge-card">
 
-    container.innerHTML = `
-
-        <div class="game-detail-card">
-
-            <div class="challenge-box">
-
-                <h3>
-                    💀 Weekly Impossible Question
-                </h3>
-
-                <div class="question">
-                    ${
-                        challenge.question ||
-                        "Solve the challenge."
-                    }
+                <div class="challenge-icon">
+                    💀
                 </div>
 
-                <div class="info-box">
-                    You can keep trying until
-                    the challenge ends.
-                    A wrong answer does not remove
-                    your entry.
+                <div class="challenge-reward">
+                    Reward:
+                    +${
+                        Number(
+                            currentChallenge.reward_points ||
+                            0
+                        )
+                    } points
                 </div>
+
+                <h2>
+                    ${escapeHtml(
+                        question
+                    )}
+                </h2>
 
                 <input
                     id="answerInput"
-                    class="number-input"
+                    class="answer-input"
                     type="text"
                     placeholder="Your answer..."
+                    autocomplete="off"
                 >
 
                 <button
                     class="primary-btn"
-                    onclick="submitAnswer()"
+                    onclick="submitGameAnswer()"
                 >
-                    TRY ANSWER
+                    SUBMIT ANSWER
                 </button>
+
+                <p class="attempt-note">
+                    You can try again if your answer is wrong.
+                </p>
 
             </div>
 
-        </div>
-    `;
-}
+        `;
 
-
-// ============================================================
-// NUMBER GAMES
-// ============================================================
-
-function renderNumberChoice(challenge, mode) {
-
-    const container =
-        document.getElementById("gameContent");
-
-    const options =
-        Array.isArray(challenge.options)
-            ? challenge.options
-            : [];
-
-    let min =
-        challenge.min;
-
-    let max =
-        challenge.max;
-
-    if (
-        (min === undefined || max === undefined) &&
-        options.length
-    ) {
-
-        const numbers =
-            options
-                .map(Number)
-                .filter(n => !Number.isNaN(n));
-
-        if (numbers.length) {
-
-            min = Math.min(...numbers);
-            max = Math.max(...numbers);
-        }
+        return;
     }
 
-    if (min === undefined) min = 1;
-    if (max === undefined) max = 20;
 
-    container.innerHTML = `
+    if (
 
-        <div class="game-detail-card">
+        currentGame.id ===
+            "crowd_trap"
 
-            <div class="challenge-box">
+        ||
 
-                <h3>
-                    ${
-                        mode === "crowd"
-                            ? "🧠 The Crowd Trap"
-                            : "☠️ Dead Number"
-                    }
-                </h3>
+        currentGame.id ===
+            "survivor"
 
-                <div class="question">
-                    ${
-                        challenge.question ||
-                        `Choose a number from ${min} to ${max}.`
-                    }
+        ||
+
+        currentGame.id ===
+            "dead_number"
+
+        ||
+
+        currentGame.id ===
+            "impossible_choice"
+
+    ) {
+
+        container.innerHTML = `
+
+            <div class="challenge-card">
+
+                <div class="challenge-icon">
+                    ${escapeHtml(
+                        currentGame.emoji
+                    )}
                 </div>
 
-                <div class="info-box">
-                    Choose between
-                    <strong>${min}</strong>
-                    and
-                    <strong>${max}</strong>.
+                <div class="challenge-reward">
+                    Reward:
+                    +${
+                        Number(
+                            currentChallenge.reward_points ||
+                            0
+                        )
+                    } points
                 </div>
 
-                <input
-                    id="numberInput"
-                    class="number-input"
-                    type="number"
-                    min="${min}"
-                    max="${max}"
-                    placeholder="Enter your number"
-                >
+                <h2>
+                    ${escapeHtml(
+                        question
+                    )}
+                </h2>
+
+                <div class="choice-grid">
+
+                    ${
+                        options
+                            .map(
+                                (
+                                    option,
+                                    index
+                                ) => `
+
+                                    <button
+                                        class="choice-btn"
+                                        onclick="selectChoice(${index})"
+                                        data-option-index="${index}"
+                                    >
+                                        ${escapeHtml(
+                                            option
+                                        )}
+                                    </button>
+
+                                `
+                            )
+                            .join("")
+                    }
+
+                </div>
 
                 <button
+                    id="submitChoiceButton"
                     class="primary-btn"
-                    onclick="submitNumber('${mode}')"
+                    onclick="submitSelectedChoice()"
+                    disabled
                 >
-                    LOCK MY CHOICE
+                    SUBMIT CHOICE
                 </button>
 
             </div>
 
-        </div>
-    `;
-}
+        `;
 
+        return;
+    }
 
-// ============================================================
-// SURVIVOR
-// ============================================================
-
-function renderSurvivor(challenge) {
-
-    const container =
-        document.getElementById("gameContent");
-
-    const options =
-        Array.isArray(challenge.options)
-            ? challenge.options
-            : [];
 
     container.innerHTML = `
 
-        <div class="game-detail-card">
+        <div class="challenge-card">
 
-            <div class="challenge-box">
+            <h2>
+                ${escapeHtml(
+                    question
+                )}
+            </h2>
 
-                <h3>
-                    🏆 The Survivor
-                </h3>
+            <input
+                id="answerInput"
+                class="answer-input"
+                type="text"
+                placeholder="Your answer..."
+            >
 
-                <div class="question">
-                    ${
-                        challenge.question ||
-                        "Choose one option."
-                    }
-                </div>
-
-                <div class="info-box">
-                    ${
-                        challenge.round
-                            ? `Round ${challenge.round} —`
-                            : ""
-                    }
-                    ${options.length}
-                    options.
-                    Only one is safe.
-                </div>
-
-                <div class="options">
-
-                    ${
-                        options.map(option => `
-                            <button
-                                class="option-btn"
-                                onclick="submitChoice('${escapeQuotes(option)}')"
-                            >
-                                ${option}
-                            </button>
-                        `).join("")
-                    }
-
-                </div>
-
-            </div>
+            <button
+                class="primary-btn"
+                onclick="submitGameAnswer()"
+            >
+                SUBMIT ANSWER
+            </button>
 
         </div>
+
     `;
 }
 
 
-// ============================================================
-// IMPOSSIBLE CHOICE
-// ============================================================
+/* ============================================================
+   CHOICE
+   ============================================================ */
 
-function renderImpossibleChoice(challenge) {
+function selectChoice(
+    index
+) {
 
-    const container =
-        document.getElementById("gameContent");
-
-    const options =
-        Array.isArray(challenge.options)
-            ? challenge.options
-            : [];
-
-    container.innerHTML = `
-
-        <div class="game-detail-card">
-
-            <div class="challenge-box">
-
-                <h3>
-                    🤔 Impossible Choice
-                </h3>
-
-                <div class="question">
-                    ${
-                        challenge.question ||
-                        "Which would the crowd choose?"
-                    }
-                </div>
-
-                <div class="info-box">
-                    Don't choose what YOU prefer.
-                    Predict what the crowd will do.
-                </div>
-
-                <div class="options">
-
-                    ${
-                        options.map(option => `
-                            <button
-                                class="option-btn"
-                                onclick="submitChoice('${escapeQuotes(option)}')"
-                            >
-                                ${option}
-                            </button>
-                        `).join("")
-                    }
-
-                </div>
-
-            </div>
-
-        </div>
-    `;
-}
+    selectedChoice =
+        index;
 
 
-// ============================================================
-// ESCAPE
-// ============================================================
+    document
+        .querySelectorAll(
+            ".choice-btn"
+        )
+        .forEach(
+            button => {
 
-function escapeQuotes(value) {
+                button.classList.remove(
+                    "selected"
+                );
 
-    return String(value)
-        .replace(/\\/g, "\\\\")
-        .replace(/'/g, "\\'");
-}
-
-
-// ============================================================
-// ANSWERS
-// ============================================================
-
-async function submitAnswer() {
-
-    const input =
-        document.getElementById("answerInput");
-
-    if (
-        !input ||
-        !input.value.trim()
-    ) {
-
-        toast("Enter an answer first.");
-        return;
-    }
-
-    await submitGameAnswer(
-        input.value.trim()
-    );
-}
-
-
-async function submitNumber(mode) {
-
-    const input =
-        document.getElementById("numberInput");
-
-    if (!input || input.value === "") {
-
-        toast("Enter a number.");
-        return;
-    }
-
-    const number =
-        Number(input.value);
-
-    if (!Number.isFinite(number)) {
-
-        toast("Enter a valid number.");
-        return;
-    }
-
-    await submitGameAnswer(
-        String(number)
-    );
-}
-
-
-async function submitChoice(choice) {
-
-    await submitGameAnswer(choice);
-}
-
-
-// ============================================================
-// SUBMIT GAME ANSWER
-// ============================================================
-
-async function submitGameAnswer(answer) {
-
-    if (!currentGame) {
-
-        toast("No game selected.");
-        return;
-    }
-
-    if (!currentChallenge) {
-
-        toast("No challenge loaded.");
-        return;
-    }
-
-    if (!currentChallenge.id) {
-
-        toast("Challenge ID missing.");
-        return;
-    }
-
-    try {
-
-        const result = await api(
-            `/api/games/${currentGame.id}/answer`,
-            {
-                method: "POST",
-
-                body: JSON.stringify({
-                    challenge_id:
-                        currentChallenge.id,
-
-                    answer:
-                        answer
-                })
             }
         );
 
-        if (result.correct) {
 
-            toast(
-                result.already_rewarded
-                    ? "✅ Correct answer!"
-                    : `🎉 Correct! +${
-                        result.reward || 0
-                    } Points`
-            );
+    const selected =
+        document.querySelector(
+            `[data-option-index="${index}"]`
+        );
 
-            if (result.points !== undefined) {
 
-                state.points =
-                    result.points;
-            }
+    if (selected) {
 
-            updateBalances();
+        selected.classList.add(
+            "selected"
+        );
 
-        } else {
+    }
 
-            toast(
-                result.message ||
-                "❌ That's not correct. Try again."
-            );
-        }
 
-    } catch (error) {
+    const submitButton =
+        document.getElementById(
+            "submitChoiceButton"
+        );
 
-        console.error(error);
 
-        toast(error.message);
+    if (submitButton) {
+
+        submitButton.disabled =
+            false;
+
     }
 }
 
 
-// ============================================================
-// ADS
-// ============================================================
+/* ============================================================
+   ANSWERS
+   ============================================================ */
+
+async function submitSelectedChoice() {
+
+    if (
+        selectedChoice ===
+        null
+    ) {
+
+        showToast(
+            "Select an option first."
+        );
+
+        return;
+    }
+
+
+    const options =
+        currentChallenge.options ||
+        [];
+
+
+    const answer =
+        options[
+            selectedChoice
+        ];
+
+
+    await submitAnswer(
+        answer
+    );
+}
+
+
+async function submitGameAnswer() {
+
+    const input =
+        document.getElementById(
+            "answerInput"
+        );
+
+
+    if (!input) {
+        return;
+    }
+
+
+    const answer =
+        input.value.trim();
+
+
+    if (!answer) {
+
+        showToast(
+            "Enter an answer first."
+        );
+
+        return;
+    }
+
+
+    await submitAnswer(
+        answer
+    );
+}
+
+
+async function submitAnswer(
+    answer
+) {
+
+    if (
+        !currentChallenge ||
+        !currentGame
+    ) {
+
+        showToast(
+            "No active challenge."
+        );
+
+        return;
+    }
+
+
+    const buttons =
+        document.querySelectorAll(
+            "button"
+        );
+
+
+    buttons.forEach(
+        button => {
+
+            if (
+
+                button.classList.contains(
+                    "primary-btn"
+                )
+
+                ||
+
+                button.classList.contains(
+                    "choice-btn"
+                )
+
+            ) {
+
+                button.disabled =
+                    true;
+
+            }
+
+        }
+    );
+
+
+    try {
+
+        const data =
+            await api(
+                `/api/games/${encodeURIComponent(currentGame.id)}/answer`,
+                {
+                    method:
+                        "POST",
+
+                    body:
+                        JSON.stringify({
+
+                            challenge_id:
+                                currentChallenge.id,
+
+                            answer:
+                                answer
+
+                        })
+                }
+            );
+
+
+        if (data.user) {
+
+            updateUserState(
+                data.user
+            );
+
+        }
+
+
+        if (data.correct) {
+
+            showToast(
+
+                `🎉 Correct! +${
+                    Number(
+                        data.reward_points ??
+                        data.reward ??
+                        0
+                    )
+                } points`
+
+            );
+
+
+            setTimeout(
+                () => {
+
+                    loadChallenge(
+                        currentGame.id
+                    );
+
+                },
+                1200
+            );
+
+        } else {
+
+            showToast(
+
+                data.message ||
+                "❌ Wrong answer. Try again."
+
+            );
+
+
+            document
+                .querySelectorAll(
+                    "button"
+                )
+                .forEach(
+                    button => {
+
+                        button.disabled =
+                            false;
+
+                    }
+                );
+
+        }
+
+
+    } catch (error) {
+
+        console.error(
+            "Answer error:",
+            error
+        );
+
+
+        showToast(
+            error.message ||
+            "Unable to submit answer."
+        );
+
+
+        document
+            .querySelectorAll(
+                "button"
+            )
+            .forEach(
+                button => {
+
+                    button.disabled =
+                        false;
+
+                }
+            );
+
+    }
+}
+
+
+/* ============================================================
+   ADS
+   ============================================================ */
 
 async function watchAd() {
 
@@ -1094,510 +1479,515 @@ async function watchAd() {
             "watchAdButton"
         );
 
-    if (!button) return;
-
-    button.disabled = true;
-    button.textContent =
-        "📺 WATCHING...";
-
-    setTimeout(async () => {
-
-        try {
-
-            const result =
-                await api(
-                    "/api/ads/mock-complete",
-                    {
-                        method: "POST",
-                        body: JSON.stringify({})
-                    }
-                );
-
-            const reward =
-                Number(result.reward || 1);
-
-            state.points += reward;
-            state.ads_watched += 1;
-
-            updateBalances();
-            updateAds();
-
-            toast(
-                `+${reward} QuizBee Point earned!`
-            );
-
-        } catch (error) {
-
-            console.error(error);
-
-            toast(error.message);
-        }
-
-        button.disabled = false;
-
-        button.textContent =
-            "📺 WATCH AD";
-
-        updateAds();
-
-    }, 1500);
-}
-
-
-function updateAds() {
-
-    const watched =
-        Number(state.ads_watched || 0);
-
-    const progress =
-        document.getElementById(
-            "adsProgress"
-        );
-
-    const progressBar =
-        document.getElementById(
-            "adsProgressBar"
-        );
-
-    const button =
-        document.getElementById(
-            "watchAdButton"
-        );
-
-    if (progress) {
-
-        progress.textContent =
-            `${watched}/10`;
-    }
-
-    if (progressBar) {
-
-        progressBar.style.width =
-            `${Math.min(watched, 10) * 10}%`;
-    }
-
-    if (button && watched >= 10) {
-
-        button.disabled = true;
-
-        button.textContent =
-            "✅ DAILY REWARD COMPLETE";
-    }
-}
-
-
-// ============================================================
-// BALANCES
-// ============================================================
-
-function updateBalances() {
-
-    const points =
-        document.getElementById(
-            "pointsBalance"
-        );
-
-    const prize =
-        document.getElementById(
-            "prizeBalance"
-        );
-
-    if (points) {
-
-        points.textContent =
-            Number(state.points || 0)
-                .toLocaleString();
-    }
-
-    if (prize) {
-
-        prize.textContent =
-            `₦${Number(
-                state.prize_balance || 0
-            ).toLocaleString()}`;
-    }
-}
-
-
-// ============================================================
-// USER STATE
-// ============================================================
-
-function updateUserState(firebaseUser) {
-
-    if (!firebaseUser) return;
-
-    state.points =
-        Number(
-            firebaseUser.quizbee_points ??
-            firebaseUser.points ??
-            state.points ??
-            0
-        );
-
-    state.prize_balance =
-        Number(
-            firebaseUser.prize_balance ??
-            0
-        );
-
-    state.score =
-        Number(
-            firebaseUser.total_earned ??
-            firebaseUser.score ??
-            0
-        );
-
-    state.streak =
-        Number(
-            firebaseUser.streak_days ??
-            firebaseUser.streak ??
-            0
-        );
-
-    state.referrals =
-        Number(
-            firebaseUser.referrals_count ??
-            firebaseUser.referrals ??
-            0
-        );
-}
-
-
-// ============================================================
-// PROFILE
-// ============================================================
-
-function updateProfile() {
-
-    const name =
-        document.getElementById(
-            "profileName"
-        );
-
-    const username =
-        document.getElementById(
-            "profileUsername"
-        );
-
-    const score =
-        document.getElementById(
-            "profileScore"
-        );
-
-    const streak =
-        document.getElementById(
-            "profileStreak"
-        );
-
-    const referrals =
-        document.getElementById(
-            "profileReferrals"
-        );
-
-    if (name) {
-
-        name.textContent =
-            user.first_name ||
-            "Player";
-    }
-
-    if (username) {
-
-        username.textContent =
-            user.username
-                ? `@${user.username}`
-                : "Telegram Player";
-    }
-
-    if (score) {
-
-        score.textContent =
-            Number(state.score || 0)
-                .toLocaleString();
-    }
-
-    if (streak) {
-
-        streak.textContent =
-            state.streak || 0;
-    }
-
-    if (referrals) {
-
-        referrals.textContent =
-            state.referrals || 0;
-    }
-}
-
-
-// ============================================================
-// LEADERBOARD
-// ============================================================
-
-async function loadLeaderboard(
-    type = "weekly",
-    button = null
-) {
 
     if (button) {
 
-        document
-            .querySelectorAll(".tabs button")
-            .forEach(b =>
-                b.classList.remove("active")
-            );
+        button.disabled =
+            true;
 
-        button.classList.add("active");
     }
+
 
     try {
 
         const data =
             await api(
-                `/api/leaderboard?type=${type}`
-            );
-
-        const container =
-            document.getElementById(
-                "leaderboardList"
-            );
-
-        if (!container) return;
-
-        const players =
-            data.leaderboard || [];
-
-        if (!players.length) {
-
-            container.innerHTML = `
-                <div class="info-box">
-                    No players yet.
-                </div>
-            `;
-
-            return;
-        }
-
-        container.innerHTML =
-            players.map((player, index) => {
-
-                const name =
-                    player.first_name ||
-                    player.username ||
-                    "Player";
-
-                const score =
-                    Number(
-                        player.total_earned || 0
-                    );
-
-                return `
-                    <div class="rank-row">
-
-                        <div class="rank-number">
-                            ${
-                                player.rank ||
-                                index + 1
-                            }
-                        </div>
-
-                        <div class="rank-name">
-                            ${name}
-                        </div>
-
-                        <div class="rank-score">
-                            ${score}
-                        </div>
-
-                    </div>
-                `;
-
-            }).join("");
-
-    } catch (error) {
-
-        console.error(error);
-
-        const container =
-            document.getElementById(
-                "leaderboardList"
-            );
-
-        if (container) {
-
-            container.innerHTML = `
-                <div class="info-box">
-                    Leaderboard unavailable.
-                </div>
-            `;
-        }
-    }
-}
-
-
-// ============================================================
-// WALLET ACTIONS
-// ============================================================
-
-function buyPoints() {
-
-    toast(
-        "💰 Point purchases will be connected later."
-    );
-}
-
-
-function withdrawPrize() {
-
-    toast(
-        "💸 Withdrawals will be connected after the wallet system."
-    );
-}
-
-
-// ============================================================
-// BOOTSTRAP
-// ============================================================
-
-async function bootstrap() {
-
-    try {
-
-        const data =
-            await api(
-                "/api/bootstrap",
+                "/api/ads/mock-complete",
                 {
-                    method: "POST",
-
-                    body: JSON.stringify({
-                        telegram_user: user
-                    })
+                    method:
+                        "POST"
                 }
             );
 
-        console.log(
-            "QuizBee bootstrap:",
-            data
-        );
 
         if (data.user) {
 
             updateUserState(
                 data.user
             );
+
         }
 
-        state.games =
-            normalizeGames(
-                data.games
+
+        adsWatched =
+            Number(
+                data.ads_watched ??
+                adsWatched + 1
             );
+
+
+        updateAdsUI();
+
+
+        showToast(
+
+            `📺 Ad completed! +${
+                Number(
+                    data.reward_points ??
+                    data.reward ??
+                    1
+                )
+            } point`
+
+        );
+
 
     } catch (error) {
 
         console.error(
-            "Bootstrap failed:",
+            "Ad error:",
             error
         );
 
-        /*
-         * Only use the fallback if the API
-         * cannot be reached.
-         */
 
-        state.games =
-            defaultGames();
-
-        toast(
-            "Using demo data. Backend unavailable."
-        );
-    }
-
-    const welcome =
-        document.getElementById(
-            "welcomeText"
+        showToast(
+            error.message ||
+            "Unable to complete ad."
         );
 
-    if (welcome) {
-
-        welcome.textContent =
-            `Welcome, ${
-                user.first_name ||
-                "Player"
-            } 👋`;
     }
 
-    updateBalances();
-    updateProfile();
-    updateAds();
 
-    renderGames();
-    renderHomeGames();
+    if (button) {
+
+        button.disabled =
+            false;
+
+    }
 }
 
 
-// ============================================================
-// DEMO FALLBACK
-// ============================================================
+function updateAdsUI() {
 
-function defaultGames() {
+    const progress =
+        document.getElementById(
+            "adsProgress"
+        );
 
-    return [
 
-        {
-            id: "guess_it",
-            name: "Guess It",
-            emoji: "🎯",
-            status: "active",
-            entry_points: 10
-        },
+    const progressBar =
+        document.getElementById(
+            "adsProgressBar"
+        );
 
-        {
-            id: "impossible_question",
-            name: "Impossible Question",
-            emoji: "💀",
-            status: "active",
-            entry_points: 10
-        },
 
-        {
-            id: "crowd_trap",
-            name: "The Crowd Trap",
-            emoji: "🧠",
-            status: "locked",
-            entry_points: 10
-        },
+    if (progress) {
 
-        {
-            id: "survivor",
-            name: "The Survivor",
-            emoji: "🏆",
-            status: "locked",
-            entry_points: 10
-        },
+        progress.textContent =
+            `${adsWatched}/10`;
 
-        {
-            id: "dead_number",
-            name: "Dead Number",
-            emoji: "☠️",
-            status: "locked",
-            entry_points: 10
-        },
+    }
 
-        {
-            id: "impossible_choice",
-            name: "Impossible Choice",
-            emoji: "🤔",
-            status: "locked",
-            entry_points: 10
+
+    if (progressBar) {
+
+        progressBar.style.width =
+            `${
+                Math.min(
+                    adsWatched / 10 * 100,
+                    100
+                )
+            }%`;
+
+    }
+}
+
+
+/* ============================================================
+   LEADERBOARD
+   ============================================================ */
+
+async function loadLeaderboard(
+    type = "weekly",
+    clickedButton = null
+) {
+
+    const container =
+        document.getElementById(
+            "leaderboardList"
+        );
+
+
+    if (!container) {
+        return;
+    }
+
+
+    container.innerHTML =
+        "Loading...";
+
+
+    document
+        .querySelectorAll(
+            ".tabs button"
+        )
+        .forEach(
+            button => {
+
+                button.classList.remove(
+                    "active"
+                );
+
+            }
+        );
+
+
+    if (clickedButton) {
+
+        clickedButton.classList.add(
+            "active"
+        );
+
+    }
+
+
+    try {
+
+        const data =
+            await api(
+                `/api/leaderboard?period=${encodeURIComponent(type)}`
+            );
+
+
+        const leaderboard =
+            data.leaderboard ||
+            [];
+
+
+        if (!leaderboard.length) {
+
+            container.innerHTML = `
+
+                <div class="empty-state">
+                    No leaderboard data yet.
+                </div>
+
+            `;
+
+            return;
         }
 
-    ];
+
+        container.innerHTML =
+            leaderboard
+                .map(
+                    (
+                        player,
+                        index
+                    ) => `
+
+                        <div class="leaderboard-row">
+
+                            <div class="leaderboard-rank">
+                                #${index + 1}
+                            </div>
+
+                            <div class="leaderboard-player">
+
+                                <strong>
+                                    ${escapeHtml(
+                                        player.first_name ||
+                                        player.username ||
+                                        "Player"
+                                    )}
+                                </strong>
+
+                                ${
+                                    player.username
+                                        ? `
+                                            <span>
+                                                @${escapeHtml(
+                                                    player.username
+                                                )}
+                                            </span>
+                                        `
+                                        : ""
+                                }
+
+                            </div>
+
+                            <div class="leaderboard-score">
+                                ${Number(
+                                    player.total_earned ||
+                                    0
+                                ).toLocaleString()}
+                            </div>
+
+                        </div>
+
+                    `
+                )
+                .join("");
+
+
+    } catch (error) {
+
+        console.error(
+            "Leaderboard error:",
+            error
+        );
+
+
+        container.innerHTML = `
+
+            <div class="empty-state">
+                Unable to load leaderboard.
+            </div>
+
+        `;
+
+    }
 }
 
 
-// ============================================================
-// START
-// ============================================================
+/* ============================================================
+   PROFILE
+   ============================================================ */
 
-bootstrap();
+async function loadProfile() {
+
+    try {
+
+        const data =
+            await api(
+                "/api/profile"
+            );
+
+
+        if (
+            data.success &&
+            data.user
+        ) {
+
+            updateUserState(
+                data.user
+            );
+
+        }
+
+
+    } catch (error) {
+
+        console.error(
+            "Profile error:",
+            error
+        );
+
+    }
+}
+
+
+/* ============================================================
+   NAVIGATION
+   ============================================================ */
+
+function showPage(
+    page
+) {
+
+    const pages =
+        document.querySelectorAll(
+            ".page"
+        );
+
+
+    pages.forEach(
+        section => {
+
+            section.classList.remove(
+                "active"
+            );
+
+        }
+    );
+
+
+    const target =
+        document.getElementById(
+            `${page}Page`
+        );
+
+
+    if (target) {
+
+        target.classList.add(
+            "active"
+        );
+
+    }
+
+
+    currentPage =
+        page;
+
+
+    document
+        .querySelectorAll(
+            ".nav-item"
+        )
+        .forEach(
+            item => {
+
+                item.classList.remove(
+                    "active"
+                );
+
+            }
+        );
+
+
+    const navMap = {
+
+        home: 0,
+
+        games: 1,
+
+        ads: 2,
+
+        leaderboard: 3,
+
+        profile: 4
+
+    };
+
+
+    const navIndex =
+        navMap[page];
+
+
+    if (
+        navIndex !== undefined
+    ) {
+
+        const navItems =
+            document.querySelectorAll(
+                ".nav-item"
+            );
+
+
+        if (navItems[navIndex]) {
+
+            navItems[
+                navIndex
+            ].classList.add(
+                "active"
+            );
+
+        }
+
+    }
+
+
+    if (
+        page ===
+        "leaderboard"
+    ) {
+
+        loadLeaderboard(
+            "weekly"
+        );
+
+    }
+
+
+    if (
+        page ===
+        "profile"
+    ) {
+
+        loadProfile();
+
+    }
+
+
+    if (
+        page ===
+        "ads"
+    ) {
+
+        updateAdsUI();
+
+    }
+
+
+    window.scrollTo({
+
+        top: 0,
+
+        behavior:
+            "smooth"
+
+    });
+}
+
+
+function goHome() {
+
+    showPage(
+        "home"
+    );
+}
+
+
+function buyPoints() {
+
+    showToast(
+        "Point purchases will be connected next."
+    );
+}
+
+
+function withdrawPrize() {
+
+    showToast(
+        "Prize withdrawal will be connected next."
+    );
+}
+
+
+/* ============================================================
+   START
+   ============================================================ */
+
+document.addEventListener(
+    "DOMContentLoaded",
+    () => {
+
+        console.log(
+            "QuizBee frontend loaded."
+        );
+
+        console.log(
+            "API URL:",
+            API_URL
+        );
+
+
+        if (!API_URL) {
+
+            showToast(
+                "QuizBee API URL is missing."
+            );
+
+            return;
+        }
+
+
+        if (!getInitData()) {
+
+            console.warn(
+                "Telegram initData is missing."
+            );
+
+            showToast(
+                "Open QuizBee from Telegram."
+            );
+
+            return;
+        }
+
+
+        bootstrap();
+
+    }
+);
