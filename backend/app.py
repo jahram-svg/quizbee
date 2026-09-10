@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from backend.telegram_auth import validate_telegram_init_data
 
 from firebase_admin import firestore
 
