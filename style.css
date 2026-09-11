@@ -889,3 +889,182 @@ button {
 .wallet-withdrawal-amount small {
     color: var(--muted);
 }
+
+/* ============================================================
+   DAILY EARNING
+   ============================================================ */
+
+.earning-hint {
+    background: #2b2515;
+    border: 1px solid #5c4a1b;
+    color: #f4d96b;
+    border-radius: 15px;
+    padding: 13px;
+    font-size: 12px;
+    line-height: 1.5;
+    margin-bottom: 14px;
+}
+
+.earning-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 20px;
+    margin-bottom: 18px;
+}
+
+.earning-badge {
+    display: inline-block;
+    background: var(--card2);
+    color: var(--yellow);
+    padding: 7px 10px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+
+.earning-card h2 {
+    margin: 5px 0 12px;
+    font-size: 20px;
+}
+
+.earning-prize {
+    font-size: 34px;
+    font-weight: 900;
+    color: var(--green);
+}
+
+.earning-prize-label {
+    color: var(--muted);
+    font-size: 11px;
+    margin-top: 2px;
+}
+
+.earning-meta {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin: 17px 0;
+}
+
+.earning-meta div {
+    background: var(--card2);
+    border-radius: 13px;
+    padding: 12px;
+}
+
+.earning-meta span {
+    display: block;
+    color: var(--muted);
+    font-size: 10px;
+    margin-bottom: 5px;
+}
+
+.earning-meta strong {
+    font-size: 13px;
+}
+
+.earning-timer {
+    background: #20252e;
+    border-radius: 14px;
+    padding: 14px;
+    text-align: center;
+    font-size: 19px;
+    font-weight: 800;
+    margin: 15px 0;
+    color: var(--yellow);
+}
+
+.earning-question {
+    background: var(--card2);
+    border-radius: 14px;
+    padding: 15px;
+    margin: 15px 0;
+    line-height: 1.55;
+    white-space: pre-line;
+}
+
+.earning-instructions {
+    background: var(--card2);
+    border-radius: 14px;
+    padding: 15px;
+    margin: 15px 0;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.55;
+    white-space: pre-line;
+}
+
+.earning-note {
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.5;
+    margin-top: 12px;
+    text-align: center;
+}
+
+.earning-status {
+    margin-top: 15px;
+    padding-top: 13px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.earning-status strong {
+    color: var(--yellow);
+}
+
+.earning-empty {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 30px 20px;
+    text-align: center;
+}
+
+.earning-empty-icon {
+    font-size: 50px;
+    margin-bottom: 10px;
+}
+
+.earning-empty h2 {
+    font-size: 19px;
+    margin-bottom: 8px;
+}
+
+.earning-empty p {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.5;
+    margin-bottom: 20px;
+}
+
+.text-input {
+    width: 100%;
+    box-sizing: border-box;
+    background: #20252e;
+    border: 1px solid var(--border);
+    color: white;
+    border-radius: 12px;
+    padding: 13px;
+    margin: 7px 0;
+    outline: none;
+    font-family: inherit;
+}
+
+.text-input:focus {
+    border-color: var(--yellow);
+}
+
+.secondary-btn {
+    width: 100%;
+    border: 1px solid var(--border);
+    background: var(--card2);
+    color: white;
+    padding: 13px;
+    border-radius: 12px;
+    font-weight: 700;
+    margin-top: 10px;
+    }
