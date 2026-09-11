@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width,
+        initial-scale=1.0,
+        maximum-scale=1.0,
+        user-scalable=no"
+    >
+
+    <title>QuizBee Admin</title>
+
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+    <script src="../config.js"></script>
+
+    <link
+        rel="stylesheet"
+        href="admin.css"
+    >
+
+</head>
+
+
+<body>
+
+<div id="loadingScreen">
+
+    <div class="loader">🐝</div>
+
+    <h2>QuizBee Admin</h2>
+
+    <p>Checking administrator access...</p>
+
+</div>
+
+
+<div
+    id="deniedScreen"
+    class="hidden"
+>
+
+    <div class="denied-icon">🔒</div>
+
+    <h2>Access Denied</h2>
+
+    <p>
+        This area is restricted to
+        QuizBee administrators.
+    </p>
+
+</div>
+
+
+<div
+    id="adminApp"
+    class="hidden"
+>
+
+    <header class="topbar">
+
+        <div>
+
+            <div class="brand">
+                🐝 QuizBee Admin
+            </div>
+
+            <div
+                id="adminWelcome"
+                class="welcome"
+            >
+                Administrator
+            </div>
+
+        </div>
+
+        <button
+            class="refresh-btn"
+            onclick="refreshCurrentPage()"
+        >
+            ↻
+        </button>
+
+    </header>
+
+
+    <main>
+
+        <!-- DASHBOARD -->
+
+        <section
+            id="dashboardPage"
+            class="page active"
+        >
+
+            <div class="page-title">
+
+                <div>
+                    <h1>Dashboard</h1>
+                    <p>QuizBee overview</p>
+                </div>
+
+            </div>
+
+
+            <div class="stats-grid">
+
+                <div class="stat-card">
+                    <span>👥</span>
+                    <small>Users</small>
+                    <strong id="statUsers">0</strong>
+                </div>
+
+                <div class="stat-card">
+                    <span>🪙</span>
+                    <small>QuizBee Points</small>
+                    <strong id="statPoints">0</strong>
+                </div>
+
+                <div class="stat-card">
+                    <span>💵</span>
+                    <small>Prize Balance</small>
+                    <strong id="statPrize">$0.00</strong>
+                </div>
+
+                <div class="stat-card">
+                    <span>🎮</span>
+                    <small>Active Games</small>
+                    <strong id="statGames">0</strong>
+                </div>
+
+                <div class="stat-card">
+                    <span>💸</span>
+                    <small>Pending Withdrawals</small>
+                    <strong id="statWithdrawals">0</strong>
+                </div>
+
+                <div class="stat-card">
+                    <span>🛒</span>
+                    <small>Pending Purchases</small>
+                    <strong id="statOrders">0</strong>
+                </div>
+
+            </div>
+
+
+            <div class="panel">
+
+                <div class="panel-header">
+
+                    <h2>Daily Earning</h2>
+
+                    <button
+                        class="primary-btn"
+                        onclick="showPage('daily')"
+                    >
+                        Manage
+                    </button>
+
+                </div>
+
+                <div id="dashboardDaily">
+                    No active round.
+                </div>
+
+            </div>
+
+
+            <div class="panel">
+
+                <div class="panel-header">
+
+                    <h2>Quick Actions</h2>
+
+                </div>
+
+                <div class="quick-grid">
+
+                    <button onclick="showPage('daily')">
+                        💰
+                        <span>Daily Earning</span>
+                    </button>
+
+                    <button onclick="showPage('games')">
+                        🎮
+                        <span>Games</span>
+                    </button>
+
+                    <button onclick="showPage('wallet')">
+                        💳
+                        <span>Wallet</span>
+                    </button>
+
+                    <button onclick="showPage('users')">
+                        👥
+                        <span>Users</span>
+                    </button>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- USERS -->
+
+        <section
+            id="usersPage"
+            class="page"
+        >
+
+            <div class="page-title">
+
+                <div>
+                    <h1>Users</h1>
+                    <p>Manage QuizBee accounts</p>
+                </div>
+
+            </div>
+
+            <div class="search-box">
+
+                <input
+                    id="userSearch"
+                    type="text"
+                    placeholder="Search Telegram ID, username or name..."
+                >
+
+                <button
+                    onclick="loadUsers()"
+                >
+                    Search
+                </button>
+
+            </div>
+
+            <div
+                id="usersList"
+                class="list"
+            >
+                Loading users...
+            </div>
+
+        </section>
+
+
+        <!-- USER DETAILS -->
+
+        <section
+            id="userDetailsPage"
+            class="page"
+        >
+
+            <button
+                class="back-btn"
+                onclick="showPage('users')"
+            >
+                ← Users
+            </button>
+
+            <div
+                id="userDetails"
+            >
+                Loading...
+            </div>
+
+        </section>
+
+
+        <!-- GAMES -->
+
+        <section
+            id="gamesPage"
+            class="page"
+        >
+
+            <div class="page-title">
+
+                <div>
+                    <h1>Games</h1>
+                    <p>Manage QuizBee games</p>
+                </div>
+
+            </div>
+
+            <div
+                id="gamesList"
+                class="list"
+            >
+                Loading games...
+            </div>
+
+
+            <div class="panel">
+
+                <h2>Challenges</h2>
+
+                <select
+                    id="challengeGameFilter"
+                    onchange="loadChallenges()"
+                >
+
+                    <option value="">
+                        All Games
+                    </option>
+
+                </select>
+
+                <button
+                    class="primary-btn full"
+                    onclick="showChallengeForm()"
+                >
+                    + Create Challenge
+                </button>
+
+                <div
+                    id="challengeForm"
+                    class="form-panel hidden"
+                >
+
+                    <h3>New Challenge</h3>
+
+                    <label>Game</label>
+
+                    <select id="challengeGame"></select>
+
+                    <label>Title</label>
+
+                    <input
+                        id="challengeTitle"
+                        placeholder="Challenge title"
+                    >
+
+                    <label>Question</label>
+
+                    <textarea
+                        id="challengeQuestion"
+                        placeholder="Enter the question"
+                    ></textarea>
+
+                    <label>Correct Answer</label>
+
+                    <input
+                        id="challengeCorrect"
+                        placeholder="Admin answer"
+                    >
+
+                    <label>Accepted Answers</label>
+
+                    <input
+                        id="challengeAccepted"
+                        placeholder="Answer 1, Answer 2, Answer 3"
+                    >
+
+                    <label>Reward Points</label>
+
+                    <input
+                        id="challengeReward"
+                        type="number"
+                        value="10"
+                    >
+
+                    <label>Type</label>
+
+                    <select id="challengeType">
+
+                        <option value="text">
+                            Text
+                        </option>
+
+                        <option value="choice">
+                            Choice
+                        </option>
+
+                        <option value="image">
+                            Image
+                        </option>
+
+                    </select>
+
+                    <div class="form-actions">
+
+                        <button
+                            class="secondary-btn"
+                            onclick="hideChallengeForm()"
+                        >
+                            Cancel
+                        </button>
+
+                        <button
+                            class="primary-btn"
+                            onclick="createChallenge()"
+                        >
+                            Create
+                        </button>
+
+                    </div>
+
+                </div>
+
+
+                <div
+                    id="challengesList"
+                    class="list"
+                >
+                    Loading challenges...
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- DAILY EARNING -->
+
+        <section
+            id="dailyPage"
+            class="page"
+        >
+
+            <div class="page-title">
+
+                <div>
+                    <h1>Daily Earning</h1>
+                    <p>Create and settle earning rounds</p>
+                </div>
+
+            </div>
+
+
+            <div class="panel">
+
+                <h2>Create Round</h2>
+
+                <label>Title</label>
+
+                <input
+                    id="dailyTitle"
+                    value="Daily Earning"
+                >
+
+                <label>Mode</label>
+
+                <select
+                    id="dailyMode"
+                    onchange="toggleDailyMode()"
+                >
+
+                    <option value="question">
+                        Question
+                    </option>
+
+                    <option value="task">
+                        Task
+                    </option>
+
+                </select>
+
+
+                <div id="dailyQuestionFields">
+
+                    <label>Question</label>
+
+                    <textarea
+                        id="dailyQuestion"
+                        placeholder="Enter question"
+                    ></textarea>
+
+                    <label>Correct Answer</label>
+
+                    <input
+                        id="dailyCorrect"
+                        placeholder="Correct answer"
+                    >
+
+                    <label>Accepted Answers</label>
+
+                    <input
+                        id="dailyAccepted"
+                        placeholder="Answer 1, Answer 2"
+                    >
+
+                </div>
+
+
+                <div id="dailyTaskFields" class="hidden">
+
+                    <label>Task Instructions</label>
+
+                    <textarea
+                        id="dailyInstructions"
+                        placeholder="Tell users what to do"
+                    ></textarea>
+
+                </div>
+
+
+                <label>Prize Pool (USD)</label>
+
+                <input
+                    id="dailyPrize"
+                    type="number"
+                    step="0.01"
+                    value="10"
+                >
+
+                <label>Maximum Participants</label>
+
+                <input
+                    id="dailyMax"
+                    type="number"
+                    value="100"
+                >
+
+                <label>Start Time</label>
+
+                <input
+                    id="dailyStart"
+                    type="datetime-local"
+                >
+
+                <label>End Time</label>
+
+                <input
+                    id="dailyEnd"
+                    type="datetime-local"
+                >
+
+                <div class="info-box">
+
+                    Entry fee:
+                    <strong>10 QuizBee Points</strong>
+
+                </div>
+
+                <button
+                    class="primary-btn full"
+                    onclick="createDailyRound()"
+                >
+                    Create Daily Earning Round
+                </button>
+
+            </div>
+
+
+            <div class="panel">
+
+                <div class="panel-header">
+
+                    <h2>Rounds</h2>
+
+                    <button
+                        class="secondary-btn"
+                        onclick="loadDailyRounds()"
+                    >
+                        Refresh
+                    </button>
+
+                </div>
+
+                <div
+                    id="dailyRoundsList"
+                    class="list"
+                >
+                    Loading...
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- DAILY ROUND DETAILS -->
+
+        <section
+            id="dailyDetailsPage"
+            class="page"
+        >
+
+            <button
+                class="back-btn"
+                onclick="showPage('daily')"
+            >
+                ← Daily Earning
+            </button>
+
+            <div
+                id="dailyDetails"
+            >
+                Loading...
+            </div>
+
+        </section>
+
+
+        <!-- WALLET -->
+
+        <section
+            id="walletPage"
+            class="page"
+        >
+
+            <div class="page-title">
+
+                <div>
+                    <h1>Wallet</h1>
+                    <p>Purchases and withdrawals</p>
+                </div>
+
+            </div>
+
+
+            <div class="tabs">
+
+                <button
+                    class="tab active"
+                    onclick="loadWithdrawals()"
+                >
+                    Withdrawals
+                </button>
+
+                <button
+                    class="tab"
+                    onclick="loadPointOrders()"
+                >
+                    Point Purchases
+                </button>
+
+            </div>
+
+
+            <div
+                id="walletList"
+                class="list"
+            >
+                Loading...
+            </div>
+
+        </section>
+
+
+        <!-- SETTINGS -->
+
+        <section
+            id="settingsPage"
+            class="page"
+        >
+
+            <div class="page-title">
+
+                <div>
+                    <h1>Settings</h1>
+                    <p>QuizBee global settings</p>
+                </div>
+
+            </div>
+
+
+            <div class="panel">
+
+                <label>
+                    Participant Visibility
+                </label>
+
+                <select
+                    id="participantVisibility"
+                >
+
+                    <option value="hidden">
+                        Hidden
+                    </option>
+
+                    <option value="total">
+                        Show Total
+                    </option>
+
+                    <option value="per_game">
+                        Show Per Game
+                    </option>
+
+                </select>
+
+
+                <label class="switch-row">
+
+                    <span>
+                        Maintenance Mode
+                    </span>
+
+                    <input
+                        id="maintenanceMode"
+                        type="checkbox"
+                    >
+
+                </label>
+
+
+                <label class="switch-row">
+
+                    <span>
+                        Daily Earning Enabled
+                    </span>
+
+                    <input
+                        id="dailyEnabled"
+                        type="checkbox"
+                    >
+
+                </label>
+
+
+                <button
+                    class="primary-btn full"
+                    onclick="saveSettings()"
+                >
+                    Save Settings
+                </button>
+
+            </div>
+
+        </section>
+
+    </main>
+
+
+    <nav class="bottom-nav">
+
+        <button
+            class="nav-item active"
+            onclick="showPage('dashboard')"
+        >
+            <span>🏠</span>
+            Dashboard
+        </button>
+
+        <button
+            class="nav-item"
+            onclick="showPage('users')"
+        >
+            <span>👥</span>
+            Users
+        </button>
+
+        <button
+            class="nav-item"
+            onclick="showPage('games')"
+        >
+            <span>🎮</span>
+            Games
+        </button>
+
+        <button
+            class="nav-item"
+            onclick="showPage('daily')"
+        >
+            <span>💰</span>
+            Daily
+        </button>
+
+        <button
+            class="nav-item"
+            onclick="showPage('wallet')"
+        >
+            <span>💳</span>
+            Wallet
+        </button>
+
+    </nav>
+
+</div>
+
+
+<div id="toast"></div>
+
+
+<script src="admin.js"></script>
+
+</body>
+
+  </html>
