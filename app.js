@@ -2761,6 +2761,11 @@ function showPage(
     }
 
 
+    if (page === "earning") {
+    loadDailyEarning();
+    }
+
+
     if (
         page ===
         "profile"
