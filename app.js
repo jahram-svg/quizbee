@@ -313,7 +313,7 @@ function updateUserState(user) {
     if (prizeEl) {
 
         prizeEl.textContent =
-            `₦${prizeBalance.toLocaleString()}`;
+    `$${prizeBalance.toFixed(2)}`;
 
     }
 
