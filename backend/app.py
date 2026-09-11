@@ -11,9 +11,11 @@ from firebase_admin import firestore
 
 from backend.firebase import db
 from backend.telegram_auth import validate_telegram_init_data
+from backend.wallet import wallet_bp
 
 
 app = Flask(__name__)
+app.register_blueprint(wallet_bp)
 
 
 CORS(
