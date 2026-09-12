@@ -182,6 +182,11 @@ function renderDailyEarning() {
                         </strong>
                     </div>
 
+                    <div class="earning-help">
+                         💡 Low on points? Watch 10 ads,
+                          gain 10 points, enter Daily Earning.
+                    </div>
+
                 </div>
 
                 ${
