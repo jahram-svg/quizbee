@@ -10,6 +10,7 @@ from aiogram.types import (
     Message,
     WebAppInfo,
     CallbackQuery,
+    BotCommand,
 )
 from dotenv import load_dotenv
 
