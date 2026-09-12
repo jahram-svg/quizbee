@@ -59,13 +59,13 @@ def get_authenticated_user():
 
     admin_bot_token = os.getenv("ADMIN_BOT_TOKEN", "").strip()
 
-if not admin_bot_token:
-    return None
+    if not admin_bot_token:
+        return None
 
-user = validate_telegram_init_data(
-    init_data,
-    bot_token=admin_bot_token
-) 
+    user = validate_telegram_init_data(
+        init_data,
+        bot_token=admin_bot_token
+    )
 
     if not user:
         return None
