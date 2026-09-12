@@ -22,7 +22,10 @@ load_dotenv()
 
 
 ADMIN_BOT_TOKEN = os.getenv("ADMIN_BOT_TOKEN", "")
-ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID", "")
+ADMIN_TELEGRAM_IDS = os.getenv("ADMIN_TELEGRAM_IDS", "").strip()
+
+if not ADMIN_TELEGRAM_IDS:
+    ADMIN_TELEGRAM_IDS = os.getenv("ADMIN_TELEGRAM_ID", "").strip() 
 
 
 # ---------------------------------------------------------
