@@ -1130,6 +1130,75 @@ def daily_results(round_id):
         }), 500
 
 
+@admin_bp.get(
+    "/daily-rounds/pending-settlement"
+)
+def pending_daily_settlements():
+
+    admin, error = require_admin()
+
+    if error:
+        return admin_error(error)
+
+    try:
+
+        docs = (
+            db.collection(
+                "daily_earning_rounds"
+            )
+            .where(
+                "status",
+                "==",
+                "closed"
+            )
+            .stream()
+        )
+
+        rounds = []
+
+        for doc in docs:
+
+            data = (
+                doc.to_dict()
+                or {}
+            )
+
+            if data.get(
+                "settlement_status"
+            ) != "pending":
+                continue
+
+            data["id"] = doc.id
+
+            rounds.append(
+                serialize_value(
+                    data
+                )
+            )
+
+        rounds.sort(
+            key=lambda x:
+                x.get(
+                    "end_at",
+                    ""
+                )
+        )
+
+        return jsonify({
+            "success": True,
+            "rounds":
+                rounds
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "success": False,
+            "error":
+                str(e)
+        }), 500
+
+
 # ============================================================
 # TRANSACTIONS
 # ============================================================
