@@ -23,7 +23,7 @@ def validate_telegram_init_data(
         return None
 
     if bot_token is None:
-    bot_token = os.getenv("BOT_TOKEN")
+        bot_token = os.getenv("BOT_TOKEN")
 
     if not bot_token:
         raise RuntimeError("BOT_TOKEN is missing.")
