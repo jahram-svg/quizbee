@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_DOWN
 
@@ -14,11 +15,12 @@ daily_earning_bp = Blueprint(
     __name__
 )
 
+
 ENTRY_FEE = 10
 
 
 # ============================================================
-# TIME / SERIALIZATION
+# GENERAL HELPERS
 # ============================================================
 
 def now():
@@ -44,14 +46,66 @@ def serialize_value(value):
     return value
 
 
+def normalize_answer(value):
+    if value is None:
+        return ""
+
+    value = str(value).strip().lower()
+
+    value = re.sub(
+        r"\s+",
+        " ",
+        value
+    )
+
+    value = re.sub(
+        r"[^\w\s-]",
+        "",
+        value
+    )
+
+    return value
+
+
+def accepted_answer_set(round_data):
+    answers = []
+
+    correct = round_data.get(
+        "correct_answer",
+        ""
+    )
+
+    if correct:
+        answers.append(correct)
+
+    extra = round_data.get(
+        "accepted_answers",
+        []
+    )
+
+    if isinstance(extra, str):
+        extra = [
+            item.strip()
+            for item in extra.split(",")
+            if item.strip()
+        ]
+
+    if isinstance(extra, list):
+        answers.extend(extra)
+
+    return {
+        normalize_answer(answer)
+        for answer in answers
+        if normalize_answer(answer)
+    }
+
+
 # ============================================================
-# TELEGRAM AUTH
+# USER AUTH
 # ============================================================
 
 def require_user():
-    """
-    Authenticate normal QuizBee Mini App users with BOT_TOKEN.
-    """
+
     init_data = request.headers.get(
         "X-Telegram-Init-Data",
         ""
@@ -68,18 +122,85 @@ def require_user():
         return None
 
     return {
-        "telegram_id": str(user["id"]),
-        "username": user.get("username", ""),
-        "first_name": user.get("first_name", ""),
-        "last_name": user.get("last_name", "")
+        "telegram_id": str(
+            user["id"]
+        ),
+        "username": user.get(
+            "username",
+            ""
+        ),
+        "first_name": user.get(
+            "first_name",
+            ""
+        ),
+        "last_name": user.get(
+            "last_name",
+            ""
+        )
     }
 
 
+def user_ref(telegram_id):
+
+    return (
+        db.collection(
+            "users"
+        )
+        .document(
+            str(telegram_id)
+        )
+    )
+
+
+def get_user(telegram_id):
+
+    snap = user_ref(
+        telegram_id
+    ).get()
+
+    if not snap.exists:
+        return None
+
+    data = snap.to_dict() or {}
+
+    data["telegram_id"] = str(
+        telegram_id
+    )
+
+    return data
+
+
+# ============================================================
+# ADMIN AUTH
+# ============================================================
+
+def is_admin(telegram_id):
+
+    admin_ids = os.getenv(
+        "ADMIN_TELEGRAM_IDS",
+        ""
+    ).strip()
+
+    if not admin_ids:
+        admin_ids = os.getenv(
+            "ADMIN_TELEGRAM_ID",
+            ""
+        ).strip()
+
+    allowed_ids = {
+        item.strip()
+        for item in admin_ids.split(",")
+        if item.strip()
+    }
+
+    return (
+        str(telegram_id)
+        in allowed_ids
+    )
+
+
 def require_admin_user():
-    """
-    Authenticate Admin Mini App users with ADMIN_BOT_TOKEN,
-    then verify their Telegram ID is an allowed admin.
-    """
+
     init_data = request.headers.get(
         "X-Telegram-Init-Data",
         ""
@@ -104,83 +225,72 @@ def require_admin_user():
     if not user:
         return None
 
-    telegram_id = str(user["id"])
+    telegram_id = str(
+        user["id"]
+    )
 
-    if not is_admin(telegram_id):
+    if not is_admin(
+        telegram_id
+    ):
         return None
 
     return {
         "telegram_id": telegram_id,
-        "username": user.get("username", ""),
-        "first_name": user.get("first_name", ""),
-        "last_name": user.get("last_name", "")
+        "username": user.get(
+            "username",
+            ""
+        ),
+        "first_name": user.get(
+            "first_name",
+            ""
+        ),
+        "last_name": user.get(
+            "last_name",
+            ""
+        )
     }
 
 
+def admin_error():
+
+    return jsonify({
+        "success": False,
+        "error":
+            "Admin access required."
+    }), 403
+
+
 # ============================================================
-# FIRESTORE HELPERS
+# ROUND REFERENCES
 # ============================================================
 
-def user_ref(telegram_id):
+def round_ref(round_id):
+
     return (
-        db.collection("users")
-        .document(str(telegram_id))
-    )
-
-
-def get_user(telegram_id):
-    snap = user_ref(
-        telegram_id
-    ).get()
-
-    if not snap.exists:
-        return None
-
-    data = snap.to_dict() or {}
-    data["telegram_id"] = str(
-        telegram_id
-    )
-
-    return data
-
-
-def get_round(round_id):
-    snap = (
         db.collection(
             "daily_earning_rounds"
         )
-        .document(round_id)
-        .get()
+        .document(
+            str(round_id)
+        )
     )
-
-    if not snap.exists:
-        return None
-
-    data = snap.to_dict() or {}
-    data["id"] = round_id
-
-    return data
 
 
 def entry_document_id(
     round_id,
     telegram_id
 ):
-    """
-    Deterministic entry ID.
 
-    One Telegram account can therefore have
-    only one Daily Earning entry per round.
-    """
     return (
         f"{round_id}_{str(telegram_id)}"
     )
 
 
-def entry_ref(
+def get_entry_ref(
     round_id,
     telegram_id
 ):
+
     return (
         db.collection(
             "daily_earning_entries"
@@ -194,11 +304,202 @@ def entry_ref(
     )
 
 
+def settlement_result_ref(
+    round_id,
+    telegram_id
+):
+
+    return (
+        db.collection(
+            "daily_earning_results"
+        )
+        .document(
+            f"{round_id}_{str(telegram_id)}"
+        )
+    )
+
+
+# ============================================================
+# ROUND STATE
+# ============================================================
+
+def get_round(
+    round_id,
+    update_state=True
+):
+
+    ref = round_ref(
+        round_id
+    )
+
+    snap = ref.get()
+
+    if not snap.exists:
+        return None
+
+    data = snap.to_dict() or {}
+
+    data["id"] = str(
+        round_id
+    )
+
+    current = now()
+
+    status = data.get(
+        "status",
+        "scheduled"
+    )
+
+    start_at = data.get(
+        "start_at"
+    )
+
+    end_at = data.get(
+        "end_at"
+    )
+
+    # --------------------------------------------------------
+    # AUTOMATIC ACTIVATION
+    # --------------------------------------------------------
+
+    if (
+        update_state
+        and status == "scheduled"
+        and start_at
+        and current >= start_at
+        and (
+            not end_at
+            or current < end_at
+        )
+    ):
+
+        ref.update({
+            "status":
+                "active",
+
+            "activated_at":
+                current,
+
+            "updated_at":
+                current
+        })
+
+        data["status"] = "active"
+
+    # --------------------------------------------------------
+    # AUTOMATIC CLOSURE
+    # --------------------------------------------------------
+
+    if (
+        update_state
+        and status in (
+            "scheduled",
+            "active"
+        )
+        and end_at
+        and current >= end_at
+    ):
+
+        ref.update({
+            "status":
+                "closed",
+
+            "settlement_status":
+                (
+                    data.get(
+                        "settlement_status",
+                        "not_settled"
+                    )
+                    if data.get(
+                        "settlement_status"
+                    ) == "settled"
+                    else "pending"
+                ),
+
+            "closed_at":
+                current,
+
+            "updated_at":
+                current
+        })
+
+        data["status"] = "closed"
+
+    return data
+
+
+def public_round(data):
+
+    if not data:
+        return None
+
+    result = dict(data)
+
+    # Never expose answers to users.
+    result.pop(
+        "correct_answer",
+        None
+    )
+
+    result.pop(
+        "accepted_answers",
+        None
+    )
+
+    return serialize_value(
+        result
+    )
+
+
+def is_round_open(
+    round_data
+):
+
+    if not round_data:
+        return False
+
+    status = round_data.get(
+        "status"
+    )
+
+    if status != "active":
+        return False
+
+    current = now()
+
+    start_at = round_data.get(
+        "start_at"
+    )
+
+    end_at = round_data.get(
+        "end_at"
+    )
+
+    if (
+        start_at
+        and current < start_at
+    ):
+        return False
+
+    if (
+        end_at
+        and current >= end_at
+    ):
+        return False
+
+    return True
+
+
+# ============================================================
+# ENTRY HELPERS
+# ============================================================
+
 def get_user_entry(
     telegram_id,
     round_id
 ):
-    ref = entry_ref(
+
+    ref = get_entry_ref(
         round_id,
         telegram_id
     )
@@ -209,129 +510,33 @@ def get_user_entry(
         return None
 
     data = snap.to_dict() or {}
+
     data["id"] = snap.id
 
     return data
 
 
-# ============================================================
-# ANSWER NORMALIZATION
-# ============================================================
+def count_entries(
+    round_id
+):
 
-def normalize_answer(value):
-    if value is None:
-        return ""
-
-    value = str(value).strip().lower()
-
-    import re
-
-    value = re.sub(
-        r"\s+",
-        " ",
-        value
-    )
-
-    value = re.sub(
-        r"[^\w\s-]",
-        "",
-        value
-    )
-
-    return value
-
-
-def accepted_answer_set(round_data):
-    answers = set()
-
-    correct = normalize_answer(
-        round_data.get(
-            "correct_answer",
-            ""
-        )
-    )
-
-    if correct:
-        answers.add(correct)
-
-    accepted = round_data.get(
-        "accepted_answers",
-        []
-    )
-
-    if isinstance(
-        accepted,
-        str
-    ):
-        accepted = [
-            x.strip()
-            for x in accepted.split(",")
-            if x.strip()
-        ]
-
-    for answer in accepted:
-        normalized = normalize_answer(
-            answer
-        )
-
-        if normalized:
-            answers.add(normalized)
-
-    return answers
-
-
-# ============================================================
-# ROUND STATE
-# ============================================================
-
-def is_round_open(round_data):
-    if not round_data:
-        return False
-
-    current = now()
-
-    status = round_data.get(
-        "status"
-    )
-
-    if status != "active":
-        return False
-
-    start_at = round_data.get(
-        "start_at"
-    )
-
-    end_at = round_data.get(
-        "end_at"
-    )
-
-    if start_at and current < start_at:
-        return False
-
-    if end_at and current >= end_at:
-        return False
-
-    return True
-
-
-def count_entries(round_id):
     round_data = get_round(
         round_id
     )
 
     if round_data:
-        stored = round_data.get(
-            "entry_count"
+
+        stored_count = (
+            round_data.get(
+                "entry_count"
+            )
         )
 
-        if stored is not None:
-            return max(
-                0,
-                int(stored)
+        if stored_count is not None:
+            return int(
+                stored_count
             )
 
-    # Fallback for old rounds created
-    # before entry_count existed.
     docs = (
         db.collection(
             "daily_earning_entries"
@@ -347,7 +552,11 @@ def count_entries(round_id):
     count = 0
 
     for doc in docs:
-        data = doc.to_dict() or {}
+
+        data = (
+            doc.to_dict()
+            or {}
+        )
 
         if data.get(
             "status"
@@ -362,63 +571,7 @@ def count_entries(round_id):
 
 
 # ============================================================
-# PUBLIC ROUND
-# ============================================================
-
-def public_round(
-    data,
-    participant_visibility="hidden"
-):
-    if not data:
-        return None
-
-    result = dict(data)
-
-    # NEVER expose answers to users.
-    result.pop(
-        "correct_answer",
-        None
-    )
-
-    result.pop(
-        "accepted_answers",
-        None
-    )
-
-    if participant_visibility == "hidden":
-        result.pop(
-            "participant_count",
-            None
-        )
-
-    return serialize_value(
-        result
-    )
-
-
-def get_app_settings():
-    ref = (
-        db.collection("settings")
-        .document("app")
-    )
-
-    snap = ref.get()
-
-    if not snap.exists:
-        return {
-            "participant_visibility":
-                "hidden",
-            "maintenance_mode":
-                False,
-            "daily_earning_enabled":
-                True
-        }
-
-    return snap.to_dict() or {}
-
-
-# ============================================================
-# TRANSACTIONS
+# POINT TRANSACTION
 # ============================================================
 
 def create_transaction(
@@ -428,15 +581,20 @@ def create_transaction(
     currency,
     metadata=None
 ):
+
     data = {
         "telegram_id":
             str(telegram_id),
+
         "type":
             transaction_type,
+
         "amount":
             amount,
+
         "currency":
             currency,
+
         "created_at":
             now()
     }
@@ -445,9 +603,13 @@ def create_transaction(
         data["metadata"] = metadata
 
     (
-        db.collection("transactions")
+        db.collection(
+            "transactions"
+        )
         .document()
-        .set(data)
+        .set(
+            data
+        )
     )
 
 
@@ -460,32 +622,16 @@ def reserve_daily_entry(
     round_id,
     mode
 ):
-    """
-    Atomically:
-      - checks the round
-      - checks the deterministic entry document
-      - checks the user's points
-      - checks the participant slot
-      - deducts 10 points
-      - increments entry_count
-      - creates the entry
 
-    This prevents duplicate entries and
-    overselling the final slot.
-    """
-
-    user_reference = user_ref(
+    user_document = user_ref(
         telegram_id
     )
 
-    round_reference = (
-        db.collection(
-            "daily_earning_rounds"
-        )
-        .document(round_id)
+    daily_round_ref = round_ref(
+        round_id
     )
 
-    entry_reference = entry_ref(
+    entry_document = get_entry_ref(
         round_id,
         telegram_id
     )
@@ -493,18 +639,21 @@ def reserve_daily_entry(
     transaction = db.transaction()
 
     @firestore.transactional
-    def perform(transaction):
+    def perform(
+        transaction
+    ):
 
-        user_snapshot = transaction.get(
-            user_reference
-        )
+        # IMPORTANT:
+        # firebase-admin 7.5.0 uses:
+        # document_ref.get(transaction=transaction)
+        #
+        # Do NOT use:
+        # transaction.get(document_ref)
 
-        round_snapshot = transaction.get(
-            round_reference
-        )
-
-        entry_snapshot = transaction.get(
-            entry_reference
+        user_snapshot = (
+            user_document.get(
+                transaction=transaction
+            )
         )
 
         if not user_snapshot.exists:
@@ -512,29 +661,45 @@ def reserve_daily_entry(
                 "User account not found."
             )
 
+        round_snapshot = (
+            daily_round_ref.get(
+                transaction=transaction
+            )
+        )
+
         if not round_snapshot.exists:
             raise ValueError(
                 "Daily Earning round not found."
             )
 
-        round_data = (
-            round_snapshot.to_dict()
-            or {}
+        entry_snapshot = (
+            entry_document.get(
+                transaction=transaction
+            )
         )
+
+        if entry_snapshot.exists:
+
+            raise ValueError(
+                "You have already entered this round."
+            )
 
         user_data = (
             user_snapshot.to_dict()
             or {}
         )
 
+        round_data = (
+            round_snapshot.to_dict()
+            or {}
+        )
+
         current = now()
 
-        if round_data.get(
-            "status"
-        ) != "active":
-            raise ValueError(
-                "This Daily Earning round is not active."
-            )
+        status = round_data.get(
+            "status",
+            "scheduled"
+        )
 
         start_at = round_data.get(
             "start_at"
@@ -544,10 +709,45 @@ def reserve_daily_entry(
             "end_at"
         )
 
+        # ----------------------------------------------------
+        # AUTOMATIC START
+        # ----------------------------------------------------
+
+        if (
+            status == "scheduled"
+            and start_at
+            and current >= start_at
+            and (
+                not end_at
+                or current < end_at
+            )
+        ):
+
+            status = "active"
+
+            transaction.update(
+                daily_round_ref,
+                {
+                    "status":
+                        "active",
+
+                    "activated_at":
+                        current,
+
+                    "updated_at":
+                        current
+                }
+            )
+
+        # ----------------------------------------------------
+        # ROUND TIME CHECK
+        # ----------------------------------------------------
+
         if (
             start_at
             and current < start_at
         ):
+
             raise ValueError(
                 "This Daily Earning round has not started yet."
             )
@@ -556,38 +756,33 @@ def reserve_daily_entry(
             end_at
             and current >= end_at
         ):
+
+            transaction.update(
+                daily_round_ref,
+                {
+                    "status":
+                        "closed",
+
+                    "settlement_status":
+                        "pending",
+
+                    "closed_at":
+                        current,
+
+                    "updated_at":
+                        current
+                }
+            )
+
             raise ValueError(
                 "The Daily Earning timer has ended."
             )
 
-        # ----------------------------------------------------
-        # ONE ACCOUNT = ONE ENTRY
-        # ----------------------------------------------------
+        if status != "active":
 
-        if entry_snapshot.exists:
-
-            existing = (
-                entry_snapshot.to_dict()
-                or {}
+            raise ValueError(
+                "This Daily Earning round is not active."
             )
-
-            return {
-                "already_entered": True,
-                "entry_id":
-                    entry_reference.id,
-                "status":
-                    existing.get(
-                        "status",
-                        "entered"
-                    ),
-                "quizbee_points":
-                    int(
-                        user_data.get(
-                            "quizbee_points",
-                            0
-                        )
-                    )
-            }
 
         # ----------------------------------------------------
         # POINT BALANCE
@@ -601,6 +796,7 @@ def reserve_daily_entry(
         )
 
         if points < ENTRY_FEE:
+
             raise ValueError(
                 "Not enough QuizBee Points. "
                 "Watch 10 ads to earn 10 points."
@@ -628,27 +824,32 @@ def reserve_daily_entry(
             max_entries > 0
             and current_count >= max_entries
         ):
+
             raise ValueError(
                 "Daily Earning slots are full."
             )
+
+        entry_status = (
+            "submitted"
+            if mode == "question"
+            else "pending"
+        )
 
         # ----------------------------------------------------
         # DEDUCT POINTS
         # ----------------------------------------------------
 
-        new_balance = (
-            points - ENTRY_FEE
-        )
-
         transaction.update(
-            user_reference,
+            user_document,
             {
                 "quizbee_points":
-                    new_balance,
+                    points - ENTRY_FEE,
+
                 "total_spent":
                     firestore.Increment(
                         ENTRY_FEE
                     ),
+
                 "updated_at":
                     current
             }
@@ -659,60 +860,58 @@ def reserve_daily_entry(
         # ----------------------------------------------------
 
         transaction.update(
-            round_reference,
+            daily_round_ref,
             {
                 "entry_count":
-                    firestore.Increment(
-                        1
-                    ),
+                    firestore.Increment(1),
+
                 "updated_at":
                     current
             }
         )
 
-        status = (
-            "submitted"
-            if mode == "question"
-            else "pending"
-        )
-
         # ----------------------------------------------------
-        # CREATE DETERMINISTIC ENTRY
+        # CREATE ENTRY
         # ----------------------------------------------------
 
         transaction.set(
-            entry_reference,
+            entry_document,
             {
                 "telegram_id":
                     str(telegram_id),
+
                 "round_id":
-                    round_id,
+                    str(round_id),
+
                 "mode":
                     mode,
+
                 "status":
-                    status,
+                    entry_status,
+
                 "answer":
                     "",
+
                 "proof_text":
                     "",
+
                 "proof_url":
                     "",
+
                 "created_at":
                     current,
+
                 "updated_at":
                     current
             }
         )
 
         return {
-            "already_entered":
-                False,
             "entry_id":
-                entry_reference.id,
-            "status":
-                status,
+                entry_document.id,
+
             "quizbee_points":
-                new_balance
+                points - ENTRY_FEE
         }
 
     return perform(
@@ -734,122 +933,97 @@ def current_round():
         user = require_user()
 
         if not user:
+
             return jsonify({
                 "success": False,
                 "error":
                     "Unauthorized Telegram session."
             }), 401
 
-        settings = get_app_settings()
-
-        if not settings.get(
-            "daily_earning_enabled",
-            True
-        ):
-            return jsonify({
-                "success": True,
-                "round": None
-            })
-
-        docs = list(
-            (
-                db.collection(
-                    "daily_earning_rounds"
-                )
-                .where(
-                    "status",
-                    "in",
-                    [
-                        "scheduled",
-                        "active"
-                    ]
-                )
-                .stream()
+        query = (
+            db.collection(
+                "daily_earning_rounds"
             )
+            .where(
+                "status",
+                "in",
+                [
+                    "scheduled",
+                    "active"
+                ]
+            )
+            .stream()
         )
 
-        if not docs:
+        candidates = []
+
+        for doc in query:
+
+            data = doc.to_dict() or {}
+
+            data["id"] = doc.id
+
+            candidates.append(
+                data
+            )
+
+        if not candidates:
+
             return jsonify({
                 "success": True,
                 "round": None
             })
 
-        # Pick the round with the earliest
-        # upcoming/end time.
-        docs.sort(
-            key=lambda doc:
-                (
-                    doc.to_dict()
-                    or {}
-                ).get(
-                    "end_at"
+        # Sort by start time.
+        candidates.sort(
+            key=lambda item:
+                item.get(
+                    "start_at"
                 )
-                or datetime.max.replace(
-                    tzinfo=timezone.utc
-                )
+                or now()
         )
 
-        doc = docs[0]
+        selected = None
 
-        round_data = (
-            doc.to_dict()
-            or {}
-        )
+        for candidate in candidates:
 
-        round_data["id"] = doc.id
+            updated = get_round(
+                candidate["id"]
+            )
 
-        # ----------------------------------------------------
-        # EXPIRE ROUND
-        # ----------------------------------------------------
+            if not updated:
+                continue
 
-        end_at = round_data.get(
-            "end_at"
-        )
-
-        if (
-            end_at
-            and now() >= end_at
-            and round_data.get(
+            if updated.get(
                 "status"
             ) in (
                 "scheduled",
                 "active"
-            )
-        ):
+            ):
 
-            (
-                doc.reference.update({
-                    "status":
-                        "closed",
-                    "settlement_status":
-                        "pending",
-                    "closed_at":
-                        now(),
-                    "updated_at":
-                        now()
-                })
-            )
+                selected = updated
 
-            round_data["status"] = (
-                "closed"
-            )
+                break
 
-            round_data[
-                "settlement_status"
-            ] = "pending"
+        if not selected:
+
+            return jsonify({
+                "success": True,
+                "round": None
+            })
 
         entry = get_user_entry(
             user["telegram_id"],
-            doc.id
+            selected["id"]
         )
 
-        round_data[
+        selected[
             "participant_count"
         ] = count_entries(
-            doc.id
+            selected["id"]
         )
 
-        round_data[
+        selected[
             "user_entry"
         ] = entry
 
@@ -857,11 +1031,7 @@ def current_round():
             "success": True,
             "round":
                 public_round(
-                    round_data,
-                    settings.get(
-                        "participant_visibility",
-                        "hidden"
-                    )
+                    selected
                 )
         })
 
@@ -888,6 +1058,7 @@ def enter_daily_earning():
         user = require_user()
 
         if not user:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -906,6 +1077,7 @@ def enter_daily_earning():
         )
 
         if not round_id:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -917,20 +1089,12 @@ def enter_daily_earning():
         )
 
         if not round_data:
+
             return jsonify({
                 "success": False,
                 "error":
                     "Daily Earning round not found."
             }), 404
-
-        if not is_round_open(
-            round_data
-        ):
-            return jsonify({
-                "success": False,
-                "error":
-                    "This Daily Earning round is not open."
-            }), 400
 
         mode = round_data.get(
             "mode",
@@ -947,46 +1111,71 @@ def enter_daily_earning():
 
         except ValueError as e:
 
+            existing = get_user_entry(
+                user["telegram_id"],
+                round_id
+            )
+
+            if existing:
+
+                return jsonify({
+                    "success": True,
+                    "already_entered":
+                        True,
+                    "entry":
+                        serialize_value(
+                            existing
+                        )
+                })
+
             return jsonify({
                 "success": False,
                 "error":
                     str(e)
             }), 400
 
-        if not result[
-            "already_entered"
-        ]:
-            create_transaction(
-                user["telegram_id"],
-                "daily_earning_entry",
-                -ENTRY_FEE,
-                "quizbee_points",
-                {
-                    "round_id":
-                        round_id,
-                    "entry_id":
-                        result["entry_id"]
-                }
-            )
+        create_transaction(
+            user["telegram_id"],
+            "daily_earning_entry",
+            -ENTRY_FEE,
+            "quizbee_points",
+            {
+                "round_id":
+                    round_id,
+
+                "entry_id":
+                    result["entry_id"]
+            }
+        )
 
         return jsonify({
             "success": True,
+
             "already_entered":
-                result[
-                    "already_entered"
-                ],
+                False,
+
             "entry": {
                 "id":
                     result["entry_id"],
+
                 "round_id":
                     round_id,
+
                 "mode":
                     mode,
+
                 "status":
-                    result["status"]
+                    (
+                        "submitted"
+                        if mode == "question"
+                        else "pending"
+                    )
             },
+
             "quizbee_points":
-                result["quizbee_points"]
+                result[
+                    "quizbee_points"
+                ]
         })
 
     except Exception as e:
@@ -999,7 +1188,7 @@ def enter_daily_earning():
 
 
 # ============================================================
-# QUESTION SUBMISSION
+# QUESTION ANSWER
 # ============================================================
 
 @daily_earning_bp.post(
@@ -1012,6 +1201,7 @@ def submit_answer():
         user = require_user()
 
         if not user:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1037,17 +1227,11 @@ def submit_answer():
         ).strip()
 
         if not round_id:
+
             return jsonify({
                 "success": False,
                 "error":
                     "Missing round ID."
-            }), 400
-
-        if not answer:
-            return jsonify({
-                "success": False,
-                "error":
-                    "Answer is required."
             }), 400
 
         round_data = get_round(
@@ -1055,6 +1239,7 @@ def submit_answer():
         )
 
         if not round_data:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1064,6 +1249,7 @@ def submit_answer():
         if round_data.get(
             "mode"
         ) != "question":
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1073,6 +1259,7 @@ def submit_answer():
         if not is_round_open(
             round_data
         ):
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1085,6 +1272,7 @@ def submit_answer():
         )
 
         if not entry:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1097,25 +1285,34 @@ def submit_answer():
             "rejected",
             "rejected_after_close"
         ):
+
             return jsonify({
                 "success": False,
                 "error":
                     "This entry is no longer active."
             }), 400
 
-        entry_ref(
+        entry_ref = get_entry_ref(
             round_id,
             user["telegram_id"]
-        ).update({
+        )
+
+        entry_ref.update({
             "answer":
                 answer,
+
             "status":
                 "submitted",
+
             "submitted_at":
                 now(),
+
             "updated_at":
                 now()
         })
+
+        # IMPORTANT:
+        # Never reveal correctness before settlement.
 
         return jsonify({
             "success": True,
@@ -1135,7 +1332,7 @@ def submit_answer():
 
 
 # ============================================================
-# TASK PROOF SUBMISSION
+# TASK PROOF
 # ============================================================
 
 @daily_earning_bp.post(
@@ -1148,6 +1345,7 @@ def submit_proof():
         user = require_user()
 
         if not user:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1180,6 +1378,7 @@ def submit_proof():
         ).strip()
 
         if not round_id:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1187,6 +1386,7 @@ def submit_proof():
             }), 400
 
         if not proof_text and not proof_url:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1198,6 +1398,7 @@ def submit_proof():
         )
 
         if not round_data:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1207,6 +1408,7 @@ def submit_proof():
         if round_data.get(
             "mode"
         ) != "task":
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1216,6 +1418,7 @@ def submit_proof():
         if not is_round_open(
             round_data
         ):
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1228,6 +1431,7 @@ def submit_proof():
         )
 
         if not entry:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1240,24 +1444,31 @@ def submit_proof():
             "rejected",
             "rejected_after_close"
         ):
+
             return jsonify({
                 "success": False,
                 "error":
                     "This entry is no longer active."
             }), 400
 
-        entry_ref(
+        entry_ref = get_entry_ref(
             round_id,
             user["telegram_id"]
-        ).update({
+        )
+
+        entry_ref.update({
             "proof_text":
                 proof_text,
+
             "proof_url":
                 proof_url,
+
             "status":
                 "pending",
+
             "submitted_at":
                 now(),
+
             "updated_at":
                 now()
         })
@@ -1292,6 +1503,7 @@ def history():
         user = require_user()
 
         if not user:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1314,7 +1526,11 @@ def history():
 
         for doc in docs:
 
-            data = doc.to_dict() or {}
+            data = (
+                doc.to_dict()
+                or {}
+            )
+
             data["id"] = doc.id
 
             entries.append(
@@ -1345,43 +1561,6 @@ def history():
             "error":
                 str(e)
         }), 500
-
-
-# ============================================================
-# ADMIN AUTH
-# ============================================================
-
-def is_admin(telegram_id):
-
-    admin_ids = os.getenv(
-        "ADMIN_TELEGRAM_IDS",
-        ""
-    ).strip()
-
-    if not admin_ids:
-        admin_ids = os.getenv(
-            "ADMIN_TELEGRAM_ID",
-            ""
-        ).strip()
-
-    allowed_ids = {
-        item.strip()
-        for item in admin_ids.split(",")
-        if item.strip()
-    }
-
-    return str(
-        telegram_id
-    ) in allowed_ids
-
-
-def admin_error():
-
-    return jsonify({
-        "success": False,
-        "error":
-            "Admin access required."
-    }), 403
 
 
 # ============================================================
@@ -1418,6 +1597,7 @@ def admin_create_round():
             "question",
             "task"
         ):
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1432,6 +1612,7 @@ def admin_create_round():
         ).strip()
 
         if not title:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1439,16 +1620,19 @@ def admin_create_round():
             }), 400
 
         try:
+
             prize_pool_usd = float(
                 body.get(
                     "prize_pool_usd",
                     0
                 )
             )
+
         except (
             TypeError,
             ValueError
         ):
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1456,6 +1640,7 @@ def admin_create_round():
             }), 400
 
         if prize_pool_usd <= 0:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1463,16 +1648,19 @@ def admin_create_round():
             }), 400
 
         try:
+
             max_entries = int(
                 body.get(
                     "max_entries",
                     100
                 )
             )
+
         except (
             TypeError,
             ValueError
         ):
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1480,6 +1668,7 @@ def admin_create_round():
             }), 400
 
         if max_entries <= 0:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1516,6 +1705,7 @@ def admin_create_round():
             accepted_answers,
             str
         ):
+
             accepted_answers = [
                 item.strip()
                 for item in accepted_answers.split(",")
@@ -1526,11 +1716,13 @@ def admin_create_round():
             accepted_answers,
             list
         ):
+
             accepted_answers = []
 
         if mode == "question":
 
             if not question:
+
                 return jsonify({
                     "success": False,
                     "error":
@@ -1538,6 +1730,7 @@ def admin_create_round():
                 }), 400
 
             if not correct_answer:
+
                 return jsonify({
                     "success": False,
                     "error":
@@ -1547,6 +1740,7 @@ def admin_create_round():
         if mode == "task":
 
             if not instructions:
+
                 return jsonify({
                     "success": False,
                     "error":
@@ -1562,6 +1756,7 @@ def admin_create_round():
         )
 
         if not start_raw or not end_raw:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1571,14 +1766,18 @@ def admin_create_round():
         try:
 
             start_at = datetime.fromisoformat(
-                str(start_raw).replace(
+                str(
+                    start_raw
+                ).replace(
                     "Z",
                     "+00:00"
                 )
             )
 
             end_at = datetime.fromisoformat(
-                str(end_raw).replace(
+                str(
+                    end_raw
+                ).replace(
                     "Z",
                     "+00:00"
                 )
@@ -1593,34 +1792,49 @@ def admin_create_round():
             }), 400
 
         if start_at.tzinfo is None:
+
             start_at = start_at.replace(
                 tzinfo=timezone.utc
             )
 
         if end_at.tzinfo is None:
+
             end_at = end_at.replace(
                 tzinfo=timezone.utc
             )
 
         if end_at <= start_at:
+
             return jsonify({
                 "success": False,
                 "error":
                     "End time must be after start time."
             }), 400
 
-        requested_status = str(
-            body.get(
-                "status",
-                "scheduled"
-            )
-        ).strip().lower()
+        # ----------------------------------------------------
+        # IMPORTANT:
+        # New rounds are scheduled.
+        # The backend automatically activates them
+        # when start_at arrives.
+        # ----------------------------------------------------
 
-        if requested_status not in (
-            "scheduled",
-            "active"
+        requested_status = "scheduled"
+
+        current = now()
+
+        if (
+            current >= start_at
+            and current < end_at
         ):
-            requested_status = "scheduled"
+            requested_status = "active"
+
+        if current >= end_at:
+
+            return jsonify({
+                "success": False,
+                "error":
+                    "The round end time has already passed."
+            }), 400
 
         round_data = {
 
@@ -1676,11 +1890,17 @@ def admin_create_round():
                 admin["telegram_id"],
 
             "created_at":
-                now(),
+                current,
 
             "updated_at":
-                now()
+                current
         }
+
+        if requested_status == "active":
+
+            round_data[
+                "activated_at"
+            ] = current
 
         ref = (
             db.collection(
@@ -1709,7 +1929,11 @@ def admin_create_round():
 
 
 # ============================================================
-# ADMIN ACTIVATE ROUND
+# ADMIN MANUAL ACTIVATE
+#
+# Kept for compatibility with the Admin Mini App.
+# It is OPTIONAL.
+# Automatic activation is the normal behavior.
 # ============================================================
 
 @daily_earning_bp.post(
@@ -1726,16 +1950,14 @@ def admin_activate_round(
         if not admin:
             return admin_error()
 
-        ref = (
-            db.collection(
-                "daily_earning_rounds"
-            )
-            .document(round_id)
+        ref = round_ref(
+            round_id
         )
 
         snap = ref.get()
 
         if not snap.exists:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1747,6 +1969,7 @@ def admin_activate_round(
         if data.get(
             "settlement_status"
         ) == "settled":
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1755,18 +1978,25 @@ def admin_activate_round(
 
         if data.get(
             "status"
-        ) == "closed":
+        ) in (
+            "closed",
+            "settling",
+            "settled"
+        ):
+
             return jsonify({
                 "success": False,
                 "error":
-                    "A closed round cannot be activated."
+                    "This round can no longer be activated."
             }), 400
 
         current = now()
 
-        if data.get(
-            "end_at"
-        ) and current >= data["end_at"]:
+        if (
+            data.get("end_at")
+            and current >= data["end_at"]
+        ):
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1776,10 +2006,13 @@ def admin_activate_round(
         ref.update({
             "status":
                 "active",
+
             "activated_at":
                 current,
+
             "activated_by":
                 admin["telegram_id"],
+
             "updated_at":
                 current
         })
@@ -1821,12 +2054,15 @@ def admin_approve_entry(
             db.collection(
                 "daily_earning_entries"
             )
-            .document(entry_id)
+            .document(
+                entry_id
+            )
         )
 
         snap = ref.get()
 
         if not snap.exists:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1838,6 +2074,7 @@ def admin_approve_entry(
         if entry.get(
             "status"
         ) != "pending":
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1852,28 +2089,30 @@ def admin_approve_entry(
         )
 
         if not round_data:
+
             return jsonify({
                 "success": False,
                 "error":
                     "Round not found."
             }), 404
 
-        if not is_round_open(
-            round_data
-        ):
-            return jsonify({
-                "success": False,
-                "error":
-                    "The round is no longer open."
-            }), 400
+        # Approval is allowed while the round is still
+        # open OR after the timer if the entry was submitted
+        # before the timer ended.
+        #
+        # We deliberately do not require the round to still
+        # be active here.
 
         ref.update({
             "status":
                 "approved",
+
             "reviewed_at":
                 now(),
+
             "reviewed_by":
                 admin["telegram_id"],
+
             "updated_at":
                 now()
         })
@@ -1911,16 +2150,33 @@ def admin_reject_entry(
         if not admin:
             return admin_error()
 
-        ref = (
+        body = (
+            request.get_json(
+                silent=True
+            )
+            or {}
+        )
+
+        admin_note = str(
+            body.get(
+                "admin_note",
+                ""
+            )
+        ).strip()
+
+        entry_ref = (
             db.collection(
                 "daily_earning_entries"
             )
-            .document(entry_id)
+            .document(
+                entry_id
+            )
         )
 
-        snap = ref.get()
+        snap = entry_ref.get()
 
         if not snap.exists:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1932,6 +2188,7 @@ def admin_reject_entry(
         if entry.get(
             "status"
         ) != "pending":
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1943,17 +2200,15 @@ def admin_reject_entry(
         )
 
         if not round_id:
+
             return jsonify({
                 "success": False,
                 "error":
                     "Entry has no round."
             }), 400
 
-        round_ref = (
-            db.collection(
-                "daily_earning_rounds"
-            )
-            .document(round_id)
+        daily_round_ref = round_ref(
+            round_id
         )
 
         transaction = db.transaction()
@@ -1964,23 +2219,25 @@ def admin_reject_entry(
         ):
 
             entry_snapshot = (
-                transaction.get(
-                    ref
+                entry_ref.get(
+                    transaction=transaction
                 )
             )
 
             round_snapshot = (
-                transaction.get(
-                    round_ref
+                daily_round_ref.get(
+                    transaction=transaction
                 )
             )
 
             if not entry_snapshot.exists:
+
                 raise ValueError(
                     "Entry not found."
                 )
 
             if not round_snapshot.exists:
+
                 raise ValueError(
                     "Round not found."
                 )
@@ -1998,70 +2255,57 @@ def admin_reject_entry(
             if current_entry.get(
                 "status"
             ) != "pending":
+
                 raise ValueError(
                     "Entry is not pending."
                 )
 
-            open_now = (
+            current = now()
+
+            end_at = current_round.get(
+                "end_at"
+            )
+
+            round_is_open = (
                 current_round.get(
                     "status"
                 ) == "active"
                 and (
-                    not current_round.get(
-                        "start_at"
-                    )
-                    or now()
-                    >= current_round[
-                        "start_at"
-                    ]
-                )
-                and (
-                    not current_round.get(
-                        "end_at"
-                    )
-                    or now()
-                    < current_round[
-                        "end_at"
-                    ]
+                    not end_at
+                    or current < end_at
                 )
             )
 
-            updates = {
-                "status":
-                    (
-                        "rejected"
-                        if open_now
-                        else
-                        "rejected_after_close"
-                    ),
-                "reviewed_at":
-                    now(),
-                "reviewed_by":
-                    admin["telegram_id"],
-                "admin_note":
-                    str(
-                        (
-                            request.get_json(
-                                silent=True
-                            )
-                            or {}
-                        ).get(
-                            "admin_note",
-                            ""
-                        )
-                    ).strip(),
-                "updated_at":
-                    now()
-            }
+            status = (
+                "rejected"
+                if round_is_open
+                else "rejected_after_close"
+            )
 
             transaction.update(
-                ref,
-                updates
+                entry_ref,
+                {
+                    "status":
+                        status,
+
+                    "reviewed_at":
+                        current,
+
+                    "reviewed_by":
+                        admin["telegram_id"],
+
+                    "admin_note":
+                        admin_note,
+
+                    "updated_at":
+                        current
+                }
             )
 
-            # Rejected submissions free the slot
+            # Rejected entries free the slot ONLY
             # while the round is still open.
-            if open_now:
+
+            if round_is_open:
 
                 current_count = int(
                     current_round.get(
@@ -2071,21 +2315,20 @@ def admin_reject_entry(
                 )
 
                 transaction.update(
-                    round_ref,
+                    daily_round_ref,
                     {
                         "entry_count":
                             max(
                                 0,
                                 current_count - 1
                             ),
+
                         "updated_at":
-                            now()
+                            current
                     }
                 )
 
-            return updates[
-                "status"
-            ]
+            return status
 
         status = reject_transaction(
             transaction
@@ -2117,39 +2360,28 @@ def admin_reject_entry(
 
 
 # ============================================================
-# SETTLEMENT HELPERS
+# DETERMINE WINNERS
 # ============================================================
-
-def settlement_result_ref(
-    round_id,
-    telegram_id
-):
-    return (
-        db.collection(
-            "daily_earning_results"
-        )
-        .document(
-            f"{round_id}_{str(telegram_id)}"
-        )
-    )
-
 
 def determine_winners(
     round_data,
     entries
 ):
+
     winners = []
 
-    if round_data.get(
+    mode = round_data.get(
         "mode"
-    ) == "question":
+    )
+
+    if mode == "question":
 
         accepted = accepted_answer_set(
             round_data
         )
 
         if not accepted:
-            return winners
+            return []
 
         for entry in entries:
 
@@ -2172,6 +2404,7 @@ def determine_winners(
                 answer
                 and answer in accepted
             ):
+
                 winners.append(
                     entry
                 )
@@ -2183,6 +2416,7 @@ def determine_winners(
             if entry.get(
                 "status"
             ) == "approved":
+
                 winners.append(
                     entry
                 )
@@ -2201,15 +2435,22 @@ def determine_winners(
     return winners
 
 
+# ============================================================
+# PRIZE SPLIT
+# ============================================================
+
 def calculate_prize_split(
     prize_pool_usd,
     winner_count
 ):
+
     if winner_count <= 0:
         return []
 
     pool = Decimal(
-        str(prize_pool_usd)
+        str(
+            prize_pool_usd
+        )
     )
 
     pool_cents = int(
@@ -2270,25 +2511,32 @@ def settle_round(
         if not admin:
             return admin_error()
 
-        round_ref = (
-            db.collection(
-                "daily_earning_rounds"
-            )
-            .document(round_id)
+        daily_round_ref = round_ref(
+            round_id
         )
 
-        snap = round_ref.get()
+        # ----------------------------------------------------
+        # FIRST CHECK
+        # ----------------------------------------------------
 
-        if not snap.exists:
+        initial_snapshot = (
+            daily_round_ref.get()
+        )
+
+        if not initial_snapshot.exists:
+
             return jsonify({
                 "success": False,
                 "error":
                     "Round not found."
             }), 404
 
-        round_data = snap.to_dict() or {}
+        initial_data = (
+            initial_snapshot.to_dict()
+            or {}
+        )
 
-        end_at = round_data.get(
+        end_at = initial_data.get(
             "end_at"
         )
 
@@ -2296,6 +2544,7 @@ def settle_round(
             end_at
             and now() < end_at
         ):
+
             return jsonify({
                 "success": False,
                 "error":
@@ -2303,7 +2552,14 @@ def settle_round(
             }), 400
 
         # ----------------------------------------------------
-        # ATOMIC SETTLEMENT LOCK
+        # SETTLEMENT LOCK
+        #
+        # IMPORTANT:
+        # We use:
+        #     ref.get(transaction=transaction)
+        #
+        # NOT:
+        #     transaction.get(ref)
         # ----------------------------------------------------
 
         transaction = db.transaction()
@@ -2313,71 +2569,92 @@ def settle_round(
             transaction
         ):
 
-            current_snapshot = (
-                transaction.get(
-                    round_ref
+            snapshot = (
+                daily_round_ref.get(
+                    transaction=transaction
                 )
             )
 
-            if not current_snapshot.exists:
+            if not snapshot.exists:
+
                 raise ValueError(
                     "Round not found."
                 )
 
-            current = (
-                current_snapshot.to_dict()
+            current_data = (
+                snapshot.to_dict()
                 or {}
             )
 
-            status = current.get(
-                "status"
+            current_status = (
+                current_data.get(
+                    "status"
+                )
             )
 
             settlement_status = (
-                current.get(
-                    "settlement_status"
+                current_data.get(
+                    "settlement_status",
+                    "not_settled"
                 )
             )
 
+            # Already completely settled.
             if (
-                status == "settled"
-                or settlement_status
-                == "settled"
+                current_status == "settled"
+                or settlement_status == "settled"
             ):
+
                 return (
                     "already_settled",
-                    current
+                    current_data
                 )
 
+            # If processing from an earlier request,
+            # allow this request to resume settlement.
             if (
-                status == "settling"
+                settlement_status
+                == "processing"
             ):
+
                 return (
-                    "already_settling",
-                    current
+                    "resume",
+                    current_data
                 )
+
+            current = now()
 
             transaction.update(
-                round_ref,
+                daily_round_ref,
                 {
                     "status":
                         "settling",
+
                     "settlement_status":
                         "processing",
+
                     "settling_at":
-                        now(),
+                        current,
+
                     "settled_by":
-                        admin[
-                            "telegram_id"
-                        ],
+                        admin["telegram_id"],
+
                     "updated_at":
-                        now()
+                        current
                 }
             )
 
+            current_data[
+                "status"
+            ] = "settling"
+
+            current_data[
+                "settlement_status"
+            ] = "processing"
+
             return (
                 "locked",
-                current
+                current_data
             )
 
         lock_status, locked_round = (
@@ -2389,25 +2666,19 @@ def settle_round(
         if lock_status == (
             "already_settled"
         ):
+
             return jsonify({
                 "success": True,
+
                 "winner_count":
                     locked_round.get(
                         "winner_count",
                         0
                     ),
+
                 "message":
                     "Round already settled."
             })
-
-        if lock_status == (
-            "already_settling"
-        ):
-            return jsonify({
-                "success": False,
-                "error":
-                    "This round is already being settled."
-            }), 409
 
         # ----------------------------------------------------
         # LOAD ENTRIES
@@ -2429,7 +2700,11 @@ def settle_round(
 
         for doc in docs:
 
-            data = doc.to_dict() or {}
+            data = (
+                doc.to_dict()
+                or {}
+            )
+
             data["id"] = doc.id
 
             entries.append(
@@ -2449,15 +2724,11 @@ def settle_round(
             len(winners)
         )
 
-        # ----------------------------------------------------
-        # CREDIT WINNERS
-        #
-        # Each winner uses a deterministic
-        # result document. This makes settlement
-        # resumable if the server stops halfway.
-        # ----------------------------------------------------
-
         results = []
+
+        # ----------------------------------------------------
+        # CREDIT EACH WINNER
+        # ----------------------------------------------------
 
         for index, winner in enumerate(
             winners
@@ -2480,6 +2751,10 @@ def settle_round(
                 )
             )
 
+            winner_user_ref = user_ref(
+                telegram_id
+            )
+
             credit_transaction = (
                 db.transaction()
             )
@@ -2488,35 +2763,42 @@ def settle_round(
             def credit_winner(
                 transaction,
                 result_ref=result_ref,
+                winner_user_ref=winner_user_ref,
                 telegram_id=telegram_id,
                 amount=amount,
                 winner=winner,
                 index=index
             ):
 
+                # ------------------------------------------------
+                # IMPORTANT:
+                # Read using ref.get(transaction=transaction)
+                # ------------------------------------------------
+
                 result_snapshot = (
-                    transaction.get(
-                        result_ref
+                    result_ref.get(
+                        transaction=transaction
                     )
                 )
 
+                # Already credited.
                 if result_snapshot.exists:
+
                     return False
 
-                winner_user_ref = user_ref(
-                    telegram_id
-                )
-
                 user_snapshot = (
-                    transaction.get(
-                        winner_user_ref
+                    winner_user_ref.get(
+                        transaction=transaction
                     )
                 )
 
                 if not user_snapshot.exists:
+
                     raise ValueError(
                         "Winner user account not found."
                     )
+
+                current = now()
 
                 transaction.update(
                     winner_user_ref,
@@ -2525,12 +2807,14 @@ def settle_round(
                             firestore.Increment(
                                 amount
                             ),
+
                         "total_earned":
                             firestore.Increment(
                                 amount
                             ),
+
                         "updated_at":
-                            now()
+                            current
                     }
                 )
 
@@ -2539,16 +2823,21 @@ def settle_round(
                     {
                         "round_id":
                             round_id,
+
                         "telegram_id":
                             telegram_id,
+
                         "entry_id":
                             winner["id"],
+
                         "amount_usd":
                             amount,
+
                         "winner_index":
                             index + 1,
+
                         "created_at":
-                            now()
+                            current
                     }
                 )
 
@@ -2557,6 +2846,9 @@ def settle_round(
             created = credit_winner(
                 credit_transaction
             )
+
+            # Only create the transaction ledger
+            # record when money was actually credited.
 
             if created:
 
@@ -2568,8 +2860,10 @@ def settle_round(
                     {
                         "round_id":
                             round_id,
+
                         "entry_id":
                             winner["id"],
+
                         "winner_index":
                             index + 1
                     }
@@ -2578,6 +2872,7 @@ def settle_round(
             results.append({
                 "telegram_id":
                     telegram_id,
+
                 "amount_usd":
                     amount
             })
@@ -2596,7 +2891,9 @@ def settle_round(
             else 0
         )
 
-        round_ref.update({
+        current = now()
+
+        daily_round_ref.update({
             "status":
                 "settled",
 
@@ -2618,16 +2915,18 @@ def settle_round(
                 ),
 
             "settled_at":
-                now(),
+                current,
 
             "updated_at":
-                now()
+                current
         })
 
         return jsonify({
             "success": True,
+
             "winner_count":
                 winner_count,
+
             "prize_pool_usd":
                 float(
                     locked_round.get(
@@ -2635,8 +2934,10 @@ def settle_round(
                         0
                     )
                 ),
+
             "amount_per_winner":
                 amount_per_winner,
+
             "results":
                 results
         })
