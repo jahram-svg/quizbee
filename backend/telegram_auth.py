@@ -9,8 +9,9 @@ from urllib.parse import parse_qsl
 
 def validate_telegram_init_data(
     init_data: str,
-    max_age: int = 86400
-):
+    max_age: int = 86400,
+    bot_token: str = None
+): 
     """
     Validate Telegram Mini App initData.
 
@@ -21,6 +22,7 @@ def validate_telegram_init_data(
     if not init_data:
         return None
 
+    if bot_token is None:
     bot_token = os.getenv("BOT_TOKEN")
 
     if not bot_token:
