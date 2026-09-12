@@ -920,16 +920,24 @@ def history():
 # ============================================================
 
 def is_admin(telegram_id):
-    admin_id = os.getenv(
-        "ADMIN_TELEGRAM_ID",
+    admin_ids = os.getenv(
+        "ADMIN_TELEGRAM_IDS",
         ""
-    )
+    ).strip()
 
-    return (
-        admin_id
-        and str(telegram_id)
-        == str(admin_id)
-    )
+    if not admin_ids:
+        admin_ids = os.getenv(
+            "ADMIN_TELEGRAM_ID",
+            ""
+        ).strip()
+
+    allowed_ids = {
+        x.strip()
+        for x in admin_ids.split(",")
+        if x.strip()
+    }
+
+    return str(telegram_id) in allowed_ids
 
 
 # ============================================================
