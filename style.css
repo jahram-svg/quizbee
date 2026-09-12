@@ -1068,3 +1068,13 @@ button {
     font-weight: 700;
     margin-top: 10px;
     }
+
+.earning-help {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 12px;
+    line-height: 1.4;
+    opacity: 0.85;
+    background: rgba(255, 255, 255, 0.06);
+    } 
