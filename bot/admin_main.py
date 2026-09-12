@@ -57,7 +57,7 @@ if not ADMIN_BOT_TOKEN:
         "ADMIN_BOT_TOKEN is missing. Add it to your Codespaces secrets."
     )
 
-if not ADMIN_TELEGRAM_ID:
+if not ADMIN_TELEGRAM_IDS:
     raise RuntimeError(
         "ADMIN_TELEGRAM_ID is missing. Add it to your Codespaces secrets."
     )
