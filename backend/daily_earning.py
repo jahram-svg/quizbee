@@ -156,6 +156,22 @@ def is_round_open(round_data):
 
 
 def count_entries(round_id):
+
+    round_data = get_round(
+        round_id
+    )
+
+    if round_data:
+
+        stored_count = round_data.get(
+            "entry_count"
+        )
+
+        if stored_count is not None:
+            return int(
+                stored_count
+            )
+
     docs = list(
         db.collection(
             "daily_earning_entries"
@@ -171,9 +187,15 @@ def count_entries(round_id):
     active_count = 0
 
     for doc in docs:
-        data = doc.to_dict()
 
-        if data.get("status") in (
+        data = (
+            doc.to_dict()
+            or {}
+        )
+
+        if data.get(
+            "status"
+        ) in (
             "pending",
             "approved",
             "submitted"
@@ -298,6 +320,270 @@ def refund_entry_fee(
         "updated_at":
             now()
     })
+
+
+def reserve_daily_entry(
+    telegram_id,
+    round_id,
+    mode
+):
+    """
+    Atomically:
+    1. Verify the user has not already entered.
+    2. Verify the round is still active.
+    3. Verify a slot exists.
+    4. Deduct 10 QuizBee Points.
+    5. Create the entry.
+
+    This prevents the final slot from being oversold
+    when multiple users enter simultaneously.
+    """
+
+    user_ref_obj = user_ref(
+        telegram_id
+    )
+
+    round_ref = db.collection(
+        "daily_earning_rounds"
+    ).document(
+        round_id
+    )
+
+    entry_ref = db.collection(
+        "daily_earning_entries"
+    ).document()
+
+    transaction = db.transaction()
+
+    @firestore.transactional
+    def perform(transaction):
+
+        user_snapshot = transaction.get(
+            user_ref_obj
+        )
+
+        if not user_snapshot.exists:
+            raise ValueError(
+                "User account not found."
+            )
+
+        round_snapshot = transaction.get(
+            round_ref
+        )
+
+        if not round_snapshot.exists:
+            raise ValueError(
+                "Daily Earning round not found."
+            )
+
+        user_data = (
+            user_snapshot.to_dict()
+            or {}
+        )
+
+        round_data = (
+            round_snapshot.to_dict()
+            or {}
+        )
+
+        # --------------------------------------------------
+        # ROUND STATE
+        # --------------------------------------------------
+
+        if round_data.get(
+            "status"
+        ) != "active":
+            raise ValueError(
+                "This Daily Earning round is not active."
+            )
+
+        current = now()
+
+        start_at = round_data.get(
+            "start_at"
+        )
+
+        end_at = round_data.get(
+            "end_at"
+        )
+
+        if (
+            start_at
+            and current < start_at
+        ):
+            raise ValueError(
+                "This Daily Earning round has not started yet."
+            )
+
+        if (
+            end_at
+            and current >= end_at
+        ):
+            raise ValueError(
+                "The Daily Earning timer has ended."
+            )
+
+        # --------------------------------------------------
+        # DUPLICATE ENTRY CHECK
+        # --------------------------------------------------
+
+        existing_query = (
+            db.collection(
+                "daily_earning_entries"
+            )
+            .where(
+                "telegram_id",
+                "==",
+                str(telegram_id)
+            )
+            .where(
+                "round_id",
+                "==",
+                round_id
+            )
+            .limit(1)
+        )
+
+        existing_docs = list(
+            existing_query.stream()
+        )
+
+        if existing_docs:
+            raise ValueError(
+                "You have already entered this round."
+            )
+
+        # --------------------------------------------------
+        # POINT BALANCE
+        # --------------------------------------------------
+
+        points = int(
+            user_data.get(
+                "quizbee_points",
+                0
+            )
+        )
+
+        if points < ENTRY_FEE:
+            raise ValueError(
+                "Not enough QuizBee Points. "
+                "Watch 10 ads to earn 10 points."
+            )
+
+        # --------------------------------------------------
+        # SLOT COUNT
+        # --------------------------------------------------
+
+        max_entries = int(
+            round_data.get(
+                "max_entries",
+                0
+            )
+        )
+
+        current_count = int(
+            round_data.get(
+                "entry_count",
+                0
+            )
+        )
+
+        if (
+            max_entries > 0
+            and current_count >= max_entries
+        ):
+            raise ValueError(
+                "Daily Earning slots are full."
+            )
+
+        # --------------------------------------------------
+        # DEDUCT POINTS
+        # --------------------------------------------------
+
+        transaction.update(
+            user_ref_obj,
+            {
+                "quizbee_points":
+                    points - ENTRY_FEE,
+
+                "total_spent":
+                    firestore.Increment(
+                        ENTRY_FEE
+                    ),
+
+                "updated_at":
+                    current
+            }
+        )
+
+        # --------------------------------------------------
+        # RESERVE SLOT
+        # --------------------------------------------------
+
+        transaction.update(
+            round_ref,
+            {
+                "entry_count":
+                    firestore.Increment(1),
+
+                "updated_at":
+                    current
+            }
+        )
+
+        # --------------------------------------------------
+        # CREATE ENTRY
+        # --------------------------------------------------
+
+        status = (
+            "submitted"
+            if mode == "question"
+            else "pending"
+        )
+
+        transaction.set(
+            entry_ref,
+            {
+                "telegram_id":
+                    str(telegram_id),
+
+                "round_id":
+                    round_id,
+
+                "mode":
+                    mode,
+
+                "status":
+                    status,
+
+                "answer":
+                    "",
+
+                "proof_text":
+                    "",
+
+                "proof_url":
+                    "",
+
+                "created_at":
+                    current,
+
+                "updated_at":
+                    current
+            }
+        )
+
+        return {
+            "entry_id":
+                entry_ref.id,
+
+            "quizbee_points":
+                points - ENTRY_FEE
+        }
+
+    return perform(
+        transaction
+        )
 
 
 def create_transaction(
@@ -442,7 +728,9 @@ def current_round():
     "/api/daily-earning/enter"
 )
 def enter_daily_earning():
+
     try:
+
         user = require_user()
 
         if not user:
@@ -481,101 +769,45 @@ def enter_daily_earning():
                     "Daily Earning round not found."
             }), 404
 
-        if not is_round_open(
-            round_data
-        ):
-            return jsonify({
-                "success": False,
-                "error":
-                    "This Daily Earning round is not open."
-            }), 400
-
-        existing = get_user_entry(
-            user["telegram_id"],
-            round_id
-        )
-
-        if existing:
-            return jsonify({
-                "success": True,
-                "already_entered": True,
-                "entry": existing
-            })
-
-        max_entries = int(
-            round_data.get(
-                "max_entries",
-                0
-            )
-        )
-
-        current_count = count_entries(
-            round_id
-        )
-
-        if (
-            max_entries > 0
-            and current_count >= max_entries
-        ):
-            return jsonify({
-                "success": False,
-                "error":
-                    "Daily Earning slots are full."
-            }), 400
-
-        try:
-            new_balance = deduct_entry_fee(
-                user["telegram_id"]
-            )
-        except ValueError as e:
-            return jsonify({
-                "success": False,
-                "error": str(e)
-            }), 400
-
         mode = round_data.get(
             "mode",
             "question"
         )
 
-        status = (
-            "submitted"
-            if mode == "question"
-            else "pending"
-        )
+        try:
 
-        entry_ref = db.collection(
-            "daily_earning_entries"
-        ).document()
-
-        entry_ref.set({
-            "telegram_id":
+            result = reserve_daily_entry(
                 user["telegram_id"],
-
-            "round_id":
                 round_id,
+                mode
+            )
 
-            "mode":
-                mode,
+        except ValueError as e:
 
-            "status":
-                status,
+            # If the user already entered,
+            # return the existing entry instead
+            # of treating it as a server failure.
 
-            "answer":
-                "",
+            existing = get_user_entry(
+                user["telegram_id"],
+                round_id
+            )
 
-            "proof_text":
-                "",
+            if existing:
+                return jsonify({
+                    "success": True,
+                    "already_entered": True,
+                    "entry": existing
+                })
 
-            "proof_url":
-                "",
+            return jsonify({
+                "success": False,
+                "error": str(e)
+            }), 400
 
-            "created_at":
-                now(),
-
-            "updated_at":
-                now()
-        })
+        # --------------------------------------------------
+        # TRANSACTION RECORD
+        # --------------------------------------------------
 
         create_transaction(
             user["telegram_id"],
@@ -584,16 +816,22 @@ def enter_daily_earning():
             "quizbee_points",
             {
                 "round_id":
-                    round_id
+                    round_id,
+
+                "entry_id":
+                    result["entry_id"]
             }
         )
 
         return jsonify({
             "success": True,
-            "already_entered": False,
+
+            "already_entered":
+                False,
+
             "entry": {
                 "id":
-                    entry_ref.id,
+                    result["entry_id"],
 
                 "round_id":
                     round_id,
@@ -602,17 +840,23 @@ def enter_daily_earning():
                     mode,
 
                 "status":
-                    status
+                    (
+                        "submitted"
+                        if mode == "question"
+                        else "pending"
+                    )
             },
 
             "quizbee_points":
-                new_balance
+                result["quizbee_points"]
         })
 
     except Exception as e:
+
         return jsonify({
             "success": False,
-            "error": str(e)
+            "error":
+                str(e)
         }), 500
 
 
@@ -1056,7 +1300,16 @@ def admin_create_round():
                 ),
 
             "entry_fee":
-                ENTRY_FEE,
+              ENTRY_FEE,
+
+            "entry_count":
+                 0,
+
+            "winner_count":
+                  0,
+
+            "settlement_status":
+               "not_settled",
 
             "created_at":
                 now(),
@@ -1207,11 +1460,29 @@ def admin_reject_entry(entry_id):
         # the user can resubmit and the
         # slot becomes available again.
         if round_data and is_round_open(
-            round_data
-        ):
-            new_status = "rejected"
-        else:
-            new_status = "rejected_after_close"
+    round_data
+):
+
+    new_status = "rejected"
+
+    # Free the reserved slot.
+    db.collection(
+        "daily_earning_rounds"
+    ).document(
+        entry["round_id"]
+    ).update({
+        "entry_count":
+            firestore.Increment(-1),
+
+        "updated_at":
+            now()
+    })
+
+else:
+
+    new_status = (
+        "rejected_after_close"
+    )
 
         entry_ref.update({
             "status":
@@ -1299,7 +1570,38 @@ def settle_round(round_id):
                     "Round has not ended yet."
             }), 400
 
-        round_ref.update({
+        settle_transaction = db.transaction()
+
+@firestore.transactional
+def lock_round(transaction):
+
+    snapshot = transaction.get(
+        round_ref
+    )
+
+    if not snapshot.exists:
+        raise ValueError(
+            "Round not found."
+        )
+
+    data = (
+        snapshot.to_dict()
+        or {}
+    )
+
+    current_status = data.get(
+        "status"
+    )
+
+    if current_status == "settled":
+        return "already_settled"
+
+    if current_status == "settling":
+        return "already_settling"
+
+    transaction.update(
+        round_ref,
+        {
             "status":
                 "settling",
 
@@ -1308,7 +1610,31 @@ def settle_round(round_id):
 
             "updated_at":
                 now()
-        })
+        }
+    )
+
+    return "locked"
+
+
+lock_result = lock_round(
+    settle_transaction
+)
+
+if lock_result == "already_settled":
+
+    return jsonify({
+        "success": True,
+        "message":
+            "Round already settled."
+    })
+
+if lock_result == "already_settling":
+
+    return jsonify({
+        "success": False,
+        "error":
+            "This round is already being settled."
+    }), 409 
 
         entries = []
 
@@ -1410,6 +1736,9 @@ def settle_round(round_id):
             round_ref.update({
                 "status":
                     "settled",
+                
+                "settlement_status":
+                     "settled",
 
                 "winner_count":
                     0,
@@ -1537,7 +1866,10 @@ def settle_round(round_id):
 
         round_ref.update({
             "status":
-                "settled",
+               "closed",
+
+            "settlement_status":
+                "pending",
 
             "winner_count":
                 winner_count,
