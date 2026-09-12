@@ -74,8 +74,16 @@ dp = Dispatcher()
 # ADMIN SECURITY
 # ---------------------------------------------------------
 
+def get_admin_ids():
+    return {
+        x.strip()
+        for x in ADMIN_TELEGRAM_IDS.split(",")
+        if x.strip()
+    }
+
+
 def is_admin(user_id: int) -> bool:
-    return str(user_id) == str(ADMIN_TELEGRAM_ID)
+    return str(user_id) in get_admin_ids() 
 
 
 async def reject_if_not_admin(message: Message) -> bool:
