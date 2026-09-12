@@ -276,11 +276,26 @@ async def main():
     )
 
     logger.info(
-        "Admin Telegram ID configured: %s",
-        ADMIN_TELEGRAM_ID,
+        "Admin Telegram IDs configured: %s",
+        ADMIN_TELEGRAM_IDS,
     )
 
-    await dp.start_polling(bot)
+    await bot.set_my_commands([
+        BotCommand(
+            command="start",
+            description="Open QuizBee Admin Panel"
+        ),
+        BotCommand(
+            command="admin",
+            description="Open Admin Panel"
+        ),
+        BotCommand(
+            command="panel",
+            description="Open Admin Panel"
+        ),
+    ])
+
+    await dp.start_polling(bot) 
 
 
 if __name__ == "__main__":
