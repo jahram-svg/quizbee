@@ -2498,3 +2498,45 @@ document.addEventListener(
 
     }
 );
+
+function openRequestedAdminSection() {
+    const params = new URLSearchParams(window.location.search);
+    const section = params.get("section");
+
+    if (!section) {
+        return;
+    }
+
+    const sectionMap = {
+        dashboard: "dashboard",
+        games: "games",
+        challenges: "challenges",
+        daily: "daily",
+        withdrawals: "withdrawals",
+        orders: "orders",
+        users: "users",
+        transactions: "transactions",
+        settings: "settings"
+    };
+
+    const target = sectionMap[section];
+
+    if (!target) {
+        return;
+    }
+
+    const element = document.getElementById(target);
+
+    if (element) {
+        element.scrollIntoView({
+            behavior: "smooth",
+            block: "start"
+        });
+    }
+}
+
+
+document.addEventListener(
+    "DOMContentLoaded",
+    openRequestedAdminSection
+);
