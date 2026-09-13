@@ -1,13 +1,34 @@
-# backend/competition.py
+"""
+QuizBee Competition Engine
+
+Six competition games:
+1. Guess It
+2. Impossible Question
+3. The Crowd Trap
+4. The Survivor
+5. Dead Number
+6. Impossible Choice
+
+Important architecture rules:
+- Users only see the currently live stage.
+- Future stages remain private.
+- Stage entry is paid separately.
+- A player can enter a stage only once.
+- Stage results are recorded after Admin concludes the stage.
+- Users can see whether they passed, failed, advanced, or won.
+- Result logic is shared across ALL games.
+- Secret answers are never exposed to users before conclusion.
+"""
 
 from __future__ import annotations
 
-import math
-import random
+import os
 import re
 import uuid
+import random
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from functools import wraps
+from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, jsonify, request
 from firebase_admin import firestore
@@ -16,18 +37,74 @@ from backend.firebase import db
 from backend.telegram_auth import validate_telegram_init_data
 
 
-competition_bp = Blueprint("competition", __name__)
+competition_bp = Blueprint(
+    "competition",
+    __name__,
+    url_prefix="/api/competition",
+)
 
-USER_COLLECTION = "users"
-GAME_COLLECTION = "games"
-ROUND_COLLECTION = "competition_rounds"
-STAGE_COLLECTION = "competition_stages"
-ENTRY_COLLECTION = "competition_entries"
-PARTICIPANT_COLLECTION = "competition_participants"
-RESULT_COLLECTION = "competition_results"
-TRANSACTION_COLLECTION = "transactions"
 
-USER_INIT_HEADER = "X-Telegram-Init-Data"
+# ============================================================
+# CONSTANTS
+# ============================================================
+
+GAME_DEFINITIONS = {
+    "guess_it": {
+        "id": "guess_it",
+        "name": "Guess It",
+        "emoji": "🎯",
+        "description": "A 7-stage survival challenge.",
+        "active": True,
+        "staged": True,
+        "default_entry_fees": [10, 10, 10, 10, 10, 10, 30],
+    },
+    "impossible_question": {
+        "id": "impossible_question",
+        "name": "Impossible Question",
+        "emoji": "💀",
+        "description": "One difficult question. One answer. No retry.",
+        "active": True,
+        "staged": False,
+        "default_entry_fees": [10],
+    },
+    "crowd_trap": {
+        "id": "crowd_trap",
+        "name": "The Crowd Trap",
+        "emoji": "🧠",
+        "description": "Choose a number nobody else chooses.",
+        "active": False,
+        "staged": False,
+        "default_entry_fees": [10],
+    },
+    "survivor": {
+        "id": "survivor",
+        "name": "The Survivor",
+        "emoji": "🏆",
+        "description": "Choose the safe option and survive.",
+        "active": False,
+        "staged": True,
+        "default_entry_fees": [10, 10, 10, 10, 10, 10, 30],
+    },
+    "dead_number": {
+        "id": "dead_number",
+        "name": "Dead Number",
+        "emoji": "☠️",
+        "description": "Avoid the dead numbers.",
+        "active": False,
+        "staged": True,
+        "default_entry_fees": [10, 10, 10, 10, 10, 10, 30],
+    },
+    "impossible_choice": {
+        "id": "impossible_choice",
+        "name": "Impossible Choice",
+        "emoji": "🤔",
+        "description": "Predict the crowd.",
+        "active": False,
+        "staged": False,
+        "default_entry_fees": [10],
+    },
+}
+
 
 STAGED_GAMES = {
     "guess_it",
@@ -35,71 +112,35 @@ STAGED_GAMES = {
     "dead_number",
 }
 
-SINGLE_STAGE_GAMES = {
-    "impossible_question",
-    "crowd_trap",
-    "impossible_choice",
-}
 
-ALL_COMPETITION_GAMES = [
-    "guess_it",
-    "impossible_question",
-    "crowd_trap",
-    "survivor",
-    "dead_number",
-    "impossible_choice",
-]
-
-GAME_META = {
-    "guess_it": {
-        "name": "Guess It",
-        "emoji": "🎯",
-        "total_stages": 7,
-        "description": "A 7-stage elimination challenge. Answer correctly to survive.",
-    },
-    "impossible_question": {
-        "name": "Impossible Question",
-        "emoji": "💀",
-        "total_stages": 1,
-        "description": "One difficult question. One answer. No retries.",
-    },
-    "crowd_trap": {
-        "name": "The Crowd Trap",
-        "emoji": "🧠",
-        "total_stages": 1,
-        "description": "Choose a number nobody else chooses.",
-    },
-    "survivor": {
-        "name": "The Survivor",
-        "emoji": "🏆",
-        "total_stages": 7,
-        "description": "Choose the safe option and survive each stage.",
-    },
-    "dead_number": {
-        "name": "Dead Number",
-        "emoji": "☠️",
-        "total_stages": 7,
-        "description": "Avoid the dead numbers and survive.",
-    },
-    "impossible_choice": {
-        "name": "Impossible Choice",
-        "emoji": "🤔",
-        "total_stages": 1,
-        "description": "Predict the crowd using psychology and probability.",
-    },
+VALID_STATUSES = {
+    "draft",
+    "scheduled",
+    "live",
+    "closed",
+    "settled",
+    "cancelled",
 }
 
 
 # ============================================================
-# BASIC HELPERS
+# GENERAL HELPERS
 # ============================================================
 
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def iso_now() -> str:
-    return now_utc().isoformat()
+def iso(dt: Any) -> Optional[str]:
+    if dt is None:
+        return None
+
+    if isinstance(dt, datetime):
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).isoformat()
+
+    return str(dt)
 
 
 def parse_datetime(value: Any) -> Optional[datetime]:
@@ -109,13 +150,7 @@ def parse_datetime(value: Any) -> Optional[datetime]:
     if isinstance(value, datetime):
         if value.tzinfo is None:
             return value.replace(tzinfo=timezone.utc)
-        return value
-
-    if hasattr(value, "to_datetime"):
-        dt = value.to_datetime()
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt
+        return value.astimezone(timezone.utc)
 
     text = str(value).strip()
 
@@ -128,64 +163,18 @@ def parse_datetime(value: Any) -> Optional[datetime]:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
 
-        return dt
+        return dt.astimezone(timezone.utc)
+
     except Exception:
         return None
 
 
-def is_time_before(value: Any) -> bool:
-    dt = parse_datetime(value)
-    if not dt:
-        return False
-    return now_utc() < dt
-
-
-def is_time_after(value: Any) -> bool:
-    dt = parse_datetime(value)
-    if not dt:
-        return False
-    return now_utc() >= dt
-
-
-def serialize_value(value: Any) -> Any:
-    if isinstance(value, datetime):
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=timezone.utc)
-        return value.isoformat()
-
-    if hasattr(value, "isoformat") and not isinstance(value, (str, int, float)):
-        try:
-            return value.isoformat()
-        except Exception:
-            pass
-
-    if isinstance(value, dict):
-        return {str(k): serialize_value(v) for k, v in value.items()}
-
-    if isinstance(value, list):
-        return [serialize_value(v) for v in value]
-
-    if isinstance(value, tuple):
-        return [serialize_value(v) for v in value]
-
-    return value
-
-
-def doc_dict(snapshot) -> Dict[str, Any]:
-    if not snapshot.exists:
-        return {}
-
-    data = snapshot.to_dict() or {}
-    data["id"] = snapshot.id
-    return serialize_value(data)
-
-
-def clean_string(value: Any) -> str:
+def clean_text(value: Any) -> str:
     return str(value or "").strip()
 
 
 def normalize_answer(value: Any) -> str:
-    text = clean_string(value).lower()
+    text = clean_text(value).lower()
 
     text = re.sub(r"\s+", " ", text)
     text = re.sub(r"[^\w\s.%+-]", "", text)
@@ -193,2340 +182,948 @@ def normalize_answer(value: Any) -> str:
     return text.strip()
 
 
-def safe_number(value: Any, default: float = 0) -> float:
+def to_number(value: Any, default: float = 0) -> float:
     try:
         return float(value)
     except Exception:
         return default
 
 
-def safe_int(value: Any, default: int = 0) -> int:
+def to_int(value: Any, default: int = 0) -> int:
     try:
         return int(value)
     except Exception:
         return default
 
 
-def game_meta(game_id: str) -> Dict[str, Any]:
-    return GAME_META.get(
-        game_id,
-        {
-            "name": game_id,
-            "emoji": "🎮",
-            "total_stages": 1,
-            "description": "",
-        },
+def unique_list(values: Any) -> List[str]:
+    if not isinstance(values, list):
+        return []
+
+    result = []
+
+    for value in values:
+        value = clean_text(value)
+
+        if value and value not in result:
+            result.append(value)
+
+    return result
+
+
+def public_user(user: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Return only wallet information that the frontend needs.
+    """
+
+    return {
+        "telegram_id": str(user.get("telegram_id", "")),
+        "first_name": user.get("first_name", ""),
+        "username": user.get("username", ""),
+        "points": to_int(user.get("points", 0)),
+        "prize_balance_usd": round(
+            to_number(user.get("prize_balance_usd", 0)),
+            4,
+        ),
+    }
+
+
+def game_public(game: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": game.get("id"),
+        "name": game.get("name"),
+        "emoji": game.get("emoji"),
+        "description": game.get("description"),
+        "active": bool(game.get("active", False)),
+        "staged": bool(game.get("staged", False)),
+    }
+
+
+# ============================================================
+# AUTHENTICATION
+# ============================================================
+
+def get_init_data() -> str:
+    return (
+        request.headers.get("X-Telegram-Init-Data")
+        or request.headers.get("X-Telegram-InitData")
+        or request.args.get("init_data")
+        or ""
     )
 
 
-def game_display(game_id: str) -> str:
-    meta = game_meta(game_id)
-    return f"{meta['emoji']} {meta['name']}"
-
-
-# ============================================================
-# TELEGRAM AUTHENTICATION
-# ============================================================
-
-def get_telegram_user() -> Dict[str, Any]:
-    init_data = request.headers.get(USER_INIT_HEADER, "").strip()
+def require_user():
+    init_data = get_init_data()
 
     if not init_data:
         raise ValueError("Telegram authentication data is missing.")
 
-    user = validate_telegram_init_data(init_data)
+    user_data = validate_telegram_init_data(init_data)
 
-    if not user:
-        raise ValueError("Invalid Telegram authentication data.")
+    if not user_data:
+        raise ValueError("Invalid Telegram authentication.")
 
-    return user
+    return user_data
 
 
-def telegram_id_from_user(user: Dict[str, Any]) -> str:
-    telegram_id = (
-        user.get("id")
-        or user.get("telegram_id")
-        or user.get("user_id")
+def user_route(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            user = require_user()
+            return fn(user, *args, **kwargs)
+        except ValueError as exc:
+            return jsonify({
+                "success": False,
+                "error": str(exc),
+            }), 401
+        except Exception as exc:
+            print("Competition user route error:", repr(exc))
+            return jsonify({
+                "success": False,
+                "error": "Unable to process request.",
+            }), 500
+
+    return wrapper
+
+
+# ============================================================
+# ADMIN AUTHENTICATION
+# ============================================================
+
+def configured_admin_ids() -> set[str]:
+    ids = set()
+
+    multi = os.getenv("ADMIN_TELEGRAM_IDS", "")
+
+    for value in multi.split(","):
+        value = value.strip()
+
+        if value:
+            ids.add(value)
+
+    single = os.getenv("ADMIN_TELEGRAM_ID", "").strip()
+
+    if single:
+        ids.add(single)
+
+    return ids
+
+
+def require_admin():
+    init_data = (
+        request.headers.get("X-Telegram-Init-Data")
+        or request.headers.get("X-Telegram-InitData")
+        or request.args.get("init_data")
+        or ""
     )
 
-    if telegram_id is None:
-        raise ValueError("Telegram user ID is missing.")
+    if not init_data:
+        raise ValueError("Admin authentication data is missing.")
 
-    return str(telegram_id)
+    admin_bot_token = os.getenv("ADMIN_BOT_TOKEN")
+
+    if not admin_bot_token:
+        raise ValueError("ADMIN_BOT_TOKEN is not configured.")
+
+    user_data = validate_telegram_init_data(
+        init_data,
+        bot_token=admin_bot_token,
+    )
+
+    if not user_data:
+        raise ValueError("Invalid admin authentication.")
+
+    telegram_id = str(
+        user_data.get("id")
+        or user_data.get("telegram_id")
+        or ""
+    )
+
+    if telegram_id not in configured_admin_ids():
+        raise ValueError("You are not authorized as an admin.")
+
+    return user_data
 
 
-def current_user_document():
-    telegram_user = get_telegram_user()
-    telegram_id = telegram_id_from_user(telegram_user)
+def admin_route(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            admin = require_admin()
+            return fn(admin, *args, **kwargs)
 
-    ref = db.collection(USER_COLLECTION).document(telegram_id)
-    snap = ref.get()
+        except ValueError as exc:
+            return jsonify({
+                "success": False,
+                "error": str(exc),
+            }), 403
+
+        except Exception as exc:
+            print("Competition admin route error:", repr(exc))
+            return jsonify({
+                "success": False,
+                "error": "Unable to process admin request.",
+            }), 500
+
+    return wrapper
+
+
+# ============================================================
+# FIRESTORE REFERENCES
+# ============================================================
+
+def games_col():
+    return db.collection("competition_games")
+
+
+def rounds_col():
+    return db.collection("competition_rounds")
+
+
+def stages_col():
+    return db.collection("competition_stages")
+
+
+def entries_col():
+    return db.collection("competition_entries")
+
+
+def results_col():
+    return db.collection("competition_results")
+
+
+def users_col():
+    return db.collection("users")
+
+
+def transactions_col():
+    return db.collection("transactions")
+
+
+# ============================================================
+# GAME INITIALIZATION
+# ============================================================
+
+def initialize_games() -> None:
+    batch = db.batch()
+
+    for game_id, definition in GAME_DEFINITIONS.items():
+        ref = games_col().document(game_id)
+
+        batch.set(
+            ref,
+            {
+                **definition,
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            },
+            merge=True,
+        )
+
+    batch.commit()
+
+
+def get_game(game_id: str) -> Optional[Dict[str, Any]]:
+    snap = games_col().document(game_id).get()
 
     if not snap.exists:
-        raise ValueError("QuizBee user account was not found.")
+        return None
 
-    return telegram_user, telegram_id, ref, snap
+    data = snap.to_dict() or {}
+    data["id"] = snap.id
 
+    return data
 
-# ============================================================
-# ERROR / RESPONSE HELPERS
-# ============================================================
 
-def error_response(message: str, status: int = 400):
-    return jsonify({
-        "success": False,
-        "error": message,
-    }), status
+def ensure_game_exists(game_id: str) -> Dict[str, Any]:
+    game = get_game(game_id)
 
+    if game:
+        return game
 
-def success_response(data: Optional[Dict[str, Any]] = None):
-    payload = {
-        "success": True,
-    }
+    definition = GAME_DEFINITIONS.get(game_id)
 
-    if data:
-        payload.update(data)
+    if not definition:
+        raise ValueError("Unknown competition game.")
 
-    return jsonify(payload)
-
-
-# ============================================================
-# USER RESPONSE
-# ============================================================
-
-def user_public_data(user_data: Dict[str, Any], telegram_id: str) -> Dict[str, Any]:
-    points = safe_int(
-        user_data.get(
-            "points",
-            user_data.get("quizbee_points", 0),
-        )
-    )
-
-    prize_balance = safe_number(
-        user_data.get(
-            "prize_balance_usd",
-            user_data.get("prize_balance", 0),
-        )
-    )
-
-    return {
-        "telegram_id": str(telegram_id),
-        "points": points,
-        "quizbee_points": points,
-        "prize_balance_usd": prize_balance,
-        "prize_balance": prize_balance,
-        "first_name": user_data.get("first_name", ""),
-        "username": user_data.get("username", ""),
-    }
-
-
-# ============================================================
-# GAME SETUP
-# ============================================================
-
-def build_game_document(game_id: str) -> Dict[str, Any]:
-    meta = game_meta(game_id)
-
-    active = game_id in {
-        "guess_it",
-        "impossible_question",
-    }
-
-    return {
-        "id": game_id,
-        "name": meta["name"],
-        "emoji": meta["emoji"],
-        "description": meta["description"],
-        "active": active,
-        "competition_enabled": True,
-        "total_stages": meta["total_stages"],
-        "default_entry_fee": 10,
-        "updated_at": firestore.SERVER_TIMESTAMP,
-    }
-
-
-@competition_bp.route("/api/admin/competition/setup-games", methods=["POST"])
-def admin_setup_games():
-    try:
-        _require_admin()
-
-        batch = db.batch()
-
-        for game_id in ALL_COMPETITION_GAMES:
-            ref = db.collection(GAME_COLLECTION).document(game_id)
-            batch.set(
-                ref,
-                build_game_document(game_id),
-                merge=True,
-            )
-
-        batch.commit()
-
-        return success_response({
-            "message": "Competition games initialized.",
-            "games": ALL_COMPETITION_GAMES,
-        })
-
-    except Exception as exc:
-        return error_response(str(exc), 500)
-
-
-# ============================================================
-# FIND ROUND / STAGE
-# ============================================================
-
-def get_round_ref(round_id: str):
-    return db.collection(ROUND_COLLECTION).document(round_id)
-
-
-def get_stage_ref(round_id: str, stage_no: int):
-    return db.collection(STAGE_COLLECTION).document(
-        f"{round_id}_{stage_no}"
-    )
-
-
-def get_entry_ref(round_id: str, stage_no: int, telegram_id: str):
-    return db.collection(ENTRY_COLLECTION).document(
-        f"{round_id}_{stage_no}_{telegram_id}"
-    )
-
-
-def get_participant_ref(round_id: str, telegram_id: str):
-    return db.collection(PARTICIPANT_COLLECTION).document(
-        f"{round_id}_{telegram_id}"
-    )
-
-
-def get_active_round(game_id: str):
-    query = (
-        db.collection(ROUND_COLLECTION)
-        .where("game_id", "==", game_id)
-        .where("status", "in", ["waiting", "live"])
-        .limit(10)
-    )
-
-    docs = list(query.stream())
-
-    if not docs:
-        return None, None
-
-    docs.sort(
-        key=lambda s: str(
-            (s.to_dict() or {}).get("created_at", "")
-        ),
-        reverse=True,
-    )
-
-    for snap in docs:
-        data = snap.to_dict() or {}
-
-        if data.get("status") in {"waiting", "live"}:
-            return snap.reference, data
-
-    return None, None
-
-
-def get_current_stage(round_data: Dict[str, Any]):
-    round_id = str(round_data.get("id", ""))
-    stage_no = safe_int(round_data.get("current_stage", 1), 1)
-
-    if not round_id:
-        return None, None
-
-    ref = get_stage_ref(round_id, stage_no)
-    snap = ref.get()
-
-    if not snap.exists:
-        return ref, None
-
-    return ref, snap.to_dict() or {}
-
-
-# ============================================================
-# STAGE STATUS
-# ============================================================
-
-def stage_is_live(stage: Dict[str, Any]) -> bool:
-    status = stage.get("status")
-
-    if status != "live":
-        return False
-
-    start_at = stage.get("start_at")
-    end_at = stage.get("end_at")
-
-    if start_at and is_time_before(start_at):
-        return False
-
-    if end_at and is_time_after(end_at):
-        return False
-
-    return True
-
-
-def stage_has_started(stage: Dict[str, Any]) -> bool:
-    start_at = stage.get("start_at")
-
-    if not start_at:
-        return True
-
-    return not is_time_before(start_at)
-
-
-def stage_has_ended(stage: Dict[str, Any]) -> bool:
-    end_at = stage.get("end_at")
-
-    if not end_at:
-        return False
-
-    return is_time_after(end_at)
-
-
-# ============================================================
-# ROUND STATE FOR USER
-# ============================================================
-
-def determine_user_stage_state(
-    game_id: str,
-    round_ref,
-    round_data: Dict[str, Any],
-    telegram_id: str,
-):
-    round_id = round_ref.id
-
-    status = round_data.get("status", "waiting")
-
-    if status in {"settled", "finished"}:
-        return {
-            "status": "finished",
-            "round": {
-                **round_data,
-                "id": round_id,
-            },
-        }
-
-    current_stage_no = safe_int(
-        round_data.get("current_stage", 1),
-        1,
-    )
-
-    stage_ref = get_stage_ref(
-        round_id,
-        current_stage_no,
-    )
-
-    stage_snap = stage_ref.get()
-
-    if not stage_snap.exists:
-        return {
-            "status": "round_not_started",
-            "round": {
-                **round_data,
-                "id": round_id,
-            },
-        }
-
-    stage = stage_snap.to_dict() or {}
-    stage["id"] = stage_snap.id
-
-    if stage.get("status") not in {"live", "closed"}:
-        return {
-            "status": "round_not_started",
-            "round": {
-                **round_data,
-                "id": round_id,
-            },
-            "stage": stage,
-        }
-
-    participant_ref = get_participant_ref(
-        round_id,
-        telegram_id,
-    )
-
-    participant_snap = participant_ref.get()
-
-    if participant_snap.exists:
-        participant = participant_snap.to_dict() or {}
-
-        participant_status = participant.get("status")
-
-        if participant_status in {
-            "eliminated",
-            "failed",
-            "forfeited",
-        }:
-            return {
-                "status": "eliminated",
-                "message": participant.get(
-                    "message",
-                    "You are out of this round.",
-                ),
-                "round": {
-                    **round_data,
-                    "id": round_id,
-                },
-                "stage": stage,
-            }
-
-    entry_ref = get_entry_ref(
-        round_id,
-        current_stage_no,
-        telegram_id,
-    )
-
-    entry_snap = entry_ref.get()
-
-    if not entry_snap.exists:
-        if stage.get("status") != "live":
-            return {
-                "status": "round_not_started",
-                "round": {
-                    **round_data,
-                    "id": round_id,
-                },
-                "stage": stage,
-            }
-
-        if stage_has_ended(stage):
-            return {
-                "status": "round_not_started",
-                "round": {
-                    **round_data,
-                    "id": round_id,
-                },
-                "stage": stage,
-            }
-
-        return {
-            "status": "needs_entry",
-            "round": {
-                **round_data,
-                "id": round_id,
-            },
-            "stage": stage,
-            "entry_fee": safe_int(stage.get("entry_fee", 0)),
-        }
-
-    entry = entry_snap.to_dict() or {}
-
-    if entry.get("status") == "submitted":
-        return {
-            "status": "submitted",
-            "message": "Your answer has been recorded. Wait for the stage to finish.",
-            "round": {
-                **round_data,
-                "id": round_id,
-            },
-            "stage": stage,
-        }
-
-    if entry.get("status") in {
-        "correct",
-        "survived",
-        "winner",
-    }:
-        return {
-            "status": "submitted",
-            "message": "Your participation for this stage is already recorded.",
-            "round": {
-                **round_data,
-                "id": round_id,
-            },
-            "stage": stage,
-        }
-
-    if stage.get("status") == "live":
-        return {
-            "status": "ready",
-            "round": {
-                **round_data,
-                "id": round_id,
-            },
-            "stage": stage,
-            "entry_fee": safe_int(stage.get("entry_fee", 0)),
-        }
-
-    return {
-        "status": "round_not_started",
-        "round": {
-            **round_data,
-            "id": round_id,
-        },
-        "stage": stage,
-    }
-
-
-# ============================================================
-# USER STATE
-# ============================================================
-
-@competition_bp.route(
-    "/api/competition/<game_id>/state",
-    methods=["GET"],
-)
-def competition_state(game_id: str):
-    try:
-        telegram_user, telegram_id, user_ref, user_snap = (
-            current_user_document()
-        )
-
-        game_id = clean_string(game_id)
-
-        if game_id not in ALL_COMPETITION_GAMES:
-            return error_response("Competition game not found.", 404)
-
-        game_ref = db.collection(GAME_COLLECTION).document(game_id)
-        game_snap = game_ref.get()
-
-        if not game_snap.exists:
-            return error_response("Competition game has not been initialized.", 404)
-
-        game = game_snap.to_dict() or {}
-        game["id"] = game_snap.id
-
-        if not game.get("active", False):
-            return success_response({
-                "status": "no_round",
-                "game": game,
-                "user": user_public_data(
-                    user_snap.to_dict() or {},
-                    telegram_id,
-                ),
-            })
-
-        round_ref, round_data = get_active_round(game_id)
-
-        if not round_ref or not round_data:
-            return success_response({
-                "status": "no_round",
-                "game": game,
-                "user": user_public_data(
-                    user_snap.to_dict() or {},
-                    telegram_id,
-                ),
-            })
-
-        round_data["id"] = round_ref.id
-
-        state = determine_user_stage_state(
-            game_id,
-            round_ref,
-            round_data,
-            telegram_id,
-        )
-
-        state["game"] = game
-
-        state["user"] = user_public_data(
-            user_snap.to_dict() or {},
-            telegram_id,
-        )
-
-        return success_response(state)
-
-    except ValueError as exc:
-        return error_response(str(exc), 401)
-
-    except Exception as exc:
-        return error_response(str(exc), 500)
-
-
-# ============================================================
-# TRANSACTIONAL ENTRY CHARGE
-# ============================================================
-
-@firestore.transactional
-def _charge_competition_entry(
-    transaction,
-    user_ref,
-    entry_ref,
-    participant_ref,
-    transaction_ref,
-    telegram_id: str,
-    telegram_user: Dict[str, Any],
-    round_id: str,
-    game_id: str,
-    stage_no: int,
-    fee: int,
-):
-    """
-    Atomically:
-      1. checks whether this user already entered the stage
-      2. checks the user's points
-      3. deducts the entry fee
-      4. creates the entry
-      5. creates/updates participant
-      6. creates transaction history
-
-    This MUST be called through firestore.transactional.
-    """
-
-    entry_snap = entry_ref.get(transaction=transaction)
-
-    if entry_snap.exists:
-        user_snap = user_ref.get(transaction=transaction)
-
-        return {
-            "already_entered": True,
-            "user": user_snap.to_dict() or {},
-        }
-
-    user_snap = user_ref.get(transaction=transaction)
-
-    if not user_snap.exists:
-        raise ValueError("QuizBee user account was not found.")
-
-    user_data = user_snap.to_dict() or {}
-
-    current_points = safe_int(
-        user_data.get(
-            "points",
-            user_data.get("quizbee_points", 0),
-        )
-    )
-
-    if current_points < fee:
-        raise ValueError(
-            f"You need {fee} QuizBee Points to enter this stage."
-        )
-
-    new_points = current_points - fee
-
-    transaction.update(
-        user_ref,
+    games_col().document(game_id).set(
         {
-            "points": new_points,
-            "quizbee_points": new_points,
-            "total_spent": firestore.Increment(fee),
+            **definition,
             "updated_at": firestore.SERVER_TIMESTAMP,
         },
-    )
-
-    entry_data = {
-        "id": entry_ref.id,
-        "round_id": round_id,
-        "game_id": game_id,
-        "stage_no": stage_no,
-        "telegram_id": telegram_id,
-        "status": "entered",
-        "answer": None,
-        "entered_at": firestore.SERVER_TIMESTAMP,
-        "submitted_at": None,
-        "fee": fee,
-    }
-
-    transaction.set(
-        entry_ref,
-        entry_data,
-    )
-
-    participant_data = {
-        "round_id": round_id,
-        "game_id": game_id,
-        "telegram_id": telegram_id,
-        "status": "active",
-        "current_stage": stage_no,
-        "joined_at": firestore.SERVER_TIMESTAMP,
-        "updated_at": firestore.SERVER_TIMESTAMP,
-    }
-
-    transaction.set(
-        participant_ref,
-        participant_data,
         merge=True,
     )
 
-    transaction.set(
-        transaction_ref,
-        {
-            "type": "competition_entry",
-            "category": "game_entry",
-            "telegram_id": telegram_id,
-            "game_id": game_id,
-            "round_id": round_id,
-            "stage_no": stage_no,
-            "amount_points": fee,
-            "direction": "debit",
-            "status": "completed",
-            "description": (
-                f"{game_display(game_id)} "
-                f"Stage {stage_no} entry"
-            ),
-            "created_at": firestore.SERVER_TIMESTAMP,
-        },
-    )
-
-    user_data["points"] = new_points
-    user_data["quizbee_points"] = new_points
-
-    return {
-        "already_entered": False,
-        "user": user_data,
+    return get_game(game_id) or {
+        **definition,
+        "id": game_id,
     }
 
 
 # ============================================================
-# USER ENTER
+# ROUND HELPERS
 # ============================================================
 
-@competition_bp.route(
-    "/api/competition/<game_id>/enter",
-    methods=["POST"],
-)
-def competition_enter(game_id: str):
-    try:
-        telegram_user, telegram_id, user_ref, user_snap = (
-            current_user_document()
+def total_stages_for_game(game_id: str) -> int:
+    return 7 if game_id in STAGED_GAMES else 1
+
+
+def default_fees_for_game(game_id: str) -> List[int]:
+    definition = GAME_DEFINITIONS.get(game_id)
+
+    if not definition:
+        return [10]
+
+    return list(definition["default_entry_fees"])
+
+
+def get_round(round_id: str) -> Optional[Dict[str, Any]]:
+    snap = rounds_col().document(round_id).get()
+
+    if not snap.exists:
+        return None
+
+    data = snap.to_dict() or {}
+    data["id"] = snap.id
+
+    return data
+
+
+def get_stage(round_id: str, stage_no: int) -> Optional[Dict[str, Any]]:
+    ref = stages_col().document(
+        f"{round_id}_{int(stage_no)}"
+    )
+
+    snap = ref.get()
+
+    if not snap.exists:
+        return None
+
+    data = snap.to_dict() or {}
+    data["id"] = snap.id
+
+    return data
+
+
+def get_entry(
+    round_id: str,
+    stage_no: int,
+    telegram_id: str,
+) -> Optional[Dict[str, Any]]:
+    ref = entries_col().document(
+        f"{round_id}_{int(stage_no)}_{telegram_id}"
+    )
+
+    snap = ref.get()
+
+    if not snap.exists:
+        return None
+
+    data = snap.to_dict() or {}
+    data["id"] = snap.id
+
+    return data
+
+
+def get_result(
+    round_id: str,
+    telegram_id: str,
+) -> Optional[Dict[str, Any]]:
+    ref = results_col().document(
+        f"{round_id}_{telegram_id}"
+    )
+
+    snap = ref.get()
+
+    if not snap.exists:
+        return None
+
+    data = snap.to_dict() or {}
+    data["id"] = snap.id
+
+    return data
+
+
+def round_stages(round_id: str) -> List[Dict[str, Any]]:
+    snaps = (
+        stages_col()
+        .where("round_id", "==", round_id)
+        .stream()
+    )
+
+    stages = []
+
+    for snap in snaps:
+        data = snap.to_dict() or {}
+        data["id"] = snap.id
+        stages.append(data)
+
+    stages.sort(
+        key=lambda x: to_int(x.get("stage_no"), 0)
+    )
+
+    return stages
+
+
+def round_entries(
+    round_id: str,
+    stage_no: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    query = stages_col()
+
+    snaps = entries_col().where(
+        "round_id",
+        "==",
+        round_id,
+    )
+
+    if stage_no is not None:
+        snaps = snaps.where(
+            "stage_no",
+            "==",
+            int(stage_no),
         )
 
-        game_id = clean_string(game_id)
+    results = []
 
-        if game_id not in ALL_COMPETITION_GAMES:
-            return error_response("Competition game not found.", 404)
+    for snap in snaps.stream():
+        data = snap.to_dict() or {}
+        data["id"] = snap.id
+        results.append(data)
 
-        game_ref = db.collection(GAME_COLLECTION).document(game_id)
-        game_snap = game_ref.get()
+    results.sort(
+        key=lambda x: (
+            to_int(x.get("stage_no")),
+            str(x.get("telegram_id", "")),
+        )
+    )
 
-        if not game_snap.exists:
-            return error_response(
-                "Competition game has not been initialized.",
-                404,
-            )
+    return results
 
-        game = game_snap.to_dict() or {}
 
-        if not game.get("active", False):
-            return error_response(
-                "This competition is currently unavailable.",
-                400,
-            )
+# ============================================================
+# STAGE VISIBILITY
+# ============================================================
 
-        round_ref, round_data = get_active_round(game_id)
+def public_stage_data(
+    round_data: Dict[str, Any],
+    stage: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Never expose secret answers before the stage is concluded.
 
-        if not round_ref or not round_data:
-            return error_response(
-                "No active round is available.",
-                400,
-            )
+    Secret fields remain server-side.
+    """
 
-        round_id = round_ref.id
+    game_id = round_data.get("game_id")
 
-        if round_data.get("status") not in {
-            "waiting",
-            "live",
-        }:
-            return error_response(
-                "This round is not currently open.",
-                400,
-            )
+    result = {
+        "id": stage.get("id"),
+        "round_id": round_data.get("id"),
+        "stage_no": to_int(stage.get("stage_no"), 1),
+        "title": stage.get("title", ""),
+        "question": stage.get("question", ""),
+        "clue": stage.get("clue", ""),
+        "entry_fee": to_int(stage.get("entry_fee"), 0),
+        "start_at": iso(stage.get("start_at")),
+        "end_at": iso(stage.get("end_at")),
+        "status": stage.get("status", "draft"),
+        "options": stage.get("options", []),
+        "min_number": stage.get("min_number"),
+        "max_number": stage.get("max_number"),
+        "mechanic": stage.get("mechanic"),
+        "target_percentage": stage.get("target_percentage"),
+        "target_min_percentage": stage.get("target_min_percentage"),
+        "target_max_percentage": stage.get("target_max_percentage"),
+    }
 
-        stage_no = safe_int(
-            round_data.get("current_stage", 1),
+    # These games require numbers/options but never their secrets.
+    if game_id == "crowd_trap":
+        result["min_number"] = to_int(
+            stage.get("min_number"),
             1,
         )
 
-        stage_ref = get_stage_ref(
-            round_id,
-            stage_no,
+        result["max_number"] = to_int(
+            stage.get("max_number"),
+            20,
         )
 
-        stage_snap = stage_ref.get()
-
-        if not stage_snap.exists:
-            return error_response(
-                "Round not started yet.",
-                400,
-            )
-
-        stage = stage_snap.to_dict() or {}
-
-        if stage.get("status") != "live":
-            return error_response(
-                "Round not started yet.",
-                400,
-            )
-
-        if not stage_has_started(stage):
-            return error_response(
-                "Round not started yet.",
-                400,
-            )
-
-        if stage_has_ended(stage):
-            return error_response(
-                "This stage has ended.",
-                400,
-            )
-
-        participant_ref = get_participant_ref(
-            round_id,
-            telegram_id,
+    elif game_id == "dead_number":
+        result["min_number"] = to_int(
+            stage.get("min_number"),
+            1,
         )
 
-        participant_snap = participant_ref.get()
-
-        if participant_snap.exists:
-            participant = participant_snap.to_dict() or {}
-
-            if participant.get("status") in {
-                "eliminated",
-                "failed",
-                "forfeited",
-            }:
-                return error_response(
-                    "You are already out of this round.",
-                    400,
-                )
-
-        fee = safe_int(
-            stage.get(
-                "entry_fee",
-                game.get("default_entry_fee", 10),
-            ),
-            10,
+        result["max_number"] = to_int(
+            stage.get("max_number"),
+            20,
         )
 
-        if fee < 0:
-            fee = 0
-
-        entry_ref = get_entry_ref(
-            round_id,
-            stage_no,
-            telegram_id,
-        )
-
-        # Deterministic transaction document ID prevents duplicate
-        # transaction records when Firestore retries the transaction.
-        transaction_ref = db.collection(
-            TRANSACTION_COLLECTION
-        ).document(
-            f"competition_entry_{round_id}_{stage_no}_{telegram_id}"
-        )
-
-        transaction = db.transaction()
-
-        result = _charge_competition_entry(
-            transaction,
-            user_ref,
-            entry_ref,
-            participant_ref,
-            transaction_ref,
-            telegram_id,
-            telegram_user,
-            round_id,
-            game_id,
-            stage_no,
-            fee,
-        )
-
-        return success_response({
-            "already_entered": result["already_entered"],
-            "message": (
-                "You already entered this stage."
-                if result["already_entered"]
-                else "Entry successful! 🎉"
-            ),
-            "user": user_public_data(
-                result["user"],
-                telegram_id,
-            ),
-        })
-
-    except ValueError as exc:
-        return error_response(str(exc), 400)
-
-    except Exception as exc:
-        return error_response(str(exc), 500)
+    return result
 
 
 # ============================================================
-# ANSWER EVALUATION HELPERS
+# USER RESULT / ADVANCEMENT LOGIC
+# ============================================================
+
+def result_payload(
+    result: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Normalize a stored result for the frontend.
+
+    This is deliberately game-independent.
+    """
+
+    return {
+        "round_id": result.get("round_id"),
+        "game_id": result.get("game_id"),
+        "stage_no": to_int(result.get("stage_no"), 1),
+        "outcome": result.get("outcome"),
+        "passed": bool(result.get("passed", False)),
+        "advanced": bool(result.get("advanced", False)),
+        "winner": bool(result.get("winner", False)),
+        "eliminated": bool(result.get("eliminated", False)),
+        "final": bool(result.get("final", False)),
+        "message": result.get("message", ""),
+        "correct_answer": result.get("correct_answer"),
+        "submitted_answer": result.get("submitted_answer"),
+        "amount_usd": to_number(
+            result.get("amount_usd"),
+            0,
+        ),
+        "settled_at": iso(result.get("settled_at")),
+        "next_stage": result.get("next_stage"),
+    }
+
+
+def create_or_update_player_result(
+    round_data: Dict[str, Any],
+    stage: Dict[str, Any],
+    telegram_id: str,
+    outcome: str,
+    passed: bool,
+    advanced: bool,
+    winner: bool,
+    eliminated: bool,
+    final: bool,
+    message: str,
+    submitted_answer: Any = None,
+    correct_answer: Any = None,
+    amount_usd: float = 0,
+    extra: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    round_id = round_data["id"]
+
+    result_ref = results_col().document(
+        f"{round_id}_{telegram_id}"
+    )
+
+    existing_snap = result_ref.get()
+    existing = existing_snap.to_dict() if existing_snap.exists else {}
+
+    data = {
+        **existing,
+        "round_id": round_id,
+        "game_id": round_data.get("game_id"),
+        "telegram_id": str(telegram_id),
+        "stage_no": to_int(stage.get("stage_no"), 1),
+        "outcome": outcome,
+        "passed": passed,
+        "advanced": advanced,
+        "winner": winner,
+        "eliminated": eliminated,
+        "final": final,
+        "message": message,
+        "submitted_answer": submitted_answer,
+        "correct_answer": correct_answer,
+        "amount_usd": amount_usd,
+        "settled_at": firestore.SERVER_TIMESTAMP,
+        "updated_at": firestore.SERVER_TIMESTAMP,
+    }
+
+    if extra:
+        data.update(extra)
+
+    result_ref.set(data, merge=True)
+
+    return {
+        **data,
+        "round_id": round_id,
+    }
+
+
+# ============================================================
+# ANSWER EVALUATION
 # ============================================================
 
 def accepted_answers(stage: Dict[str, Any]) -> List[str]:
-    answers = []
+    values = []
 
-    correct = stage.get("correct_answer")
+    correct = clean_text(stage.get("correct_answer"))
 
-    if correct not in (None, ""):
-        answers.append(normalize_answer(correct))
+    if correct:
+        values.append(normalize_answer(correct))
 
-    for value in stage.get("accepted_answers", []) or []:
-        normalized = normalize_answer(value)
+    for answer in stage.get("accepted_answers", []):
+        normalized = normalize_answer(answer)
 
         if normalized:
-            answers.append(normalized)
+            values.append(normalized)
 
-    return list(dict.fromkeys(
-        x for x in answers if x
-    ))
+    return list(dict.fromkeys(values))
 
 
-def answer_is_correct(
-    game_id: str,
+def evaluate_guess_or_impossible(
     stage: Dict[str, Any],
-    answer: str,
+    submitted: Any,
 ) -> bool:
-    normalized = normalize_answer(answer)
+    answer = normalize_answer(submitted)
 
-    if game_id in {
-        "guess_it",
-        "impossible_question",
-    }:
-        return normalized in accepted_answers(stage)
+    if not answer:
+        return False
 
-    if game_id == "survivor":
-        safe_option = normalize_answer(
-            stage.get("safe_option", "")
-        )
+    return answer in accepted_answers(stage)
 
-        return (
-            bool(safe_option)
-            and normalized == safe_option
-        )
 
-    return False
+def evaluate_survivor(
+    stage: Dict[str, Any],
+    submitted: Any,
+) -> bool:
+    safe = normalize_answer(stage.get("safe_option"))
+
+    if not safe:
+        return False
+
+    return normalize_answer(submitted) == safe
 
 
 # ============================================================
 # CROWD TRAP
 # ============================================================
 
-def valid_number_for_stage(
+def evaluate_crowd_trap(
+    round_id: str,
+    stage_no: int,
     stage: Dict[str, Any],
-    value: Any,
-) -> Tuple[bool, Optional[int]]:
-    try:
-        number = int(str(value).strip())
-    except Exception:
-        return False, None
-
-    minimum = safe_int(
-        stage.get("min_number", 1),
-        1,
+) -> List[Dict[str, Any]]:
+    entries = round_entries(
+        round_id,
+        stage_no,
     )
 
-    maximum = safe_int(
-        stage.get("max_number", 20),
-        20,
-    )
+    number_counts: Dict[str, int] = {}
 
-    if minimum > maximum:
-        minimum, maximum = maximum, minimum
+    for entry in entries:
+        if entry.get("status") != "submitted":
+            continue
 
-    if number < minimum or number > maximum:
-        return False, number
+        answer = clean_text(entry.get("answer"))
 
-    return True, number
+        if not answer:
+            continue
+
+        number_counts[answer] = number_counts.get(
+            answer,
+            0,
+        ) + 1
+
+    winners = []
+
+    for entry in entries:
+        answer = clean_text(entry.get("answer"))
+
+        if (
+            entry.get("status") == "submitted"
+            and answer
+            and number_counts.get(answer) == 1
+        ):
+            winners.append(entry)
+
+    return winners
 
 
 # ============================================================
 # IMPOSSIBLE CHOICE
 # ============================================================
 
-def calculate_choice_winners(
+def calculate_choice_distribution(
     entries: List[Dict[str, Any]],
-    stage: Dict[str, Any],
-) -> List[Dict[str, Any]]:
-    if not entries:
-        return []
-
-    counts: Dict[str, int] = {}
+) -> Dict[str, int]:
+    distribution: Dict[str, int] = {}
 
     for entry in entries:
-        answer = clean_string(entry.get("answer"))
+        if entry.get("status") != "submitted":
+            continue
+
+        answer = clean_text(entry.get("answer"))
 
         if not answer:
             continue
 
-        key = normalize_answer(answer)
-        counts[key] = counts.get(key, 0) + 1
+        distribution[answer] = (
+            distribution.get(answer, 0) + 1
+        )
 
-    if not counts:
-        return []
+    return distribution
 
-    total = sum(counts.values())
 
-    mechanic = stage.get(
-        "mechanic",
-        "minority",
+def evaluate_impossible_choice(
+    round_id: str,
+    stage_no: int,
+    stage: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    entries = round_entries(
+        round_id,
+        stage_no,
     )
 
-    winner_keys: List[str] = []
+    distribution = calculate_choice_distribution(entries)
 
-    if mechanic == "majority":
-        highest = max(counts.values())
+    total = sum(distribution.values())
 
-        winner_keys = [
-            key
-            for key, count in counts.items()
-            if count == highest
-        ]
+    if total <= 0:
+        return []
 
-    elif mechanic == "minority":
-        lowest = min(counts.values())
+    mechanic = clean_text(
+        stage.get("mechanic")
+    ).lower()
 
-        winner_keys = [
-            key
-            for key, count in counts.items()
-            if count == lowest
-        ]
+    winners = []
+
+    if mechanic == "minority":
+        minimum = min(distribution.values())
+
+        winning_answers = {
+            answer
+            for answer, count in distribution.items()
+            if count == minimum
+        }
+
+        for entry in entries:
+            if (
+                entry.get("status") == "submitted"
+                and entry.get("answer") in winning_answers
+            ):
+                winners.append(entry)
+
+    elif mechanic == "majority":
+        maximum = max(distribution.values())
+
+        winning_answers = {
+            answer
+            for answer, count in distribution.items()
+            if count == maximum
+        }
+
+        for entry in entries:
+            if (
+                entry.get("status") == "submitted"
+                and entry.get("answer") in winning_answers
+            ):
+                winners.append(entry)
 
     elif mechanic == "closest_target":
-        target = safe_number(
-            stage.get("target_percentage", 50),
+        target = to_number(
+            stage.get("target_percentage"),
             50,
         )
 
-        differences = {}
+        percentages = {
+            answer: (count / total) * 100
+            for answer, count in distribution.items()
+        }
 
-        for key, count in counts.items():
-            percentage = (count / total) * 100
-            differences[key] = abs(
-                percentage - target
-            )
+        difference = min(
+            abs(percent - target)
+            for percent in percentages.values()
+        )
 
-        closest = min(differences.values())
+        winning_answers = {
+            answer
+            for answer, percent in percentages.items()
+            if abs(percent - target) == difference
+        }
 
-        winner_keys = [
-            key
-            for key, difference in differences.items()
-            if math.isclose(
-                difference,
-                closest,
-                abs_tol=0.0001,
-            )
-        ]
+        for entry in entries:
+            if (
+                entry.get("status") == "submitted"
+                and entry.get("answer") in winning_answers
+            ):
+                winners.append(entry)
 
     elif mechanic == "within_range":
-        minimum = safe_number(
-            stage.get("target_min_percentage", 40),
+        minimum = to_number(
+            stage.get("target_min_percentage"),
             40,
         )
 
-        maximum = safe_number(
-            stage.get("target_max_percentage", 60),
+        maximum = to_number(
+            stage.get("target_max_percentage"),
             60,
         )
 
-        for key, count in counts.items():
-            percentage = (count / total) * 100
+        winning_answers = {
+            answer
+            for answer, count in distribution.items()
+            if minimum <= (count / total) * 100 <= maximum
+        }
 
-            if minimum <= percentage <= maximum:
-                winner_keys.append(key)
+        for entry in entries:
+            if (
+                entry.get("status") == "submitted"
+                and entry.get("answer") in winning_answers
+            ):
+                winners.append(entry)
 
-    return [
-        entry
-        for entry in entries
-        if normalize_answer(entry.get("answer", ""))
-        in winner_keys
-    ]
+    return winners
 
 
 # ============================================================
 # DEAD NUMBER
 # ============================================================
 
-def calculate_dead_numbers(
+def get_dead_numbers(
     stage: Dict[str, Any],
 ) -> List[str]:
-    existing = stage.get("dead_numbers", []) or []
+    dead = []
 
-    cleaned = []
-
-    for value in existing:
-        text = clean_string(value)
+    for value in stage.get("dead_numbers", []):
+        text = clean_text(value)
 
         if text:
-            cleaned.append(text)
+            dead.append(text)
 
-    if cleaned:
-        return list(dict.fromkeys(cleaned))
-
-    minimum = safe_int(
-        stage.get("min_number", 1),
-        1,
-    )
-
-    maximum = safe_int(
-        stage.get("max_number", 20),
-        20,
-    )
-
-    count = safe_int(
-        stage.get("dead_count", 1),
-        1,
-    )
-
-    if minimum > maximum:
-        minimum, maximum = maximum, minimum
-
-    numbers = list(
-        range(
-            minimum,
-            maximum + 1,
-        )
-    )
-
-    if not numbers:
-        return []
-
-    count = min(
-        max(count, 1),
-        len(numbers),
-    )
-
-    generated = random.sample(
-        numbers,
-        count,
-    )
-
-    return [
-        str(number)
-        for number in generated
-    ]
-
-
-# ============================================================
-# USER SUBMIT
-# ============================================================
-
-@competition_bp.route(
-    "/api/competition/<game_id>/submit",
-    methods=["POST"],
-)
-def competition_submit(game_id: str):
-    try:
-        telegram_user, telegram_id, user_ref, user_snap = (
-            current_user_document()
-        )
-
-        game_id = clean_string(game_id)
-
-        if game_id not in ALL_COMPETITION_GAMES:
-            return error_response(
-                "Competition game not found.",
-                404,
-            )
-
-        body = request.get_json(silent=True) or {}
-
-        answer = body.get("answer")
-
-        if answer is None:
-            return error_response(
-                "Answer is required.",
-                400,
-            )
-
-        answer = clean_string(answer)
-
-        if not answer:
-            return error_response(
-                "Answer cannot be empty.",
-                400,
-            )
-
-        round_ref, round_data = get_active_round(game_id)
-
-        if not round_ref or not round_data:
-            return error_response(
-                "No active round is available.",
-                400,
-            )
-
-        round_id = round_ref.id
-
-        stage_no = safe_int(
-            round_data.get("current_stage", 1),
+    # If Admin chose random generation, generate only at conclusion
+    # if explicit dead numbers were not supplied.
+    if (
+        not dead
+        and stage.get("generation_mode") == "random"
+    ):
+        minimum = to_int(
+            stage.get("min_number"),
             1,
         )
 
-        stage_ref = get_stage_ref(
-            round_id,
-            stage_no,
-        )
-
-        stage_snap = stage_ref.get()
-
-        if not stage_snap.exists:
-            return error_response(
-                "Round not started yet.",
-                400,
-            )
-
-        stage = stage_snap.to_dict() or {}
-
-        if stage.get("status") != "live":
-            return error_response(
-                "This stage is not live.",
-                400,
-            )
-
-        if stage_has_ended(stage):
-            return error_response(
-                "This stage has ended.",
-                400,
-            )
-
-        entry_ref = get_entry_ref(
-            round_id,
-            stage_no,
-            telegram_id,
-        )
-
-        entry_snap = entry_ref.get()
-
-        if not entry_snap.exists:
-            return error_response(
-                "You must enter this stage before submitting an answer.",
-                400,
-            )
-
-        entry = entry_snap.to_dict() or {}
-
-        if entry.get("status") == "submitted":
-            return error_response(
-                "You have already submitted your answer.",
-                400,
-            )
-
-        if entry.get("status") in {
-            "correct",
-            "wrong",
-            "eliminated",
-            "winner",
-            "survived",
-        }:
-            return error_response(
-                "Your answer for this stage is already locked.",
-                400,
-            )
-
-        submitted_at = firestore.SERVER_TIMESTAMP
-
-        # --------------------------------------------------------
-        # CROWD TRAP / DEAD NUMBER
-        # --------------------------------------------------------
-
-        if game_id in {
-            "crowd_trap",
-            "dead_number",
-        }:
-            valid, number = valid_number_for_stage(
-                stage,
-                answer,
-            )
-
-            if not valid:
-                return error_response(
-                    "Choose a valid number in the allowed range.",
-                    400,
-                )
-
-            answer = str(number)
-
-        # --------------------------------------------------------
-        # IMPOSSIBLE CHOICE OPTIONS
-        # --------------------------------------------------------
-
-        if game_id == "impossible_choice":
-            options = [
-                clean_string(x)
-                for x in stage.get("options", []) or []
-            ]
-
-            normalized_options = {
-                normalize_answer(x)
-                for x in options
-                if x
-            }
-
-            if normalize_answer(answer) not in normalized_options:
-                return error_response(
-                    "Choose one of the available options.",
-                    400,
-                )
-
-        # --------------------------------------------------------
-        # SAVE ANSWER
-        # --------------------------------------------------------
-
-        entry_ref.update({
-            "answer": answer,
-            "status": "submitted",
-            "submitted_at": submitted_at,
-        })
-
-        participant_ref = get_participant_ref(
-            round_id,
-            telegram_id,
-        )
-
-        participant_ref.set(
-            {
-                "round_id": round_id,
-                "game_id": game_id,
-                "telegram_id": telegram_id,
-                "current_stage": stage_no,
-                "last_answer": answer,
-                "updated_at": firestore.SERVER_TIMESTAMP,
-            },
-            merge=True,
-        )
-
-        # --------------------------------------------------------
-        # DO NOT REVEAL CORRECTNESS FOR IMPOSSIBLE QUESTION
-        # --------------------------------------------------------
-
-        if game_id == "impossible_question":
-            return success_response({
-                "message": (
-                    "Answer submitted. 🔒 "
-                    "You will not see the result until the competition ends."
-                ),
-            })
-
-        # --------------------------------------------------------
-        # OPEN ANSWER GAMES
-        # --------------------------------------------------------
-
-        if game_id == "guess_it":
-            if answer_is_correct(
-                game_id,
-                stage,
-                answer,
-            ):
-                entry_ref.update({
-                    "status": "correct",
-                    "outcome": "survived",
-                })
-
-                participant_ref.set(
-                    {
-                        "status": "active",
-                        "current_stage": stage_no,
-                        "updated_at": firestore.SERVER_TIMESTAMP,
-                    },
-                    merge=True,
-                )
-
-                return success_response({
-                    "message": (
-                        "Answer submitted. 🔒 "
-                        "Your result will be confirmed when the stage closes."
-                    ),
-                })
-
-            entry_ref.update({
-                "status": "submitted",
-            })
-
-            return success_response({
-                "message": (
-                    "Answer submitted. 🔒 "
-                    "Your result will be revealed when the stage closes."
-                ),
-            })
-
-        # --------------------------------------------------------
-        # SURVIVOR
-        # --------------------------------------------------------
-
-        if game_id == "survivor":
-            entry_ref.update({
-                "status": "submitted",
-            })
-
-            return success_response({
-                "message": (
-                    "Choice locked. 🔒 "
-                    "Your result will be revealed when the stage closes."
-                ),
-            })
-
-        # --------------------------------------------------------
-        # DEAD NUMBER
-        # --------------------------------------------------------
-
-        if game_id == "dead_number":
-            entry_ref.update({
-                "status": "submitted",
-            })
-
-            return success_response({
-                "message": (
-                    "Number locked. 🔒 "
-                    "The dead numbers will be evaluated when the stage closes."
-                ),
-            })
-
-        # --------------------------------------------------------
-        # CROWD TRAP
-        # --------------------------------------------------------
-
-        if game_id == "crowd_trap":
-            entry_ref.update({
-                "status": "submitted",
-            })
-
-            return success_response({
-                "message": (
-                    "Number locked. 🧠 "
-                    "The final winners will be determined when the stage closes."
-                ),
-            })
-
-        # --------------------------------------------------------
-        # IMPOSSIBLE CHOICE
-        # --------------------------------------------------------
-
-        if game_id == "impossible_choice":
-            entry_ref.update({
-                "status": "submitted",
-            })
-
-            return success_response({
-                "message": (
-                    "Choice locked. 🤔 "
-                    "The result will be calculated when the competition ends."
-                ),
-            })
-
-        return success_response({
-            "message": "Answer submitted.",
-        })
-
-    except ValueError as exc:
-        return error_response(str(exc), 400)
-
-    except Exception as exc:
-        return error_response(str(exc), 500)
-
-
-# ============================================================
-# ADMIN AUTH
-# ============================================================
-
-def _admin_ids() -> List[str]:
-    import os
-
-    values = []
-
-    raw_many = os.getenv(
-        "ADMIN_TELEGRAM_IDS",
-        "",
-    )
-
-    for item in raw_many.split(","):
-        item = item.strip()
-
-        if item:
-            values.append(item)
-
-    raw_single = os.getenv(
-        "ADMIN_TELEGRAM_ID",
-        "",
-    ).strip()
-
-    if raw_single:
-        values.append(raw_single)
-
-    return list(dict.fromkeys(values))
-
-
-def _require_admin():
-    import os
-
-    init_data = request.headers.get(
-        "X-Telegram-Init-Data",
-        "",
-    ).strip()
-
-    if not init_data:
-        raise ValueError(
-            "Admin Telegram authentication data is missing."
-        )
-
-    # Admin panel uses ADMIN_BOT_TOKEN.
-    admin_user = validate_telegram_init_data(
-        init_data,
-        bot_token=os.getenv("ADMIN_BOT_TOKEN"),
-    )
-
-    if not admin_user:
-        raise ValueError(
-            "Invalid admin Telegram authentication."
-        )
-
-    telegram_id = str(
-        admin_user.get("id")
-        or admin_user.get("telegram_id")
-        or ""
-    )
-
-    if telegram_id not in _admin_ids():
-        raise ValueError(
-            "You are not authorized to access the competition admin panel."
-        )
-
-    return admin_user
-
-
-# ============================================================
-# ADMIN CREATE ROUND
-# ============================================================
-
-@competition_bp.route(
-    "/api/admin/competition/rounds/create",
-    methods=["POST"],
-)
-def admin_create_round():
-    try:
-        _require_admin()
-
-        body = request.get_json(silent=True) or {}
-
-        game_id = clean_string(
-            body.get("game_id")
-        )
-
-        if game_id not in ALL_COMPETITION_GAMES:
-            return error_response(
-                "Invalid competition game.",
-                400,
-            )
-
-        meta = game_meta(game_id)
-
-        round_id = (
-            f"{game_id}_"
-            f"{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}_"
-            f"{uuid.uuid4().hex[:6]}"
-        )
-
-        title = clean_string(
-            body.get("title")
-        ) or (
-            f"{meta['name']} Competition"
-        )
-
-        prize_pool = max(
-            0,
-            safe_number(
-                body.get("prize_pool_usd", 0),
-                0,
-            ),
-        )
-
-        entry_fees = body.get(
-            "entry_fees",
-            [],
-        )
-
-        if not isinstance(entry_fees, list):
-            entry_fees = []
-
-        cleaned_fees = []
-
-        for value in entry_fees:
-            cleaned_fees.append(
-                max(
-                    0,
-                    safe_int(value, 0),
-                )
-            )
-
-        if game_id in STAGED_GAMES:
-            while len(cleaned_fees) < 7:
-                stage_no = len(cleaned_fees) + 1
-
-                cleaned_fees.append(
-                    30
-                    if stage_no == 7
-                    else 10
-                )
-
-            cleaned_fees = cleaned_fees[:7]
-
-            total_stages = 7
-
-        else:
-            if not cleaned_fees:
-                cleaned_fees = [10]
-
-            total_stages = 1
-
-        start_at = body.get("start_at")
-
-        round_data = {
-            "id": round_id,
-            "game_id": game_id,
-            "title": title,
-            "status": "waiting",
-            "current_stage": 1,
-            "total_stages": total_stages,
-            "entry_fees": cleaned_fees,
-            "prize_pool_usd": prize_pool,
-            "winner_count": 0,
-            "winner_amount_usd": 0,
-            "start_at": start_at,
-            "created_at": firestore.SERVER_TIMESTAMP,
-            "updated_at": firestore.SERVER_TIMESTAMP,
-            "created_by": str(
-                _admin_ids()[0]
-                if _admin_ids()
-                else ""
-            ),
-        }
-
-        db.collection(
-            ROUND_COLLECTION
-        ).document(round_id).set(
-            round_data
-        )
-
-        return success_response({
-            "round_id": round_id,
-            "round": serialize_value(round_data),
-        })
-
-    except ValueError as exc:
-        return error_response(str(exc), 403)
-
-    except Exception as exc:
-        return error_response(str(exc), 500)
-
-
-# ============================================================
-# ADMIN LIST ROUNDS
-# ============================================================
-
-@competition_bp.route(
-    "/api/admin/competition/rounds",
-    methods=["GET"],
-)
-def admin_list_rounds():
-    try:
-        _require_admin()
-
-        game_id = clean_string(
-            request.args.get("game_id")
-        )
-
-        query = db.collection(
-            ROUND_COLLECTION
-        )
-
-        if game_id:
-            query = query.where(
-                "game_id",
-                "==",
-                game_id,
-            )
-
-        docs = list(
-            query.limit(100).stream()
-        )
-
-        rounds = []
-
-        for snap in docs:
-            data = snap.to_dict() or {}
-            data["id"] = snap.id
-
-            rounds.append(
-                serialize_value(data)
-            )
-
-        rounds.sort(
-            key=lambda item: str(
-                item.get(
-                    "created_at",
-                    "",
-                )
-            ),
-            reverse=True,
-        )
-
-        return success_response({
-            "rounds": rounds,
-        })
-
-    except ValueError as exc:
-        return error_response(str(exc), 403)
-
-    except Exception as exc:
-        return error_response(str(exc), 500)
-
-
-# ============================================================
-# ADMIN ROUND DETAIL
-# ============================================================
-
-@competition_bp.route(
-    "/api/admin/competition/rounds/<round_id>",
-    methods=["GET"],
-)
-def admin_round_detail(round_id: str):
-    try:
-        _require_admin()
-
-        round_ref = get_round_ref(round_id)
-        round_snap = round_ref.get()
-
-        if not round_snap.exists:
-            return error_response(
-                "Competition round not found.",
-                404,
-            )
-
-        round_data = round_snap.to_dict() or {}
-        round_data["id"] = round_snap.id
-
-        stage_docs = list(
-            db.collection(
-                STAGE_COLLECTION
-            )
-            .where(
-                "round_id",
-                "==",
-                round_id,
-            )
-            .stream()
-        )
-
-        stages = []
-
-        for snap in stage_docs:
-            data = snap.to_dict() or {}
-            data["id"] = snap.id
-            stages.append(
-                serialize_value(data)
-            )
-
-        stages.sort(
-            key=lambda item: safe_int(
-                item.get("stage_no", 0),
-                0,
-            )
-        )
-
-        entry_docs = list(
-            db.collection(
-                ENTRY_COLLECTION
-            )
-            .where(
-                "round_id",
-                "==",
-                round_id,
-            )
-            .limit(500)
-            .stream()
-        )
-
-        entries = []
-
-        for snap in entry_docs:
-            data = snap.to_dict() or {}
-            data["id"] = snap.id
-
-            entries.append(
-                serialize_value(data)
-            )
-
-        entries.sort(
-            key=lambda item: (
-                safe_int(
-                    item.get("stage_no", 0),
-                    0,
-                ),
-                str(
-                    item.get(
-                        "telegram_id",
-                        "",
-                    )
-                ),
-            )
-        )
-
-        result_docs = list(
-            db.collection(
-                RESULT_COLLECTION
-            )
-            .where(
-                "round_id",
-                "==",
-                round_id,
-            )
-            .limit(500)
-            .stream()
-        )
-
-        results = []
-
-        for snap in result_docs:
-            data = snap.to_dict() or {}
-            data["id"] = snap.id
-
-            results.append(
-                serialize_value(data)
-            )
-
-        return success_response({
-            "round": serialize_value(round_data),
-            "stages": stages,
-            "entries": entries,
-            "results": results,
-        })
-
-    except ValueError as exc:
-        return error_response(str(exc), 403)
-
-    except Exception as exc:
-        return error_response(str(exc), 500)
-
-
-# ============================================================
-# ADMIN CREATE STAGE
-# ============================================================
-
-@competition_bp.route(
-    "/api/admin/competition/rounds/<round_id>/stages/create",
-    methods=["POST"],
-)
-def admin_create_stage(round_id: str):
-    try:
-        _require_admin()
-
-        round_ref = get_round_ref(round_id)
-        round_snap = round_ref.get()
-
-        if not round_snap.exists:
-            return error_response(
-                "Competition round not found.",
-                404,
-            )
-
-        round_data = round_snap.to_dict() or {}
-
-        game_id = clean_string(
-            round_data.get("game_id")
-        )
-
-        body = request.get_json(
-            silent=True
-        ) or {}
-
-        stage_no = safe_int(
-            body.get("stage_no", 1),
-            1,
-        )
-
-        total_stages = safe_int(
-            round_data.get("total_stages", 1),
-            1,
-        )
-
-        if stage_no < 1 or stage_no > total_stages:
-            return error_response(
-                "Invalid stage number.",
-                400,
-            )
-
-        stage_ref = get_stage_ref(
-            round_id,
-            stage_no,
-        )
-
-        if stage_ref.get().exists:
-            return error_response(
-                "This stage has already been created.",
-                400,
-            )
-
-        title = clean_string(
-            body.get("title")
-        ) or f"Stage {stage_no}"
-
-        question = clean_string(
-            body.get("question")
-        )
-
-        entry_fee = max(
-            0,
-            safe_int(
-                body.get("entry_fee", 10),
-                10,
-            ),
-        )
-
-        options = body.get(
-            "options",
-            [],
-        )
-
-        if not isinstance(options, list):
-            options = []
-
-        options = [
-            clean_string(x)
-            for x in options
-            if clean_string(x)
-        ]
-
-        accepted = body.get(
-            "accepted_answers",
-            [],
-        )
-
-        if not isinstance(accepted, list):
-            accepted = []
-
-        accepted = [
-            clean_string(x)
-            for x in accepted
-            if clean_string(x)
-        ]
-
-        dead_numbers = body.get(
-            "dead_numbers",
-            [],
-        )
-
-        if not isinstance(dead_numbers, list):
-            dead_numbers = []
-
-        dead_numbers = [
-            clean_string(x)
-            for x in dead_numbers
-            if clean_string(x)
-        ]
-
-        generation_mode = clean_string(
-            body.get(
-                "generation_mode",
-                "admin",
-            )
-        )
-
-        correct_answer = clean_string(
-            body.get("correct_answer")
-        )
-
-        safe_option = clean_string(
-            body.get("safe_option")
-        )
-
-        minimum = safe_int(
-            body.get("min_number", 1),
-            1,
-        )
-
-        maximum = safe_int(
-            body.get("max_number", 20),
+        maximum = to_int(
+            stage.get("max_number"),
             20,
         )
 
-        if minimum > maximum:
-            minimum, maximum = maximum, minimum
-
-        dead_count = max(
-            1,
-            safe_int(
-                body.get("dead_count", 1),
+        dead_count = min(
+            max(
+                to_int(
+                    stage.get("dead_count"),
+                    1,
+                ),
+                1,
+            ),
+            max(
+                maximum - minimum + 1,
                 1,
             ),
         )
 
-        mechanic = clean_string(
-            body.get(
-                "mechanic",
-                "minority",
+        numbers = list(
+            range(
+                minimum,
+                maximum + 1,
             )
         )
 
-        if mechanic not in {
-            "minority",
-            "majority",
-            "closest_target",
-            "within_range",
-        }:
-            mechanic = "minority"
+        random.shuffle(numbers)
 
-        target_percentage = safe_number(
-            body.get(
-                "target_percentage",
-                50,
-            ),
-            50,
-        )
+        dead = [
+            str(number)
+            for number in numbers[:dead_count]
+        ]
 
-        target_min_percentage = safe_number(
-            body.get(
-                "target_min_percentage",
-                40,
-            ),
-            40,
-        )
-
-        target_max_percentage = safe_number(
-            body.get(
-                "target_max_percentage",
-                60,
-            ),
-            60,
-        )
-
-        # Random generation is allowed for number games.
-        if (
-            generation_mode == "random"
-            and game_id == "dead_number"
-            and not dead_numbers
-        ):
-            numbers = list(
-                range(
-                    minimum,
-                    maximum + 1,
-                )
-            )
-
-            if numbers:
-                dead_numbers = [
-                    str(x)
-                    for x in random.sample(
-                        numbers,
-                        min(
-                            dead_count,
-                            len(numbers),
-                        ),
-                    )
-                ]
-
-        stage_data = {
-            "id": stage_ref.id,
-            "round_id": round_id,
-            "game_id": game_id,
-            "stage_no": stage_no,
-            "title": title,
-            "question": question,
-            "status": "draft",
-            "entry_fee": entry_fee,
-            "start_at": body.get("start_at"),
-            "end_at": body.get("end_at"),
-            "clue": clean_string(
-                body.get("clue")
-            ),
-            "generation_mode": generation_mode,
-            "options": options,
-            "correct_answer": correct_answer,
-            "accepted_answers": accepted,
-            "safe_option": safe_option,
-            "min_number": minimum,
-            "max_number": maximum,
-            "dead_numbers": dead_numbers,
-            "dead_count": dead_count,
-            "mechanic": mechanic,
-            "target_percentage": target_percentage,
-            "target_min_percentage": target_min_percentage,
-            "target_max_percentage": target_max_percentage,
-            "secret_approved": False,
-            "created_at": firestore.SERVER_TIMESTAMP,
-            "updated_at": firestore.SERVER_TIMESTAMP,
-        }
-
-        stage_ref.set(stage_data)
-
-        return success_response({
-            "stage_id": stage_ref.id,
-            "stage": serialize_value(stage_data),
-        })
-
-    except ValueError as exc:
-        return error_response(str(exc), 403)
-
-    except Exception as exc:
-        return error_response(str(exc), 500)
+    return dead
 
 
-# ============================================================
-# ADMIN APPROVE SECRET
-# ============================================================
-
-@competition_bp.route(
-    "/api/admin/competition/rounds/<round_id>/stages/<int:stage_no>/approve",
-    methods=["POST"],
-)
-def admin_approve_stage(round_id: str, stage_no: int):
-    try:
-        _require_admin()
-
-        stage_ref = get_stage_ref(
-            round_id,
-            stage_no,
-        )
-
-        snap = stage_ref.get()
-
-        if not snap.exists:
-            return error_response(
-                "Stage not found.",
-                404,
-            )
-
-        stage = snap.to_dict() or {}
-
-        game_id = stage.get("game_id")
-
-        if game_id in {
-            "guess_it",
-            "impossible_question",
-        }:
-            if not clean_string(
-                stage.get("correct_answer")
-            ):
-                return error_response(
-                    "Add the correct answer before approval.",
-                    400,
-                )
-
-        elif game_id == "survivor":
-            if not clean_string(
-                stage.get("safe_option")
-            ):
-                return error_response(
-                    "Add the safe option before approval.",
-                    400,
-                )
-
-        elif game_id == "dead_number":
-            dead = stage.get(
-                "dead_numbers",
-                [],
-            ) or []
-
-            if not dead:
-                stage["dead_numbers"] = calculate_dead_numbers(
-                    stage
-                )
-
-        # For Crowd Trap and Impossible Choice there is
-        # no secret answer to approve.
-
-        stage_ref.update({
-            "secret_approved": True,
-            "updated_at": firestore.SERVER_TIMESTAMP,
-            "dead_numbers": stage.get(
-                "dead_numbers",
-                [],
-            ),
-        })
-
-        return success_response({
-            "message": "Stage secret approved.",
-        })
-
-    except ValueError as exc:
-        return error_response(str(exc), 403)
-
-    except Exception as exc:
-        return error_response(str(exc), 500)
-
-
-# ============================================================
-# ADMIN START STAGE
-# ============================================================
-
-@competition_bp.route(
-    "/api/admin/competition/rounds/<round_id>/stages/<int:stage_no>/start",
-    methods=["POST"],
-)
-def admin_start_stage(round_id: str, stage_no: int):
-    try:
-        _require_admin()
-
-        round_ref = get_round_ref(
-            round_id
-        )
-
-        round_snap = round_ref.get()
-
-        if not round_snap.exists:
-            return error_response(
-                "Round not found.",
-                404,
-            )
-
-        round_data = round_snap.to_dict() or {}
-
-        stage_ref = get_stage_ref(
-            round_id,
-            stage_no,
-        )
-
-        stage_snap = stage_ref.get()
-
-        if not stage_snap.exists:
-            return error_response(
-                "Stage not found.",
-                404,
-            )
-
-        stage = stage_snap.to_dict() or {}
-
-        if not stage.get("secret_approved"):
-            game_id = stage.get("game_id")
-
-            # Games without a hidden secret can start without approval.
-            if game_id not in {
-                "crowd_trap",
-                "impossible_choice",
-            }:
-                return error_response(
-                    "Approve the stage secret before starting it.",
-                    400,
-                )
-
-        if stage.get("status") == "live":
-            return success_response({
-                "message": "Stage is already live.",
-            })
-
-        start_at = stage.get("start_at")
-
-        if start_at and is_time_before(start_at):
-            return error_response(
-                "Stage start time has not arrived yet.",
-                400,
-            )
-
-        stage_ref.update({
-            "status": "live",
-            "started_at": firestore.SERVER_TIMESTAMP,
-            "updated_at": firestore.SERVER_TIMESTAMP,
-        })
-
-        round_ref.update({
-            "status": "live",
-            "current_stage": stage_no,
-            "updated_at": firestore.SERVER_TIMESTAMP,
-        })
-
-        return success_response({
-            "message": "Stage is now live.",
-        })
-
-    except ValueError as exc:
-        return error_response(str(exc), 403)
-
-    except Exception as exc:
-        return error_response(str(exc), 500)
-
-
-# ============================================================
-# SETTLEMENT HELPERS
-# ============================================================
-
-def entries_for_stage(
+def evaluate_dead_number(
     round_id: str,
     stage_no: int,
-) -> List[Dict[str, Any]]:
-    docs = list(
-        db.collection(
-            ENTRY_COLLECTION
-        )
-        .where(
-            "round_id",
-            "==",
-            round_id,
-        )
-        .where(
-            "stage_no",
-            "==",
-            stage_no,
-        )
-        .stream()
-    )
-
-    entries = []
-
-    for snap in docs:
-        data = snap.to_dict() or {}
-        data["id"] = snap.id
-        entries.append(data)
-
-    return entries
-
-
-def mark_participant(
-    telegram_id: str,
-    round_id: str,
-    status: str,
-    stage_no: int,
-    message: Optional[str] = None,
-):
-    ref = get_participant_ref(
+    stage: Dict[str, Any],
+) -> tuple[List[Dict[str, Any]], List[str]]:
+    entries = round_entries(
         round_id,
-        telegram_id,
+        stage_no,
     )
 
-    update = {
-        "status": status,
-        "current_stage": stage_no,
-        "updated_at": firestore.SERVER_TIMESTAMP,
+    dead_numbers = get_dead_numbers(stage)
+
+    dead_set = {
+        normalize_answer(value)
+        for value in dead_numbers
     }
 
-    if message:
-        update["message"] = message
+    winners = []
 
-    ref.set(
-        update,
-        merge=True,
-    )
+    for entry in entries:
+        answer = normalize_answer(
+            entry.get("answer")
+        )
 
+        if (
+            entry.get("status") == "submitted"
+            and answer
+            and answer not in dead_set
+        ):
+            winners.append(entry)
+
+    return winners, dead_numbers
+
+
+# ============================================================
+# PRIZE DISTRIBUTION
+# ============================================================
 
 def distribute_prize(
-    round_id: str,
-    game_id: str,
-    winner_ids: List[str],
-    prize_pool: float,
-):
-    unique_winners = list(
-        dict.fromkeys(
-            str(x)
-            for x in winner_ids
-            if x is not None
-        )
+    round_data: Dict[str, Any],
+    winner_entries: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    prize = to_number(
+        round_data.get("prize_pool_usd"),
+        0,
     )
 
-    if not unique_winners:
-        return 0
+    if prize <= 0 or not winner_entries:
+        return {
+            "winner_count": len(winner_entries),
+            "amount_each": 0,
+            "total_distributed": 0,
+        }
 
-    if prize_pool <= 0:
-        return 0
+    unique_ids = []
 
-    amount_each = (
-        prize_pool / len(unique_winners)
-    )
-
-    count = 0
-
-    for telegram_id in unique_winners:
-        result_ref = db.collection(
-            RESULT_COLLECTION
-        ).document(
-            f"{round_id}_{telegram_id}"
+    for entry in winner_entries:
+        telegram_id = str(
+            entry.get("telegram_id", "")
         )
 
-        existing = result_ref.get()
+        if telegram_id and telegram_id not in unique_ids:
+            unique_ids.append(telegram_id)
 
-        if existing.exists:
-            continue
+    if not unique_ids:
+        return {
+            "winner_count": 0,
+            "amount_each": 0,
+            "total_distributed": 0,
+        }
 
-        user_ref = db.collection(
-            USER_COLLECTION
-        ).document(
+    amount_each = round(
+        prize / len(unique_ids),
+        6,
+    )
+
+    distributed = 0
+
+    batch = db.batch()
+
+    for telegram_id in unique_ids:
+        user_ref = users_col().document(
             telegram_id
         )
 
@@ -2535,941 +1132,3410 @@ def distribute_prize(
         if not user_snap.exists:
             continue
 
-        user_ref.update({
-            "prize_balance_usd": firestore.Increment(
-                amount_each
-            ),
-            "prize_balance": firestore.Increment(
-                amount_each
-            ),
-            "updated_at": firestore.SERVER_TIMESTAMP,
-        })
+        user = user_snap.to_dict() or {}
 
-        result_ref.set({
-            "round_id": round_id,
-            "game_id": game_id,
-            "telegram_id": telegram_id,
-            "amount_usd": amount_each,
-            "status": "credited",
-            "created_at": firestore.SERVER_TIMESTAMP,
-        })
+        current_balance = to_number(
+            user.get("prize_balance_usd"),
+            0,
+        )
 
-        count += 1
+        new_balance = round(
+            current_balance + amount_each,
+            6,
+        )
 
-    return count
+        batch.update(
+            user_ref,
+            {
+                "prize_balance_usd": new_balance,
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            },
+        )
+
+        result_ref = results_col().document(
+            f"{round_data['id']}_{telegram_id}"
+        )
+
+        batch.set(
+            result_ref,
+            {
+                "amount_usd": amount_each,
+                "winner": True,
+                "outcome": "winner",
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            },
+            merge=True,
+        )
+
+        transaction_ref = transactions_col().document(
+            f"competition_prize_{round_data['id']}_{telegram_id}"
+        )
+
+        batch.set(
+            transaction_ref,
+            {
+                "telegram_id": telegram_id,
+                "type": "competition_prize",
+                "direction": "credit",
+                "amount_usd": amount_each,
+                "round_id": round_data["id"],
+                "game_id": round_data.get("game_id"),
+                "status": "completed",
+                "created_at": firestore.SERVER_TIMESTAMP,
+            },
+            merge=True,
+        )
+
+        distributed += amount_each
+
+    batch.commit()
+
+    return {
+        "winner_count": len(unique_ids),
+        "amount_each": amount_each,
+        "total_distributed": round(distributed, 6),
+    }
 
 
 # ============================================================
-# ADMIN END / SETTLE STAGE
+# RESULT MESSAGE GENERATION
 # ============================================================
 
-@competition_bp.route(
-    "/api/admin/competition/rounds/<round_id>/stages/<int:stage_no>/end",
-    methods=["POST"],
-)
-def admin_end_stage(
-    round_id: str,
+def result_message(
+    game_id: str,
     stage_no: int,
-):
-    try:
-        _require_admin()
+    passed: bool,
+    winner: bool,
+    final: bool,
+    next_stage: Optional[int],
+    correct_answer: Any = None,
+    extra_message: Optional[str] = None,
+) -> str:
 
-        round_ref = get_round_ref(
-            round_id
+    if winner:
+        return (
+            "🏆 Congratulations! You are one of the "
+            "winners of this competition."
         )
 
-        round_snap = round_ref.get()
-
-        if not round_snap.exists:
-            return error_response(
-                "Round not found.",
-                404,
-            )
-
-        round_data = round_snap.to_dict() or {}
-        game_id = round_data.get("game_id")
-
-        stage_ref = get_stage_ref(
-            round_id,
-            stage_no,
+    if final and passed:
+        return (
+            "🎉 Congratulations! You survived the final "
+            "stage and are among the winners."
         )
 
-        stage_snap = stage_ref.get()
-
-        if not stage_snap.exists:
-            return error_response(
-                "Stage not found.",
-                404,
-            )
-
-        stage = stage_snap.to_dict() or {}
-
-        if stage.get("status") == "closed":
-            return success_response({
-                "message": "Stage is already closed.",
-                "winner_count": 0,
-            })
-
-        entries = entries_for_stage(
-            round_id,
-            stage_no,
+    if passed and next_stage:
+        return (
+            f"🎉 Congratulations! You passed Stage {stage_no}. "
+            f"You have advanced to Stage {next_stage}."
         )
 
-        winners: List[Dict[str, Any]] = []
+    if passed:
+        return (
+            f"🎉 Congratulations! You passed Stage {stage_no}."
+        )
 
-        # --------------------------------------------------------
-        # GUESS IT
-        # --------------------------------------------------------
+    if extra_message:
+        return extra_message
 
-        if game_id == "guess_it":
-            for entry in entries:
-                answer = entry.get("answer", "")
+    if correct_answer not in (None, ""):
+        return (
+            f"❌ You did not pass Stage {stage_no}. "
+            f"The correct answer was: {correct_answer}"
+        )
 
-                correct = answer_is_correct(
-                    game_id,
-                    stage,
-                    answer,
-                )
+    return (
+        f"❌ You did not pass Stage {stage_no}. "
+        "You are out of this round."
+    )
 
-                if correct:
-                    winners.append(entry)
 
-                    db.collection(
-                        ENTRY_COLLECTION
-                    ).document(
-                        entry["id"]
-                    ).update({
-                        "status": "correct",
-                        "outcome": "survived",
-                        "evaluated_at": firestore.SERVER_TIMESTAMP,
-                    })
+# ============================================================
+# ROUND RESULT SETTLEMENT
+# ============================================================
 
-                    mark_participant(
-                        entry["telegram_id"],
-                        round_id,
-                        "active",
-                        stage_no,
-                    )
+def settle_stage(
+    round_data: Dict[str, Any],
+    stage: Dict[str, Any],
+) -> Dict[str, Any]:
 
-                else:
-                    db.collection(
-                        ENTRY_COLLECTION
-                    ).document(
-                        entry["id"]
-                    ).update({
-                        "status": "wrong",
-                        "outcome": "eliminated",
-                        "evaluated_at": firestore.SERVER_TIMESTAMP,
-                    })
+    round_id = round_data["id"]
+    game_id = round_data["game_id"]
+    stage_no = to_int(stage.get("stage_no"), 1)
+    total_stages = to_int(
+        round_data.get("total_stages"),
+        1,
+    )
 
-                    mark_participant(
-                        entry["telegram_id"],
-                        round_id,
-                        "eliminated",
-                        stage_no,
-                        "You failed this stage.",
-                    )
+    entries = round_entries(
+        round_id,
+        stage_no,
+    )
 
-            # Anyone who entered but did not answer also fails.
-            entered_ids = {
-                str(x.get("telegram_id"))
-                for x in entries
-            }
+    winners = []
+    correct_answer = None
+    dead_numbers = []
 
-            answered_ids = {
-                str(x.get("telegram_id"))
-                for x in entries
-                if clean_string(x.get("answer"))
-            }
+    # --------------------------------------------------------
+    # DETERMINE STAGE WINNERS / SURVIVORS
+    # --------------------------------------------------------
 
-            for telegram_id in entered_ids - answered_ids:
-                mark_participant(
-                    telegram_id,
-                    round_id,
-                    "forfeited",
-                    stage_no,
-                    "You did not submit before the stage ended.",
-                )
+    if game_id in {
+        "guess_it",
+        "impossible_question",
+    }:
+        submitted_entries = [
+            entry
+            for entry in entries
+            if entry.get("status") == "submitted"
+        ]
 
-        # --------------------------------------------------------
-        # SURVIVOR
-        # --------------------------------------------------------
-
-        elif game_id == "survivor":
-            safe = normalize_answer(
-                stage.get("safe_option", "")
-            )
-
-            for entry in entries:
-                answer = normalize_answer(
-                    entry.get("answer", "")
-                )
-
-                if answer and answer == safe:
-                    winners.append(entry)
-
-                    db.collection(
-                        ENTRY_COLLECTION
-                    ).document(
-                        entry["id"]
-                    ).update({
-                        "status": "survived",
-                        "outcome": "survived",
-                        "evaluated_at": firestore.SERVER_TIMESTAMP,
-                    })
-
-                    mark_participant(
-                        entry["telegram_id"],
-                        round_id,
-                        "active",
-                        stage_no,
-                    )
-
-                else:
-                    db.collection(
-                        ENTRY_COLLECTION
-                    ).document(
-                        entry["id"]
-                    ).update({
-                        "status": "eliminated",
-                        "outcome": "eliminated",
-                        "evaluated_at": firestore.SERVER_TIMESTAMP,
-                    })
-
-                    mark_participant(
-                        entry["telegram_id"],
-                        round_id,
-                        "eliminated",
-                        stage_no,
-                        "You chose an unsafe option.",
-                    )
-
-        # --------------------------------------------------------
-        # DEAD NUMBER
-        # --------------------------------------------------------
-
-        elif game_id == "dead_number":
-            dead_numbers = {
-                normalize_answer(x)
-                for x in calculate_dead_numbers(
-                    stage
-                )
-            }
-
-            # Save generated values if needed.
-            stage_ref.update({
-                "dead_numbers": list(
-                    dead_numbers
-                ),
-            })
-
-            for entry in entries:
-                answer = normalize_answer(
-                    entry.get("answer", "")
-                )
-
-                if answer and answer not in dead_numbers:
-                    winners.append(entry)
-
-                    db.collection(
-                        ENTRY_COLLECTION
-                    ).document(
-                        entry["id"]
-                    ).update({
-                        "status": "survived",
-                        "outcome": "survived",
-                        "evaluated_at": firestore.SERVER_TIMESTAMP,
-                    })
-
-                    mark_participant(
-                        entry["telegram_id"],
-                        round_id,
-                        "active",
-                        stage_no,
-                    )
-
-                else:
-                    db.collection(
-                        ENTRY_COLLECTION
-                    ).document(
-                        entry["id"]
-                    ).update({
-                        "status": "eliminated",
-                        "outcome": "dead_number",
-                        "evaluated_at": firestore.SERVER_TIMESTAMP,
-                    })
-
-                    mark_participant(
-                        entry["telegram_id"],
-                        round_id,
-                        "eliminated",
-                        stage_no,
-                        "You selected a dead number.",
-                    )
-
-        # --------------------------------------------------------
-        # IMPOSSIBLE QUESTION
-        # --------------------------------------------------------
-
-        elif game_id == "impossible_question":
-            for entry in entries:
-                correct = answer_is_correct(
-                    game_id,
-                    stage,
-                    entry.get("answer", ""),
-                )
-
-                if correct:
-                    winners.append(entry)
-
-                    db.collection(
-                        ENTRY_COLLECTION
-                    ).document(
-                        entry["id"]
-                    ).update({
-                        "status": "correct",
-                        "outcome": "winner",
-                        "evaluated_at": firestore.SERVER_TIMESTAMP,
-                    })
-
-                else:
-                    db.collection(
-                        ENTRY_COLLECTION
-                    ).document(
-                        entry["id"]
-                    ).update({
-                        "status": "wrong",
-                        "outcome": "eliminated",
-                        "evaluated_at": firestore.SERVER_TIMESTAMP,
-                    })
-
-        # --------------------------------------------------------
-        # CROWD TRAP
-        # --------------------------------------------------------
-
-        elif game_id == "crowd_trap":
-            counts: Dict[str, int] = {}
-
-            for entry in entries:
-                answer = normalize_answer(
-                    entry.get("answer", "")
-                )
-
-                if answer:
-                    counts[answer] = (
-                        counts.get(answer, 0) + 1
-                    )
-
-            unique_numbers = [
-                key
-                for key, count in counts.items()
-                if count == 1
-            ]
-
-            for entry in entries:
-                answer = normalize_answer(
-                    entry.get("answer", "")
-                )
-
-                if answer in unique_numbers:
-                    winners.append(entry)
-
-                    db.collection(
-                        ENTRY_COLLECTION
-                    ).document(
-                        entry["id"]
-                    ).update({
-                        "status": "winner",
-                        "outcome": "winner",
-                        "evaluated_at": firestore.SERVER_TIMESTAMP,
-                    })
-
-                    mark_participant(
-                        entry["telegram_id"],
-                        round_id,
-                        "active",
-                        stage_no,
-                    )
-
-                else:
-                    db.collection(
-                        ENTRY_COLLECTION
-                    ).document(
-                        entry["id"]
-                    ).update({
-                        "status": "eliminated",
-                        "outcome": "not_unique",
-                        "evaluated_at": firestore.SERVER_TIMESTAMP,
-                    })
-
-        # --------------------------------------------------------
-        # IMPOSSIBLE CHOICE
-        # --------------------------------------------------------
-
-        elif game_id == "impossible_choice":
-            winners = calculate_choice_winners(
-                entries,
+        for entry in submitted_entries:
+            if evaluate_guess_or_impossible(
                 stage,
+                entry.get("answer"),
+            ):
+                winners.append(entry)
+
+        correct_answer = stage.get(
+            "correct_answer"
+        )
+
+    elif game_id == "survivor":
+        submitted_entries = [
+            entry
+            for entry in entries
+            if entry.get("status") == "submitted"
+        ]
+
+        for entry in submitted_entries:
+            if evaluate_survivor(
+                stage,
+                entry.get("answer"),
+            ):
+                winners.append(entry)
+
+        correct_answer = stage.get(
+            "safe_option"
+        )
+
+    elif game_id == "crowd_trap":
+        winners = evaluate_crowd_trap(
+            round_id,
+            stage_no,
+            stage,
+        )
+
+    elif game_id == "dead_number":
+        winners, dead_numbers = evaluate_dead_number(
+            round_id,
+            stage_no,
+            stage,
+        )
+
+    elif game_id == "impossible_choice":
+        winners = evaluate_impossible_choice(
+            round_id,
+            stage_no,
+            stage,
+        )
+
+    winner_ids = {
+        str(entry.get("telegram_id"))
+        for entry in winners
+    }
+
+    # --------------------------------------------------------
+    # IMPORTANT:
+    # Every submitted player receives a permanent result.
+    #
+    # This is what fixes the original problem where users
+    # could only see "next stage not started" after a timer.
+    # --------------------------------------------------------
+
+    result_count = 0
+
+    next_stage = (
+        stage_no + 1
+        if stage_no < total_stages
+        else None
+    )
+
+    for entry in entries:
+        telegram_id = str(
+            entry.get("telegram_id", "")
+        )
+
+        if not telegram_id:
+            continue
+
+        submitted = (
+            entry.get("status") == "submitted"
+        )
+
+        is_winner_of_stage = (
+            telegram_id in winner_ids
+        )
+
+        if not submitted:
+            # Paid but failed to submit before the stage ended.
+            passed = False
+            eliminated = True
+            advanced = False
+            winner = False
+            outcome = "failed"
+
+            message = (
+                f"⏰ You did not submit an answer before "
+                f"Stage {stage_no} ended. You are out of this round."
             )
 
-            winner_ids = {
-                str(x.get("telegram_id"))
-                for x in winners
-            }
+        elif is_winner_of_stage:
+            passed = True
+            eliminated = False
+            advanced = next_stage is not None
+            winner = next_stage is None
+            outcome = (
+                "winner"
+                if winner
+                else "advanced"
+            )
 
-            for entry in entries:
-                telegram_id = str(
-                    entry.get("telegram_id")
+            message = result_message(
+                game_id,
+                stage_no,
+                passed=True,
+                winner=winner,
+                final=(next_stage is None),
+                next_stage=next_stage,
+                correct_answer=correct_answer,
+            )
+
+        else:
+            passed = False
+            eliminated = True
+            advanced = False
+            winner = False
+            outcome = "failed"
+
+            # Crowd Trap / Impossible Choice / Dead Number
+            # do not necessarily have a conventional correct answer.
+            if game_id == "crowd_trap":
+                message = (
+                    f"❌ Your Stage {stage_no} choice was not unique. "
+                    "You are out of this round."
                 )
 
-                if telegram_id in winner_ids:
-                    db.collection(
-                        ENTRY_COLLECTION
-                    ).document(
-                        entry["id"]
-                    ).update({
-                        "status": "winner",
-                        "outcome": "winner",
-                        "evaluated_at": firestore.SERVER_TIMESTAMP,
-                    })
-                else:
-                    db.collection(
-                        ENTRY_COLLECTION
-                    ).document(
-                        entry["id"]
-                    ).update({
-                        "status": "eliminated",
-                        "outcome": "not_winner",
-                        "evaluated_at": firestore.SERVER_TIMESTAMP,
-                    })
+            elif game_id == "dead_number":
+                message = (
+                    f"❌ You selected a dead number in Stage "
+                    f"{stage_no}. You are out of this round."
+                )
 
-        # --------------------------------------------------------
-        # CLOSE STAGE
-        # --------------------------------------------------------
+            elif game_id == "impossible_choice":
+                message = (
+                    f"❌ Your choice did not satisfy the "
+                    f"Stage {stage_no} rule. You are out of this round."
+                )
 
-        stage_ref.update({
+            else:
+                message = result_message(
+                    game_id,
+                    stage_no,
+                    passed=False,
+                    winner=False,
+                    final=(next_stage is None),
+                    next_stage=None,
+                    correct_answer=correct_answer,
+                )
+
+        create_or_update_player_result(
+            round_data=round_data,
+            stage=stage,
+            telegram_id=telegram_id,
+            outcome=outcome,
+            passed=passed,
+            advanced=advanced,
+            winner=winner,
+            eliminated=eliminated,
+            final=(next_stage is None),
+            message=message,
+            submitted_answer=entry.get("answer"),
+            correct_answer=correct_answer,
+            extra={
+                "dead_numbers": dead_numbers,
+            },
+        )
+
+        result_count += 1
+
+        # Keep the entry itself synchronized.
+        entries_col().document(
+            entry["id"]
+        ).set(
+            {
+                "result": outcome,
+                "passed": passed,
+                "eliminated": eliminated,
+                "settled_at": firestore.SERVER_TIMESTAMP,
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            },
+            merge=True,
+        )
+
+    # --------------------------------------------------------
+    # FINAL WINNERS
+    # --------------------------------------------------------
+
+    prize_info = {
+        "winner_count": 0,
+        "amount_each": 0,
+        "total_distributed": 0,
+    }
+
+    if stage_no == total_stages:
+        prize_info = distribute_prize(
+            round_data,
+            winners,
+        )
+
+        round_status = "settled"
+
+    else:
+        round_status = "closed"
+
+    # --------------------------------------------------------
+    # MARK STAGE CLOSED / SETTLED
+    # --------------------------------------------------------
+
+    stages_col().document(
+        stage["id"]
+    ).set(
+        {
             "status": "closed",
             "closed_at": firestore.SERVER_TIMESTAMP,
             "winner_count": len(winners),
+            "dead_numbers": dead_numbers,
             "updated_at": firestore.SERVER_TIMESTAMP,
+        },
+        merge=True,
+    )
+
+    # --------------------------------------------------------
+    # UPDATE ROUND
+    # --------------------------------------------------------
+
+    round_update = {
+        "status": round_status,
+        "updated_at": firestore.SERVER_TIMESTAMP,
+        "last_settled_stage": stage_no,
+        "winner_count": (
+            prize_info["winner_count"]
+            if stage_no == total_stages
+            else 0
+        ),
+    }
+
+    if stage_no < total_stages:
+        round_update["current_stage"] = stage_no
+
+    else:
+        round_update["current_stage"] = total_stages
+        round_update["ended_at"] = firestore.SERVER_TIMESTAMP
+
+    rounds_col().document(
+        round_id
+    ).set(
+        round_update,
+        merge=True,
+    )
+
+    return {
+        "winner_count": len(winners),
+        "result_count": result_count,
+        "prize": prize_info,
+        "dead_numbers": dead_numbers,
+        "next_stage": next_stage,
+        "round_status": round_status,
+    }
+
+
+# ============================================================
+# USER: GAME STATE
+# ============================================================
+
+@competition_bp.get("/<game_id>/state")
+@user_route
+def competition_state(user, game_id):
+    telegram_id = str(
+        user.get("id")
+        or user.get("telegram_id")
+        or ""
+    )
+
+    game = get_game(game_id)
+
+    if not game:
+        return jsonify({
+            "success": False,
+            "error": "Competition game not found.",
+        }), 404
+
+    if not game.get("active", False):
+        return jsonify({
+            "success": True,
+            "status": "locked",
+            "game": game_public(game),
         })
 
-        winner_ids = [
-            str(
-                entry.get("telegram_id")
-            )
-            for entry in winners
-        ]
+    # --------------------------------------------------------
+    # Find most relevant round.
+    #
+    # Prefer active rounds, then most recent round.
+    # --------------------------------------------------------
 
-        total_stages = safe_int(
-            round_data.get(
-                "total_stages",
-                1,
-            ),
+    snaps = (
+        rounds_col()
+        .where("game_id", "==", game_id)
+        .stream()
+    )
+
+    rounds = []
+
+    for snap in snaps:
+        data = snap.to_dict() or {}
+        data["id"] = snap.id
+        rounds.append(data)
+
+    if not rounds:
+        return jsonify({
+            "success": True,
+            "status": "no_round",
+            "game": game_public(game),
+        })
+
+    def round_sort_key(item):
+        start = parse_datetime(
+            item.get("start_at")
+        )
+
+        return start or datetime.min.replace(
+            tzinfo=timezone.utc
+        )
+
+    rounds.sort(
+        key=round_sort_key,
+        reverse=True,
+    )
+
+    round_data = None
+
+    # Prefer rounds that aren't settled.
+    for candidate in rounds:
+        if candidate.get("status") not in {
+            "settled",
+            "cancelled",
+        }:
+            round_data = candidate
+            break
+
+    if round_data is None:
+        round_data = rounds[0]
+
+    round_id = round_data["id"]
+
+    # --------------------------------------------------------
+    # FIRST: Check whether this user already has a final result
+    # --------------------------------------------------------
+
+    stored_result = get_result(
+        round_id,
+        telegram_id,
+    )
+
+    # --------------------------------------------------------
+    # Determine current stage
+    # --------------------------------------------------------
+
+    total_stages = to_int(
+        round_data.get("total_stages"),
+        1,
+    )
+
+    current_stage_no = to_int(
+        round_data.get("current_stage"),
+        1,
+    )
+
+    stage = get_stage(
+        round_id,
+        current_stage_no,
+    )
+
+    # --------------------------------------------------------
+    # If Admin has already settled the player's result,
+    # RETURN THAT RESULT BEFORE anything else.
+    #
+    # This is the crucial universal result behavior.
+    # --------------------------------------------------------
+
+    if stored_result:
+        result_stage = to_int(
+            stored_result.get("stage_no"),
             1,
         )
 
-        # --------------------------------------------------------
-        # FINAL STAGE
-        # --------------------------------------------------------
+        # If the result is final, show final result.
+        if stored_result.get("final"):
+            return jsonify({
+                "success": True,
+                "status": (
+                    "winner"
+                    if stored_result.get("winner")
+                    else "eliminated"
+                    if stored_result.get("eliminated")
+                    else "result"
+                ),
+                "game": game_public(game),
+                "round": {
+                    "id": round_id,
+                    "title": round_data.get("title", ""),
+                    "status": round_data.get("status"),
+                    "current_stage": current_stage_no,
+                    "total_stages": total_stages,
+                    "prize_pool_usd": to_number(
+                        round_data.get("prize_pool_usd"),
+                        0,
+                    ),
+                },
+                "result": result_payload(
+                    stored_result
+                ),
+                "user": public_user(
+                    get_user_by_telegram_id(telegram_id)
+                ),
+            })
 
-        if stage_no >= total_stages:
-            prize_pool = safe_number(
-                round_data.get(
-                    "prize_pool_usd",
+        # If player advanced, don't hide the advancement behind
+        # the next-stage state.
+        if stored_result.get("advanced"):
+            return jsonify({
+                "success": True,
+                "status": "advanced",
+                "game": game_public(game),
+                "round": {
+                    "id": round_id,
+                    "title": round_data.get("title", ""),
+                    "status": round_data.get("status"),
+                    "current_stage": current_stage_no,
+                    "total_stages": total_stages,
+                    "prize_pool_usd": to_number(
+                        round_data.get("prize_pool_usd"),
+                        0,
+                    ),
+                },
+                "result": result_payload(
+                    stored_result
+                ),
+                "user": public_user(
+                    get_user_by_telegram_id(telegram_id)
+                ),
+            })
+
+        if stored_result.get("eliminated"):
+            return jsonify({
+                "success": True,
+                "status": "eliminated",
+                "game": game_public(game),
+                "round": {
+                    "id": round_id,
+                    "title": round_data.get("title", ""),
+                    "status": round_data.get("status"),
+                    "current_stage": current_stage_no,
+                    "total_stages": total_stages,
+                },
+                "result": result_payload(
+                    stored_result
+                ),
+                "user": public_user(
+                    get_user_by_telegram_id(telegram_id)
+                ),
+            })
+
+    # --------------------------------------------------------
+    # If the entire round has already been settled but this
+    # player has no result, they did not participate.
+    # --------------------------------------------------------
+
+    if round_data.get("status") == "settled":
+        return jsonify({
+            "success": True,
+            "status": "finished",
+            "game": game_public(game),
+            "round": {
+                "id": round_id,
+                "title": round_data.get("title", ""),
+                "status": "settled",
+                "current_stage": current_stage_no,
+                "total_stages": total_stages,
+                "winner_count": to_int(
+                    round_data.get("winner_count"),
                     0,
                 ),
-                0,
-            )
-
-            credited_count = distribute_prize(
-                round_id,
-                game_id,
-                winner_ids,
-                prize_pool,
-            )
-
-            round_ref.update({
-                "status": "settled",
-                "winner_count": len(winner_ids),
-                "winner_amount_usd": (
-                    prize_pool / len(winner_ids)
-                    if winner_ids
-                    else 0
+                "prize_pool_usd": to_number(
+                    round_data.get("prize_pool_usd"),
+                    0,
                 ),
-                "settled_at": firestore.SERVER_TIMESTAMP,
-                "updated_at": firestore.SERVER_TIMESTAMP,
-            })
-
-            for telegram_id in winner_ids:
-                mark_participant(
-                    telegram_id,
-                    round_id,
-                    "winner",
-                    stage_no,
-                )
-
-            return success_response({
-                "message": "Final stage closed and round settled.",
-                "winner_count": len(winner_ids),
-                "credited_count": credited_count,
-            })
-
-        # --------------------------------------------------------
-        # NON-FINAL STAGE
-        # --------------------------------------------------------
-
-        if not winner_ids:
-            # Nobody survived. Round ends.
-            round_ref.update({
-                "status": "settled",
-                "winner_count": 0,
-                "winner_amount_usd": 0,
-                "settled_at": firestore.SERVER_TIMESTAMP,
-                "updated_at": firestore.SERVER_TIMESTAMP,
-            })
-
-            return success_response({
-                "message": (
-                    "Stage closed. No players survived."
-                ),
-                "winner_count": 0,
-            })
-
-        # Keep round alive, but DO NOT automatically reveal
-        # or start the next stage.
-        round_ref.update({
-            "status": "waiting",
-            "current_stage": stage_no,
-            "survivor_count": len(winner_ids),
-            "updated_at": firestore.SERVER_TIMESTAMP,
-        })
-
-        return success_response({
-            "message": (
-                "Stage closed. Survivors can continue "
-                "when the next stage is prepared."
-            ),
-            "winner_count": len(winner_ids),
-        })
-
-    except ValueError as exc:
-        return error_response(str(exc), 403)
-
-    except Exception as exc:
-        return error_response(str(exc), 500)
-
-
-# ============================================================
-# ADMIN PREPARE NEXT STAGE
-# ============================================================
-
-@competition_bp.route(
-    "/api/admin/competition/rounds/<round_id>/next-stage",
-    methods=["POST"],
-)
-def admin_prepare_next_stage(round_id: str):
-    try:
-        _require_admin()
-
-        round_ref = get_round_ref(
-            round_id
-        )
-
-        snap = round_ref.get()
-
-        if not snap.exists:
-            return error_response(
-                "Round not found.",
-                404,
-            )
-
-        round_data = snap.to_dict() or {}
-
-        current_stage = safe_int(
-            round_data.get(
-                "current_stage",
-                1,
-            ),
-            1,
-        )
-
-        total_stages = safe_int(
-            round_data.get(
-                "total_stages",
-                1,
-            ),
-            1,
-        )
-
-        if current_stage >= total_stages:
-            return error_response(
-                "There is no next stage.",
-                400,
-            )
-
-        next_stage = current_stage + 1
-
-        current_ref = get_stage_ref(
-            round_id,
-            current_stage,
-        )
-
-        current_snap = current_ref.get()
-
-        if current_snap.exists:
-            current_data = (
-                current_snap.to_dict()
-                or {}
-            )
-
-            if current_data.get("status") != "closed":
-                return error_response(
-                    "The current stage must be closed first.",
-                    400,
-                )
-
-        next_ref = get_stage_ref(
-            round_id,
-            next_stage,
-        )
-
-        if next_ref.get().exists:
-            return success_response({
-                "next_stage": next_stage,
-                "message": (
-                    "Next stage is already prepared."
-                ),
-            })
-
-        game_id = round_data.get(
-            "game_id"
-        )
-
-        fees = round_data.get(
-            "entry_fees",
-            [],
-        ) or []
-
-        if len(fees) >= next_stage:
-            fee = safe_int(
-                fees[next_stage - 1],
-                10,
-            )
-        else:
-            fee = 30 if next_stage == 7 else 10
-
-        stage_data = {
-            "id": next_ref.id,
-            "round_id": round_id,
-            "game_id": game_id,
-            "stage_no": next_stage,
-            "title": f"Day {next_stage}",
-            "question": "",
-            "status": "draft",
-            "entry_fee": fee,
-            "start_at": None,
-            "end_at": None,
-            "clue": "",
-            "generation_mode": "admin",
-            "options": [],
-            "correct_answer": "",
-            "accepted_answers": [],
-            "safe_option": "",
-            "min_number": 1,
-            "max_number": 20,
-            "dead_numbers": [],
-            "dead_count": 1,
-            "mechanic": "minority",
-            "target_percentage": 50,
-            "target_min_percentage": 40,
-            "target_max_percentage": 60,
-            "secret_approved": False,
-            "created_at": firestore.SERVER_TIMESTAMP,
-            "updated_at": firestore.SERVER_TIMESTAMP,
-        }
-
-        next_ref.set(
-            stage_data
-        )
-
-        round_ref.update({
-            "current_stage": next_stage,
-            "status": "waiting",
-            "updated_at": firestore.SERVER_TIMESTAMP,
-        })
-
-        return success_response({
-            "next_stage": next_stage,
-            "message": (
-                "Next stage is ready for configuration."
-            ),
-        })
-
-    except ValueError as exc:
-        return error_response(str(exc), 403)
-
-    except Exception as exc:
-        return error_response(str(exc), 500)
-
-
-# ============================================================
-# ADMIN DELETE / CANCEL ROUND
-# ============================================================
-
-@competition_bp.route(
-    "/api/admin/competition/rounds/<round_id>/cancel",
-    methods=["POST"],
-)
-def admin_cancel_round(round_id: str):
-    try:
-        _require_admin()
-
-        round_ref = get_round_ref(
-            round_id
-        )
-
-        snap = round_ref.get()
-
-        if not snap.exists:
-            return error_response(
-                "Round not found.",
-                404,
-            )
-
-        round_ref.update({
-            "status": "cancelled",
-            "cancelled_at": firestore.SERVER_TIMESTAMP,
-            "updated_at": firestore.SERVER_TIMESTAMP,
-        })
-
-        return success_response({
-            "message": "Competition round cancelled.",
-        })
-
-    except ValueError as exc:
-        return error_response(str(exc), 403)
-
-    except Exception as exc:
-        return error_response(str(exc), 500)
-
-
-# ============================================================
-# ADMIN GAME ACTIVATE / DEACTIVATE
-# ============================================================
-
-@competition_bp.route(
-    "/api/admin/competition/games/<game_id>/activate",
-    methods=["POST"],
-)
-def admin_activate_game(game_id: str):
-    try:
-        _require_admin()
-
-        if game_id not in ALL_COMPETITION_GAMES:
-            return error_response(
-                "Game not found.",
-                404,
-            )
-
-        db.collection(
-            GAME_COLLECTION
-        ).document(
-            game_id
-        ).set(
-            {
-                "active": True,
-                "competition_enabled": True,
-                "updated_at": firestore.SERVER_TIMESTAMP,
             },
-            merge=True,
-        )
-
-        return success_response({
-            "message": f"{game_display(game_id)} activated.",
+            "user": public_user(
+                get_user_by_telegram_id(telegram_id)
+            ),
         })
 
-    except ValueError as exc:
-        return error_response(str(exc), 403)
+    # --------------------------------------------------------
+    # No current stage yet.
+    # --------------------------------------------------------
 
-    except Exception as exc:
-        return error_response(str(exc), 500)
-
-
-@competition_bp.route(
-    "/api/admin/competition/games/<game_id>/deactivate",
-    methods=["POST"],
-)
-def admin_deactivate_game(game_id: str):
-    try:
-        _require_admin()
-
-        if game_id not in ALL_COMPETITION_GAMES:
-            return error_response(
-                "Game not found.",
-                404,
-            )
-
-        db.collection(
-            GAME_COLLECTION
-        ).document(
-            game_id
-        ).set(
-            {
-                "active": False,
-                "updated_at": firestore.SERVER_TIMESTAMP,
+    if not stage:
+        return jsonify({
+            "success": True,
+            "status": "round_not_started",
+            "game": game_public(game),
+            "round": {
+                "id": round_id,
+                "title": round_data.get("title", ""),
+                "status": round_data.get("status"),
+                "current_stage": current_stage_no,
+                "total_stages": total_stages,
             },
-            merge=True,
-        )
-
-        return success_response({
-            "message": f"{game_display(game_id)} deactivated.",
+            "user": public_user(
+                get_user_by_telegram_id(telegram_id)
+            ),
         })
 
-    except ValueError as exc:
-        return error_response(str(exc), 403)
+    # --------------------------------------------------------
+    # Automatically close expired stage when user checks it.
+    # --------------------------------------------------------
 
-    except Exception as exc:
-        return error_response(str(exc), 500)
+    end_at = parse_datetime(
+        stage.get("end_at")
+    )
 
-
-# ============================================================
-# ADMIN PARTICIPANTS
-# ============================================================
-
-@competition_bp.route(
-    "/api/admin/competition/rounds/<round_id>/participants",
-    methods=["GET"],
-)
-def admin_round_participants(round_id: str):
-    try:
-        _require_admin()
-
-        docs = list(
-            db.collection(
-                PARTICIPANT_COLLECTION
-            )
-            .where(
-                "round_id",
-                "==",
-                round_id,
-            )
-            .limit(1000)
-            .stream()
+    if (
+        end_at
+        and now_utc() >= end_at
+        and stage.get("status") == "live"
+    ):
+        settle_stage(
+            round_data,
+            stage,
         )
 
-        participants = []
-
-        for snap in docs:
-            data = snap.to_dict() or {}
-            data["id"] = snap.id
-
-            participants.append(
-                serialize_value(data)
-            )
-
-        return success_response({
-            "participants": participants,
-        })
-
-    except ValueError as exc:
-        return error_response(str(exc), 403)
-
-    except Exception as exc:
-        return error_response(str(exc), 500)
-
-
-# ============================================================
-# ADMIN FORCE ELIMINATE USER
-# ============================================================
-
-@competition_bp.route(
-    "/api/admin/competition/rounds/<round_id>/participants/<telegram_id>/eliminate",
-    methods=["POST"],
-)
-def admin_eliminate_participant(
-    round_id: str,
-    telegram_id: str,
-):
-    try:
-        _require_admin()
-
-        ref = get_participant_ref(
+        # Re-check result immediately.
+        stored_result = get_result(
             round_id,
             telegram_id,
         )
 
-        snap = ref.get()
+        if stored_result:
+            return jsonify({
+                "success": True,
+                "status": (
+                    "winner"
+                    if stored_result.get("winner")
+                    else "advanced"
+                    if stored_result.get("advanced")
+                    else "eliminated"
+                ),
+                "game": game_public(game),
+                "round": {
+                    "id": round_id,
+                    "title": round_data.get("title", ""),
+                    "status": round_data.get("status"),
+                    "current_stage": current_stage_no,
+                    "total_stages": total_stages,
+                },
+                "result": result_payload(
+                    stored_result
+                ),
+                "user": public_user(
+                    get_user_by_telegram_id(telegram_id)
+                ),
+            })
 
-        if not snap.exists:
-            return error_response(
-                "Participant not found.",
-                404,
+        return jsonify({
+            "success": True,
+            "status": "finished",
+            "game": game_public(game),
+            "round": {
+                "id": round_id,
+                "title": round_data.get("title", ""),
+                "status": round_data.get("status"),
+                "current_stage": current_stage_no,
+                "total_stages": total_stages,
+            },
+            "user": public_user(
+                get_user_by_telegram_id(telegram_id)
+            ),
+        })
+
+    # --------------------------------------------------------
+    # Future stage hasn't started.
+    # --------------------------------------------------------
+
+    start_at = parse_datetime(
+        stage.get("start_at")
+    )
+
+    if (
+        stage.get("status") != "live"
+        or (
+            start_at
+            and now_utc() < start_at
+        )
+    ):
+        return jsonify({
+            "success": True,
+            "status": "round_not_started",
+            "game": game_public(game),
+            "round": {
+                "id": round_id,
+                "title": round_data.get("title", ""),
+                "status": round_data.get("status"),
+                "current_stage": current_stage_no,
+                "total_stages": total_stages,
+            },
+            "stage": public_stage_data(
+                round_data,
+                stage,
+            ),
+            "user": public_user(
+                get_user_by_telegram_id(telegram_id)
+            ),
+        })
+
+    # --------------------------------------------------------
+    # Current entry
+    # --------------------------------------------------------
+
+    entry = get_entry(
+        round_id,
+        current_stage_no,
+        telegram_id,
+    )
+
+    user_doc = get_user_by_telegram_id(
+        telegram_id
+    )
+
+    if not entry:
+        return jsonify({
+            "success": True,
+            "status": "needs_entry",
+            "game": game_public(game),
+            "round": {
+                "id": round_id,
+                "title": round_data.get("title", ""),
+                "status": round_data.get("status"),
+                "current_stage": current_stage_no,
+                "total_stages": total_stages,
+            },
+            "stage": public_stage_data(
+                round_data,
+                stage,
+            ),
+            "entry_fee": to_int(
+                stage.get("entry_fee"),
+                0,
+            ),
+            "user": public_user(user_doc),
+        })
+
+    # Already paid but hasn't answered.
+    if entry.get("status") == "entered":
+        return jsonify({
+            "success": True,
+            "status": "ready",
+            "game": game_public(game),
+            "round": {
+                "id": round_id,
+                "title": round_data.get("title", ""),
+                "status": round_data.get("status"),
+                "current_stage": current_stage_no,
+                "total_stages": total_stages,
+            },
+            "stage": public_stage_data(
+                round_data,
+                stage,
+            ),
+            "user": public_user(user_doc),
+        })
+
+    # Answer submitted and waiting for conclusion.
+    if entry.get("status") == "submitted":
+        return jsonify({
+            "success": True,
+            "status": "submitted",
+            "game": game_public(game),
+            "round": {
+                "id": round_id,
+                "title": round_data.get("title", ""),
+                "status": round_data.get("status"),
+                "current_stage": current_stage_no,
+                "total_stages": total_stages,
+            },
+            "stage": public_stage_data(
+                round_data,
+                stage,
+            ),
+            "message": (
+                "Your answer has been recorded. "
+                "Wait for the stage to conclude."
+            ),
+            "user": public_user(user_doc),
+        })
+
+    return jsonify({
+        "success": True,
+        "status": "round_not_started",
+        "game": game_public(game),
+        "round": {
+            "id": round_id,
+            "title": round_data.get("title", ""),
+            "status": round_data.get("status"),
+            "current_stage": current_stage_no,
+            "total_stages": total_stages,
+        },
+        "user": public_user(user_doc),
+    })
+
+
+# ============================================================
+# USER: ENTER STAGE
+# ============================================================
+
+def get_user_ref(telegram_id: str):
+    return users_col().document(
+        str(telegram_id)
+    )
+
+
+def get_user_by_telegram_id(
+    telegram_id: str,
+) -> Dict[str, Any]:
+    snap = get_user_ref(
+        telegram_id
+    ).get()
+
+    if not snap.exists:
+        return {
+            "telegram_id": str(telegram_id),
+            "points": 0,
+            "prize_balance_usd": 0,
+        }
+
+    data = snap.to_dict() or {}
+
+    data["telegram_id"] = str(
+        data.get("telegram_id")
+        or telegram_id
+    )
+
+    return data
+
+
+@competition_bp.post("/<game_id>/enter")
+@user_route
+def competition_enter(user, game_id):
+    telegram_id = str(
+        user.get("id")
+        or user.get("telegram_id")
+        or ""
+    )
+
+    if not telegram_id:
+        return jsonify({
+            "success": False,
+            "error": "Unable to identify Telegram user.",
+        }), 400
+
+    game = get_game(game_id)
+
+    if not game:
+        return jsonify({
+            "success": False,
+            "error": "Competition game not found.",
+        }), 404
+
+    if not game.get("active", False):
+        return jsonify({
+            "success": False,
+            "error": "This game is currently locked.",
+        }), 400
+
+    # --------------------------------------------------------
+    # Find current round.
+    # --------------------------------------------------------
+
+    snaps = (
+        rounds_col()
+        .where("game_id", "==", game_id)
+        .stream()
+    )
+
+    rounds = []
+
+    for snap in snaps:
+        data = snap.to_dict() or {}
+        data["id"] = snap.id
+
+        if data.get("status") not in {
+            "settled",
+            "cancelled",
+        }:
+            rounds.append(data)
+
+    if not rounds:
+        return jsonify({
+            "success": False,
+            "error": "No active round is available.",
+        }), 400
+
+    rounds.sort(
+        key=lambda x: (
+            parse_datetime(
+                x.get("start_at")
+            )
+            or datetime.min.replace(
+                tzinfo=timezone.utc
+            )
+        ),
+        reverse=True,
+    )
+
+    round_data = rounds[0]
+
+    round_id = round_data["id"]
+
+    stage_no = to_int(
+        round_data.get("current_stage"),
+        1,
+    )
+
+    stage = get_stage(
+        round_id,
+        stage_no,
+    )
+
+    if not stage:
+        return jsonify({
+            "success": False,
+            "error": "This stage has not been prepared yet.",
+        }), 400
+
+    if stage.get("status") != "live":
+        return jsonify({
+            "success": False,
+            "error": "Round not started yet.",
+        }), 400
+
+    start_at = parse_datetime(
+        stage.get("start_at")
+    )
+
+    end_at = parse_datetime(
+        stage.get("end_at")
+    )
+
+    current_time = now_utc()
+
+    if start_at and current_time < start_at:
+        return jsonify({
+            "success": False,
+            "error": "Round not started yet.",
+        }), 400
+
+    if end_at and current_time >= end_at:
+        # Conclude the stage before accepting another entry.
+        settle_stage(
+            round_data,
+            stage,
+        )
+
+        return jsonify({
+            "success": False,
+            "error": "This stage has ended.",
+        }), 400
+
+    fee = to_int(
+        stage.get("entry_fee"),
+        0,
+    )
+
+    if fee < 0:
+        fee = 0
+
+    user_ref = get_user_ref(
+        telegram_id
+    )
+
+    entry_ref = entries_col().document(
+        f"{round_id}_{stage_no}_{telegram_id}"
+    )
+
+    participant_ref = (
+        rounds_col()
+        .document(round_id)
+        .collection("participants")
+        .document(telegram_id)
+    )
+
+    transaction_id = (
+        f"competition_entry_"
+        f"{round_id}_{stage_no}_{telegram_id}"
+    )
+
+    transaction_ref = transactions_col().document(
+        transaction_id
+    )
+
+    # --------------------------------------------------------
+    # CRITICAL FIRESTORE TRANSACTION
+    #
+    # This is intentionally wrapped with
+    # firestore.transactional.
+    # --------------------------------------------------------
+
+    @firestore.transactional
+    def charge_entry(
+        transaction,
+    ):
+        entry_snap = entry_ref.get(
+            transaction=transaction
+        )
+
+        user_snap = user_ref.get(
+            transaction=transaction
+        )
+
+        if entry_snap.exists:
+            existing = entry_snap.to_dict() or {}
+
+            return {
+                "already_entered": True,
+                "user": (
+                    user_snap.to_dict()
+                    if user_snap.exists
+                    else {}
+                ),
+                "entry": existing,
+            }
+
+        if not user_snap.exists:
+            raise ValueError(
+                "QuizBee account not found."
             )
 
-        ref.set(
+        user_data = user_snap.to_dict() or {}
+
+        points = to_int(
+            user_data.get("points"),
+            0,
+        )
+
+        if points < fee:
+            raise ValueError(
+                f"You need {fee} QuizBee Points "
+                "to enter this stage."
+            )
+
+        new_points = points - fee
+
+        transaction.update(
+            user_ref,
             {
-                "status": "eliminated",
-                "message": "Removed by QuizBee Admin.",
-                "updated_at": firestore.SERVER_TIMESTAMP,
+                "points": new_points,
+                "total_spent_points": (
+                    to_int(
+                        user_data.get(
+                            "total_spent_points"
+                        ),
+                        0,
+                    )
+                    + fee
+                ),
+                "updated_at": (
+                    firestore.SERVER_TIMESTAMP
+                ),
+            },
+        )
+
+        transaction.set(
+            entry_ref,
+            {
+                "round_id": round_id,
+                "game_id": game_id,
+                "stage_no": stage_no,
+                "telegram_id": telegram_id,
+                "entry_fee": fee,
+                "status": "entered",
+                "answer": None,
+                "passed": None,
+                "eliminated": False,
+                "created_at": (
+                    firestore.SERVER_TIMESTAMP
+                ),
+                "updated_at": (
+                    firestore.SERVER_TIMESTAMP
+                ),
+            },
+        )
+
+        transaction.set(
+            participant_ref,
+            {
+                "telegram_id": telegram_id,
+                "current_stage": stage_no,
+                "active": True,
+                "updated_at": (
+                    firestore.SERVER_TIMESTAMP
+                ),
             },
             merge=True,
         )
 
-        return success_response({
-            "message": "Participant eliminated.",
-        })
-
-    except ValueError as exc:
-        return error_response(str(exc), 403)
-
-    except Exception as exc:
-        return error_response(str(exc), 500)
-
-
-# ============================================================
-# ADMIN RESET STAGE
-# ============================================================
-
-@competition_bp.route(
-    "/api/admin/competition/rounds/<round_id>/stages/<int:stage_no>/reset",
-    methods=["POST"],
-)
-def admin_reset_stage(
-    round_id: str,
-    stage_no: int,
-):
-    try:
-        _require_admin()
-
-        stage_ref = get_stage_ref(
-            round_id,
-            stage_no,
+        transaction.set(
+            transaction_ref,
+            {
+                "telegram_id": telegram_id,
+                "type": "competition_entry",
+                "direction": "debit",
+                "amount_points": fee,
+                "round_id": round_id,
+                "game_id": game_id,
+                "stage_no": stage_no,
+                "status": "completed",
+                "created_at": (
+                    firestore.SERVER_TIMESTAMP
+                ),
+            },
+            merge=True,
         )
 
-        snap = stage_ref.get()
+        return {
+            "already_entered": False,
+            "user": {
+                **user_data,
+                "points": new_points,
+            },
+            "entry": {
+                "round_id": round_id,
+                "game_id": game_id,
+                "stage_no": stage_no,
+                "telegram_id": telegram_id,
+                "entry_fee": fee,
+                "status": "entered",
+            },
+        }
 
-        if not snap.exists:
-            return error_response(
-                "Stage not found.",
-                404,
-            )
+    transaction = db.transaction()
 
-        stage_ref.update({
-            "status": "draft",
-            "secret_approved": False,
-            "started_at": None,
-            "closed_at": None,
-            "winner_count": 0,
-            "updated_at": firestore.SERVER_TIMESTAMP,
-        })
-
-        return success_response({
-            "message": "Stage reset to draft.",
-        })
+    try:
+        result = charge_entry(transaction)
 
     except ValueError as exc:
-        return error_response(str(exc), 403)
+        return jsonify({
+            "success": False,
+            "error": str(exc),
+        }), 400
 
     except Exception as exc:
-        return error_response(str(exc), 500)
+        print(
+            "Competition entry transaction error:",
+            repr(exc),
+        )
+
+        return jsonify({
+            "success": False,
+            "error": "Unable to process stage entry.",
+        }), 500
+
+    return jsonify({
+        "success": True,
+        "already_entered": result[
+            "already_entered"
+        ],
+        "entry": result["entry"],
+        "user": public_user(
+            result["user"]
+        ),
+    })
+
+
+# ============================================================
+# USER: SUBMIT ANSWER
+# ============================================================
+
+@competition_bp.post("/<game_id>/submit")
+@user_route
+def competition_submit(user, game_id):
+    telegram_id = str(
+        user.get("id")
+        or user.get("telegram_id")
+        or ""
+    )
+
+    game = get_game(game_id)
+
+    if not game:
+        return jsonify({
+            "success": False,
+            "error": "Competition game not found.",
+        }), 404
+
+    payload = request.get_json(
+        silent=True
+    ) or {}
+
+    answer = payload.get("answer")
+
+    if answer is None:
+        return jsonify({
+            "success": False,
+            "error": "An answer is required.",
+        }), 400
+
+    answer = clean_text(answer)
+
+    if not answer:
+        return jsonify({
+            "success": False,
+            "error": "An answer is required.",
+        }), 400
+
+    # --------------------------------------------------------
+    # Locate current round.
+    # --------------------------------------------------------
+
+    snaps = (
+        rounds_col()
+        .where("game_id", "==", game_id)
+        .stream()
+    )
+
+    rounds = []
+
+    for snap in snaps:
+        data = snap.to_dict() or {}
+        data["id"] = snap.id
+
+        if data.get("status") not in {
+            "settled",
+            "cancelled",
+        }:
+            rounds.append(data)
+
+    if not rounds:
+        return jsonify({
+            "success": False,
+            "error": "No active round.",
+        }), 400
+
+    rounds.sort(
+        key=lambda x: (
+            parse_datetime(
+                x.get("start_at")
+            )
+            or datetime.min.replace(
+                tzinfo=timezone.utc
+            )
+        ),
+        reverse=True,
+    )
+
+    round_data = rounds[0]
+
+    round_id = round_data["id"]
+
+    stage_no = to_int(
+        round_data.get("current_stage"),
+        1,
+    )
+
+    stage = get_stage(
+        round_id,
+        stage_no,
+    )
+
+    if not stage:
+        return jsonify({
+            "success": False,
+            "error": "Round not started yet.",
+        }), 400
+
+    if stage.get("status") != "live":
+        return jsonify({
+            "success": False,
+            "error": "This stage is not live.",
+        }), 400
+
+    end_at = parse_datetime(
+        stage.get("end_at")
+    )
+
+    if end_at and now_utc() >= end_at:
+        # Timer ended. Settle immediately.
+        settle_stage(
+            round_data,
+            stage,
+        )
+
+        result = get_result(
+            round_id,
+            telegram_id,
+        )
+
+        if result:
+            return jsonify({
+                "success": True,
+                "status": (
+                    "advanced"
+                    if result.get("advanced")
+                    else "winner"
+                    if result.get("winner")
+                    else "eliminated"
+                ),
+                "result": result_payload(
+                    result
+                ),
+                "message": result.get(
+                    "message"
+                ),
+            })
+
+        return jsonify({
+            "success": False,
+            "error": "This stage has ended.",
+        }), 400
+
+    entry = get_entry(
+        round_id,
+        stage_no,
+        telegram_id,
+    )
+
+    if not entry:
+        return jsonify({
+            "success": False,
+            "error": "Enter the stage before answering.",
+        }), 400
+
+    if entry.get("status") == "submitted":
+        return jsonify({
+            "success": False,
+            "error": "You have already submitted an answer.",
+        }), 400
+
+    if entry.get("status") != "entered":
+        return jsonify({
+            "success": False,
+            "error": "This entry is no longer active.",
+        }), 400
+
+    # --------------------------------------------------------
+    # Impossible Question and all other games:
+    # the submitted answer is stored, but the secret is NOT
+    # exposed to the client.
+    # --------------------------------------------------------
+
+    entries_col().document(
+        entry["id"]
+    ).set(
+        {
+            "status": "submitted",
+            "answer": answer,
+            "submitted_at": (
+                firestore.SERVER_TIMESTAMP
+            ),
+            "updated_at": (
+                firestore.SERVER_TIMESTAMP
+            ),
+        },
+        merge=True,
+    )
+
+    return jsonify({
+        "success": True,
+        "status": "submitted",
+        "message": (
+            "Your answer has been locked. "
+            "Wait for the stage to conclude."
+        ),
+        "user": public_user(
+            get_user_by_telegram_id(
+                telegram_id
+            )
+        ),
+    })
+
+
+# ============================================================
+# USER: RESULT
+# ============================================================
+
+@competition_bp.get("/<game_id>/result")
+@user_route
+def competition_result(user, game_id):
+    telegram_id = str(
+        user.get("id")
+        or user.get("telegram_id")
+        or ""
+    )
+
+    game = get_game(game_id)
+
+    if not game:
+        return jsonify({
+            "success": False,
+            "error": "Competition game not found.",
+        }), 404
+
+    # Most recent rounds for this game.
+    snaps = (
+        rounds_col()
+        .where("game_id", "==", game_id)
+        .stream()
+    )
+
+    rounds = []
+
+    for snap in snaps:
+        data = snap.to_dict() or {}
+        data["id"] = snap.id
+        rounds.append(data)
+
+    rounds.sort(
+        key=lambda x: (
+            parse_datetime(
+                x.get("updated_at")
+            )
+            or parse_datetime(
+                x.get("start_at")
+            )
+            or datetime.min.replace(
+                tzinfo=timezone.utc
+            )
+        ),
+        reverse=True,
+    )
+
+    for round_data in rounds:
+        result = get_result(
+            round_data["id"],
+            telegram_id,
+        )
+
+        if result:
+            return jsonify({
+                "success": True,
+                "game": game_public(game),
+                "round": {
+                    "id": round_data["id"],
+                    "title": round_data.get(
+                        "title",
+                        "",
+                    ),
+                    "status": round_data.get(
+                        "status"
+                    ),
+                    "current_stage": to_int(
+                        round_data.get(
+                            "current_stage"
+                        ),
+                        1,
+                    ),
+                    "total_stages": to_int(
+                        round_data.get(
+                            "total_stages"
+                        ),
+                        1,
+                    ),
+                },
+                "result": result_payload(
+                    result
+                ),
+            })
+
+    return jsonify({
+        "success": True,
+        "status": "no_result",
+        "game": game_public(game),
+    })
+
+
+# ============================================================
+# ADMIN: SETUP GAMES
+# ============================================================
+
+# This endpoint is intentionally retained because the existing
+# admin frontend already knows how to call it.
+# It is safe to run repeatedly.
+
+@competition_bp.post("/admin/setup-games")
+@admin_route
+def admin_setup_games(admin):
+    initialize_games()
+
+    return jsonify({
+        "success": True,
+        "message": (
+            "Competition games initialized."
+        ),
+        "games": [
+            game_public(
+                {
+                    **definition,
+                    "id": game_id,
+                }
+            )
+            for game_id, definition
+            in GAME_DEFINITIONS.items()
+        ],
+    })
+
+
+# ============================================================
+# ADMIN: CREATE ROUND
+# ============================================================
+
+@competition_bp.post("/admin/rounds/create")
+@admin_route
+def admin_create_round(admin):
+    payload = request.get_json(
+        silent=True
+    ) or {}
+
+    game_id = clean_text(
+        payload.get("game_id")
+    )
+
+    if game_id not in GAME_DEFINITIONS:
+        return jsonify({
+            "success": False,
+            "error": "Invalid competition game.",
+        }), 400
+
+    initialize_games()
+
+    title = clean_text(
+        payload.get("title")
+    )
+
+    if not title:
+        title = (
+            GAME_DEFINITIONS[game_id]["name"]
+            + " Competition"
+        )
+
+    prize_pool = max(
+        to_number(
+            payload.get("prize_pool_usd"),
+            0,
+        ),
+        0,
+    )
+
+    entry_fees = payload.get(
+        "entry_fees"
+    )
+
+    if not isinstance(entry_fees, list):
+        entry_fees = default_fees_for_game(
+            game_id
+        )
+
+    cleaned_fees = []
+
+    for fee in entry_fees:
+        cleaned_fees.append(
+            max(
+                to_int(fee, 0),
+                0,
+            )
+        )
+
+    total_stages = total_stages_for_game(
+        game_id
+    )
+
+    if len(cleaned_fees) < total_stages:
+        defaults = default_fees_for_game(
+            game_id
+        )
+
+        while len(cleaned_fees) < total_stages:
+            index = len(cleaned_fees)
+
+            if index < len(defaults):
+                cleaned_fees.append(
+                    defaults[index]
+                )
+            else:
+                cleaned_fees.append(
+                    30
+                    if index == 6
+                    else 10
+                )
+
+    cleaned_fees = cleaned_fees[
+        :total_stages
+    ]
+
+    start_at = parse_datetime(
+        payload.get("start_at")
+    )
+
+    if start_at is None:
+        start_at = now_utc()
+
+    round_id = uuid.uuid4().hex
+
+    round_ref = rounds_col().document(
+        round_id
+    )
+
+    round_ref.set(
+        {
+            "game_id": game_id,
+            "title": title,
+            "prize_pool_usd": prize_pool,
+            "entry_fees": cleaned_fees,
+            "start_at": start_at,
+            "current_stage": 1,
+            "total_stages": total_stages,
+            "status": "draft",
+            "winner_count": 0,
+            "created_by": str(
+                admin.get("id", "")
+            ),
+            "created_at": (
+                firestore.SERVER_TIMESTAMP
+            ),
+            "updated_at": (
+                firestore.SERVER_TIMESTAMP
+            ),
+        }
+    )
+
+    return jsonify({
+        "success": True,
+        "round_id": round_id,
+        "round": {
+            "id": round_id,
+            "game_id": game_id,
+            "title": title,
+            "prize_pool_usd": prize_pool,
+            "entry_fees": cleaned_fees,
+            "start_at": iso(start_at),
+            "current_stage": 1,
+            "total_stages": total_stages,
+            "status": "draft",
+        },
+    })
+
+
+# ============================================================
+# ADMIN: LIST ROUNDS
+# ============================================================
+
+@competition_bp.get("/admin/rounds")
+@admin_route
+def admin_list_rounds(admin):
+    game_id = clean_text(
+        request.args.get("game_id")
+    )
+
+    query = rounds_col()
+
+    if game_id:
+        query = query.where(
+            "game_id",
+            "==",
+            game_id,
+        )
+
+    snaps = query.stream()
+
+    rounds = []
+
+    for snap in snaps:
+        data = snap.to_dict() or {}
+        data["id"] = snap.id
+
+        rounds.append({
+            "id": snap.id,
+            "game_id": data.get("game_id"),
+            "title": data.get("title"),
+            "status": data.get("status"),
+            "prize_pool_usd": to_number(
+                data.get("prize_pool_usd"),
+                0,
+            ),
+            "current_stage": to_int(
+                data.get("current_stage"),
+                1,
+            ),
+            "total_stages": to_int(
+                data.get("total_stages"),
+                1,
+            ),
+            "winner_count": to_int(
+                data.get("winner_count"),
+                0,
+            ),
+            "start_at": iso(
+                data.get("start_at")
+            ),
+            "created_at": iso(
+                data.get("created_at")
+            ),
+            "updated_at": iso(
+                data.get("updated_at")
+            ),
+        })
+
+    rounds.sort(
+        key=lambda x: x.get(
+            "created_at"
+        ) or "",
+        reverse=True,
+    )
+
+    return jsonify({
+        "success": True,
+        "rounds": rounds,
+    })
+
+
+# ============================================================
+# ADMIN: GET ROUND
+# ============================================================
+
+@competition_bp.get("/admin/rounds/<round_id>")
+@admin_route
+def admin_get_round(admin, round_id):
+    round_data = get_round(
+        round_id
+    )
+
+    if not round_data:
+        return jsonify({
+            "success": False,
+            "error": "Round not found.",
+        }), 404
+
+    stages = round_stages(
+        round_id
+    )
+
+    # Admin is allowed to see secrets.
+    for stage in stages:
+        stage["start_at"] = iso(
+            stage.get("start_at")
+        )
+
+        stage["end_at"] = iso(
+            stage.get("end_at")
+        )
+
+        stage["created_at"] = iso(
+            stage.get("created_at")
+        )
+
+        stage["updated_at"] = iso(
+            stage.get("updated_at")
+        )
+
+    entries = round_entries(
+        round_id
+    )
+
+    for entry in entries:
+        entry["created_at"] = iso(
+            entry.get("created_at")
+        )
+
+        entry["submitted_at"] = iso(
+            entry.get("submitted_at")
+        )
+
+        entry["settled_at"] = iso(
+            entry.get("settled_at")
+        )
+
+    result_snaps = (
+        results_col()
+        .where(
+            "round_id",
+            "==",
+            round_id,
+        )
+        .stream()
+    )
+
+    results = []
+
+    for snap in result_snaps:
+        data = snap.to_dict() or {}
+        data["id"] = snap.id
+
+        data["settled_at"] = iso(
+            data.get("settled_at")
+        )
+
+        results.append(data)
+
+    return jsonify({
+        "success": True,
+        "round": {
+            "id": round_id,
+            "game_id": round_data.get(
+                "game_id"
+            ),
+            "title": round_data.get(
+                "title"
+            ),
+            "status": round_data.get(
+                "status"
+            ),
+            "prize_pool_usd": to_number(
+                round_data.get(
+                    "prize_pool_usd"
+                ),
+                0,
+            ),
+            "entry_fees": round_data.get(
+                "entry_fees",
+                [],
+            ),
+            "start_at": iso(
+                round_data.get(
+                    "start_at"
+                )
+            ),
+            "current_stage": to_int(
+                round_data.get(
+                    "current_stage"
+                ),
+                1,
+            ),
+            "total_stages": to_int(
+                round_data.get(
+                    "total_stages"
+                ),
+                1,
+            ),
+            "winner_count": to_int(
+                round_data.get(
+                    "winner_count"
+                ),
+                0,
+            ),
+        },
+        "stages": stages,
+        "entries": entries,
+        "results": results,
+    })
+
+
+# ============================================================
+# ADMIN: CREATE STAGE
+# ============================================================
+
+@competition_bp.post(
+    "/admin/rounds/<round_id>/stages/create"
+)
+@admin_route
+def admin_create_stage(
+    admin,
+    round_id,
+):
+    round_data = get_round(
+        round_id
+    )
+
+    if not round_data:
+        return jsonify({
+            "success": False,
+            "error": "Round not found.",
+        }), 404
+
+    if round_data.get("status") in {
+        "settled",
+        "cancelled",
+    }:
+        return jsonify({
+            "success": False,
+            "error": (
+                "You cannot add a stage to a "
+                "finished round."
+            ),
+        }), 400
+
+    payload = request.get_json(
+        silent=True
+    ) or {}
+
+    stage_no = to_int(
+        payload.get("stage_no"),
+        0,
+    )
+
+    total_stages = to_int(
+        round_data.get(
+            "total_stages"
+        ),
+        1,
+    )
+
+    if stage_no < 1 or stage_no > total_stages:
+        return jsonify({
+            "success": False,
+            "error": "Invalid stage number.",
+        }), 400
+
+    existing = get_stage(
+        round_id,
+        stage_no,
+    )
+
+    if existing:
+        return jsonify({
+            "success": False,
+            "error": (
+                "This stage already exists. "
+                "Use Edit Stage instead."
+            ),
+        }), 400
+
+    game_id = round_data.get(
+        "game_id"
+    )
+
+    default_fees = round_data.get(
+        "entry_fees"
+    ) or default_fees_for_game(
+        game_id
+    )
+
+    default_fee = (
+        to_int(
+            default_fees[
+                stage_no - 1
+            ],
+            30 if stage_no == 7 else 10,
+        )
+        if stage_no - 1 < len(default_fees)
+        else (
+            30
+            if stage_no == 7
+            else 10
+        )
+    )
+
+    entry_fee = max(
+        to_int(
+            payload.get(
+                "entry_fee"
+            ),
+            default_fee,
+        ),
+        0,
+    )
+
+    title = clean_text(
+        payload.get("title")
+    ) or f"Stage {stage_no}"
+
+    question = clean_text(
+        payload.get("question")
+    )
+
+    clue = clean_text(
+        payload.get("clue")
+    )
+
+    options = unique_list(
+        payload.get("options")
+    )
+
+    accepted = unique_list(
+        payload.get(
+            "accepted_answers"
+        )
+    )
+
+    dead_numbers = unique_list(
+        payload.get(
+            "dead_numbers"
+        )
+    )
+
+    generation_mode = clean_text(
+        payload.get(
+            "generation_mode"
+        )
+    ) or "admin"
+
+    start_at = parse_datetime(
+        payload.get(
+            "start_at"
+        )
+    )
+
+    end_at = parse_datetime(
+        payload.get(
+            "end_at"
+        )
+    )
+
+    if start_at is None:
+        start_at = now_utc()
+
+    if end_at is None:
+        # If Admin hasn't supplied an end time, don't
+        # accidentally create a stage that immediately expires.
+        return jsonify({
+            "success": False,
+            "error": (
+                "End time is required."
+            ),
+        }), 400
+
+    if end_at <= start_at:
+        return jsonify({
+            "success": False,
+            "error": (
+                "End time must be after start time."
+            ),
+        }), 400
+
+    # --------------------------------------------------------
+    # Secret values remain private.
+    # --------------------------------------------------------
+
+    correct_answer = clean_text(
+        payload.get(
+            "correct_answer"
+        )
+    )
+
+    safe_option = clean_text(
+        payload.get(
+            "safe_option"
+        )
+    )
+
+    minimum = to_int(
+        payload.get(
+            "min_number"
+        ),
+        1,
+    )
+
+    maximum = to_int(
+        payload.get(
+            "max_number"
+        ),
+        20,
+    )
+
+    if maximum < minimum:
+        minimum, maximum = maximum, minimum
+
+    dead_count = max(
+        to_int(
+            payload.get(
+                "dead_count"
+            ),
+            1,
+        ),
+        1,
+    )
+
+    mechanic = clean_text(
+        payload.get(
+            "mechanic"
+        )
+    ).lower()
+
+    if mechanic not in {
+        "minority",
+        "majority",
+        "closest_target",
+        "within_range",
+    }:
+        mechanic = "minority"
+
+    target_percentage = to_number(
+        payload.get(
+            "target_percentage"
+        ),
+        50,
+    )
+
+    target_min_percentage = to_number(
+        payload.get(
+            "target_min_percentage"
+        ),
+        40,
+    )
+
+    target_max_percentage = to_number(
+        payload.get(
+            "target_max_percentage"
+        ),
+        60,
+    )
+
+    stage_id = (
+        f"{round_id}_{stage_no}"
+    )
+
+    stages_col().document(
+        stage_id
+    ).set(
+        {
+            "round_id": round_id,
+            "game_id": game_id,
+            "stage_no": stage_no,
+            "title": title,
+            "question": question,
+            "clue": clue,
+            "entry_fee": entry_fee,
+            "start_at": start_at,
+            "end_at": end_at,
+
+            # Public configuration.
+            "options": options,
+            "min_number": minimum,
+            "max_number": maximum,
+            "mechanic": mechanic,
+            "target_percentage": target_percentage,
+            "target_min_percentage": (
+                target_min_percentage
+            ),
+            "target_max_percentage": (
+                target_max_percentage
+            ),
+
+            # Private secrets.
+            "generation_mode": generation_mode,
+            "correct_answer": correct_answer,
+            "accepted_answers": accepted,
+            "safe_option": safe_option,
+            "dead_numbers": dead_numbers,
+            "dead_count": dead_count,
+
+            # Workflow.
+            "status": "draft",
+            "secret_approved": False,
+            "created_by": str(
+                admin.get("id", "")
+            ),
+            "created_at": (
+                firestore.SERVER_TIMESTAMP
+            ),
+            "updated_at": (
+                firestore.SERVER_TIMESTAMP
+            ),
+        }
+    )
+
+    return jsonify({
+        "success": True,
+        "stage_id": stage_id,
+        "message": (
+            "Stage created as draft. "
+            "Review and approve the secret before starting it."
+        ),
+    })
+
+
+# ============================================================
+# ADMIN: EDIT STAGE
+# ============================================================
+
+@competition_bp.post(
+    "/admin/rounds/<round_id>/stages/<int:stage_no>/edit"
+)
+@admin_route
+def admin_edit_stage(
+    admin,
+    round_id,
+    stage_no,
+):
+    round_data = get_round(
+        round_id
+    )
+
+    if not round_data:
+        return jsonify({
+            "success": False,
+            "error": "Round not found.",
+        }), 404
+
+    stage = get_stage(
+        round_id,
+        stage_no,
+    )
+
+    if not stage:
+        return jsonify({
+            "success": False,
+            "error": "Stage not found.",
+        }), 404
+
+    # --------------------------------------------------------
+    # Editing is allowed until the stage becomes live.
+    # Once live, the challenge is frozen.
+    # --------------------------------------------------------
+
+    if stage.get("status") == "live":
+        return jsonify({
+            "success": False,
+            "error": (
+                "This stage is already live and "
+                "cannot be edited."
+            ),
+        }), 400
+
+    if stage.get("status") == "closed":
+        return jsonify({
+            "success": False,
+            "error": (
+                "This stage has already been concluded "
+                "and cannot be edited."
+            ),
+        }), 400
+
+    if round_data.get("status") == "settled":
+        return jsonify({
+            "success": False,
+            "error": (
+                "This round has already been settled."
+            ),
+        }), 400
+
+    payload = request.get_json(
+        silent=True
+    ) or {}
+
+    updates: Dict[str, Any] = {}
+
+    # --------------------------------------------------------
+    # Public configuration
+    # --------------------------------------------------------
+
+    if "title" in payload:
+        updates["title"] = clean_text(
+            payload.get("title")
+        )
+
+    if "question" in payload:
+        updates["question"] = clean_text(
+            payload.get("question")
+        )
+
+    if "clue" in payload:
+        updates["clue"] = clean_text(
+            payload.get("clue")
+        )
+
+    if "options" in payload:
+        updates["options"] = unique_list(
+            payload.get("options")
+        )
+
+    if "entry_fee" in payload:
+        updates["entry_fee"] = max(
+            to_int(
+                payload.get(
+                    "entry_fee"
+                ),
+                0,
+            ),
+            0,
+        )
+
+    if "start_at" in payload:
+        parsed = parse_datetime(
+            payload.get("start_at")
+        )
+
+        if parsed:
+            updates["start_at"] = parsed
+
+    if "end_at" in payload:
+        parsed = parse_datetime(
+            payload.get("end_at")
+        )
+
+        if parsed:
+            updates["end_at"] = parsed
+
+    if "min_number" in payload:
+        updates["min_number"] = to_int(
+            payload.get(
+                "min_number"
+            ),
+            1,
+        )
+
+    if "max_number" in payload:
+        updates["max_number"] = to_int(
+            payload.get(
+                "max_number"
+            ),
+            20,
+        )
+
+    if "mechanic" in payload:
+        updates["mechanic"] = clean_text(
+            payload.get(
+                "mechanic"
+            )
+        ).lower()
+
+    if "target_percentage" in payload:
+        updates["target_percentage"] = (
+            to_number(
+                payload.get(
+                    "target_percentage"
+                ),
+                50,
+            )
+        )
+
+    if "target_min_percentage" in payload:
+        updates[
+            "target_min_percentage"
+        ] = to_number(
+            payload.get(
+                "target_min_percentage"
+            ),
+            40,
+        )
+
+    if "target_max_percentage" in payload:
+        updates[
+            "target_max_percentage"
+        ] = to_number(
+            payload.get(
+                "target_max_percentage"
+            ),
+            60,
+        )
+
+    # --------------------------------------------------------
+    # Secret configuration.
+    #
+    # Editing a secret automatically removes previous approval.
+    # This prevents an Admin from changing the answer after
+    # approval without re-approving it.
+    # --------------------------------------------------------
+
+    secret_changed = False
+
+    if "correct_answer" in payload:
+        updates["correct_answer"] = clean_text(
+            payload.get(
+                "correct_answer"
+            )
+        )
+        secret_changed = True
+
+    if "accepted_answers" in payload:
+        updates[
+            "accepted_answers"
+        ] = unique_list(
+            payload.get(
+                "accepted_answers"
+            )
+        )
+        secret_changed = True
+
+    if "safe_option" in payload:
+        updates["safe_option"] = clean_text(
+            payload.get(
+                "safe_option"
+            )
+        )
+        secret_changed = True
+
+    if "dead_numbers" in payload:
+        updates[
+            "dead_numbers"
+        ] = unique_list(
+            payload.get(
+                "dead_numbers"
+            )
+        )
+        secret_changed = True
+
+    if "dead_count" in payload:
+        updates[
+            "dead_count"
+        ] = max(
+            to_int(
+                payload.get(
+                    "dead_count"
+                ),
+                1,
+            ),
+            1,
+        )
+        secret_changed = True
+
+    if "generation_mode" in payload:
+        updates[
+            "generation_mode"
+        ] = clean_text(
+            payload.get(
+                "generation_mode"
+            )
+        ) or "admin"
+
+    if secret_changed:
+        updates[
+            "secret_approved"
+        ] = False
+
+    updates[
+        "updated_at"
+    ] = firestore.SERVER_TIMESTAMP
+
+    stages_col().document(
+        stage["id"]
+    ).set(
+        updates,
+        merge=True,
+    )
+
+    return jsonify({
+        "success": True,
+        "message": (
+            "Stage updated. "
+            + (
+                "The secret must be approved again."
+                if secret_changed
+                else ""
+            )
+        ),
+    })
+
+
+# ============================================================
+# ADMIN: APPROVE SECRET
+# ============================================================
+
+@competition_bp.post(
+    "/admin/rounds/<round_id>/stages/<int:stage_no>/approve"
+)
+@admin_route
+def admin_approve_stage(
+    admin,
+    round_id,
+    stage_no,
+):
+    round_data = get_round(
+        round_id
+    )
+
+    if not round_data:
+        return jsonify({
+            "success": False,
+            "error": "Round not found.",
+        }), 404
+
+    stage = get_stage(
+        round_id,
+        stage_no,
+    )
+
+    if not stage:
+        return jsonify({
+            "success": False,
+            "error": "Stage not found.",
+        }), 404
+
+    if stage.get("status") == "live":
+        return jsonify({
+            "success": False,
+            "error": (
+                "A live stage cannot be re-approved."
+            ),
+        }), 400
+
+    game_id = round_data.get(
+        "game_id"
+    )
+
+    # --------------------------------------------------------
+    # Validate the actual secret before approval.
+    # --------------------------------------------------------
+
+    if game_id in {
+        "guess_it",
+        "impossible_question",
+    }:
+        correct = clean_text(
+            stage.get(
+                "correct_answer"
+            )
+        )
+
+        accepted = unique_list(
+            stage.get(
+                "accepted_answers"
+            )
+        )
+
+        if not correct:
+            return jsonify({
+                "success": False,
+                "error": (
+                    "Enter the correct answer "
+                    "before approving the stage."
+                ),
+            }), 400
+
+        # Always include the official answer.
+        if correct not in accepted:
+            accepted.insert(
+                0,
+                correct,
+            )
+
+        stages_col().document(
+            stage["id"]
+        ).set(
+            {
+                "accepted_answers": accepted,
+                "secret_approved": True,
+                "approved_by": str(
+                    admin.get("id", "")
+                ),
+                "approved_at": (
+                    firestore.SERVER_TIMESTAMP
+                ),
+                "updated_at": (
+                    firestore.SERVER_TIMESTAMP
+                ),
+            },
+            merge=True,
+        )
+
+    elif game_id == "survivor":
+        safe = clean_text(
+            stage.get(
+                "safe_option"
+            )
+        )
+
+        if not safe:
+            return jsonify({
+                "success": False,
+                "error": (
+                    "Enter the safe option "
+                    "before approving the stage."
+                ),
+            }), 400
+
+        options = [
+            clean_text(x)
+            for x in stage.get(
+                "options",
+                [],
+            )
+        ]
+
+        if options and safe not in options:
+            return jsonify({
+                "success": False,
+                "error": (
+                    "The safe option must be "
+                    "one of the stage options."
+                ),
+            }), 400
+
+        stages_col().document(
+            stage["id"]
+        ).set(
+            {
+                "secret_approved": True,
+                "approved_by": str(
+                    admin.get("id", "")
+                ),
+                "approved_at": (
+                    firestore.SERVER_TIMESTAMP
+                ),
+                "updated_at": (
+                    firestore.SERVER_TIMESTAMP
+                ),
+            },
+            merge=True,
+        )
+
+    elif game_id == "dead_number":
+        dead_numbers = unique_list(
+            stage.get(
+                "dead_numbers"
+            )
+        )
+
+        if (
+            not dead_numbers
+            and stage.get(
+                "generation_mode"
+            ) != "random"
+        ):
+            return jsonify({
+                "success": False,
+                "error": (
+                    "Enter the dead numbers "
+                    "or select random generation."
+                ),
+            }), 400
+
+        stages_col().document(
+            stage["id"]
+        ).set(
+            {
+                "secret_approved": True,
+                "approved_by": str(
+                    admin.get("id", "")
+                ),
+                "approved_at": (
+                    firestore.SERVER_TIMESTAMP
+                ),
+                "updated_at": (
+                    firestore.SERVER_TIMESTAMP
+                ),
+            },
+            merge=True,
+        )
+
+    else:
+        # Crowd Trap and Impossible Choice calculate
+        # outcomes from player choices.
+        stages_col().document(
+            stage["id"]
+        ).set(
+            {
+                "secret_approved": True,
+                "approved_by": str(
+                    admin.get("id", "")
+                ),
+                "approved_at": (
+                    firestore.SERVER_TIMESTAMP
+                ),
+                "updated_at": (
+                    firestore.SERVER_TIMESTAMP
+                ),
+            },
+            merge=True,
+        )
+
+    return jsonify({
+        "success": True,
+        "message": (
+            "Stage secret approved."
+        ),
+    })
+
+
+# ============================================================
+# ADMIN: START STAGE
+# ============================================================
+
+@competition_bp.post(
+    "/admin/rounds/<round_id>/stages/<int:stage_no>/start"
+)
+@admin_route
+def admin_start_stage(
+    admin,
+    round_id,
+    stage_no,
+):
+    round_data = get_round(
+        round_id
+    )
+
+    if not round_data:
+        return jsonify({
+            "success": False,
+            "error": "Round not found.",
+        }), 404
+
+    stage = get_stage(
+        round_id,
+        stage_no,
+    )
+
+    if not stage:
+        return jsonify({
+            "success": False,
+            "error": "Stage not found.",
+        }), 404
+
+    if stage.get("status") == "live":
+        return jsonify({
+            "success": False,
+            "error": "Stage is already live.",
+        }), 400
+
+    if stage.get("secret_approved") is not True:
+        return jsonify({
+            "success": False,
+            "error": (
+                "Approve the stage secret before "
+                "starting the stage."
+            ),
+        }), 400
+
+    # --------------------------------------------------------
+    # Do not allow a stage to be started with missing times.
+    # --------------------------------------------------------
+
+    start_at = parse_datetime(
+        stage.get("start_at")
+    )
+
+    end_at = parse_datetime(
+        stage.get("end_at")
+    )
+
+    if start_at is None:
+        start_at = now_utc()
+
+    if end_at is None:
+        return jsonify({
+            "success": False,
+            "error": (
+                "Stage end time is required."
+            ),
+        }), 400
+
+    if end_at <= start_at:
+        return jsonify({
+            "success": False,
+            "error": (
+                "Stage end time must be after "
+                "the start time."
+            ),
+        }), 400
+
+    # --------------------------------------------------------
+    # Start immediately when Admin presses Start.
+    # This makes the admin button authoritative.
+    # --------------------------------------------------------
+
+    start_at = now_utc()
+
+    if end_at <= start_at:
+        return jsonify({
+            "success": False,
+            "error": (
+                "The configured end time has already passed."
+            ),
+        }), 400
+
+    stages_col().document(
+        stage["id"]
+    ).set(
+        {
+            "status": "live",
+            "start_at": start_at,
+            "started_by": str(
+                admin.get("id", "")
+            ),
+            "started_at": (
+                firestore.SERVER_TIMESTAMP
+            ),
+            "updated_at": (
+                firestore.SERVER_TIMESTAMP
+            ),
+        },
+        merge=True,
+    )
+
+    rounds_col().document(
+        round_id
+    ).set(
+        {
+            "status": "live",
+            "current_stage": stage_no,
+            "updated_at": (
+                firestore.SERVER_TIMESTAMP
+            ),
+        },
+        merge=True,
+    )
+
+    return jsonify({
+        "success": True,
+        "message": "Stage is now live.",
+        "start_at": iso(start_at),
+        "end_at": iso(end_at),
+    })
+
+
+# ============================================================
+# ADMIN: END / SETTLE STAGE
+# ============================================================
+
+@competition_bp.post(
+    "/admin/rounds/<round_id>/stages/<int:stage_no>/end"
+)
+@admin_route
+def admin_end_stage(
+    admin,
+    round_id,
+    stage_no,
+):
+    round_data = get_round(
+        round_id
+    )
+
+    if not round_data:
+        return jsonify({
+            "success": False,
+            "error": "Round not found.",
+        }), 404
+
+    stage = get_stage(
+        round_id,
+        stage_no,
+    )
+
+    if not stage:
+        return jsonify({
+            "success": False,
+            "error": "Stage not found.",
+        }), 404
+
+    if stage.get("status") == "closed":
+        return jsonify({
+            "success": False,
+            "error": (
+                "This stage has already been concluded."
+            ),
+        }), 400
+
+    if stage.get("status") != "live":
+        return jsonify({
+            "success": False,
+            "error": (
+                "Only a live stage can be concluded."
+            ),
+        }), 400
+
+    result = settle_stage(
+        round_data,
+        stage,
+    )
+
+    return jsonify({
+        "success": True,
+        "message": (
+            "Stage concluded and player results recorded."
+        ),
+        **result,
+    })
+
+
+# ============================================================
+# ADMIN: PREPARE NEXT STAGE
+# ============================================================
+
+@competition_bp.post(
+    "/admin/rounds/<round_id>/next-stage"
+)
+@admin_route
+def admin_next_stage(
+    admin,
+    round_id,
+):
+    round_data = get_round(
+        round_id
+    )
+
+    if not round_data:
+        return jsonify({
+            "success": False,
+            "error": "Round not found.",
+        }), 404
+
+    total_stages = to_int(
+        round_data.get(
+            "total_stages"
+        ),
+        1,
+    )
+
+    current_stage = to_int(
+        round_data.get(
+            "current_stage"
+        ),
+        1,
+    )
+
+    if current_stage >= total_stages:
+        return jsonify({
+            "success": False,
+            "error": (
+                "This is already the final stage."
+            ),
+        }), 400
+
+    current = get_stage(
+        round_id,
+        current_stage,
+    )
+
+    if current and current.get(
+        "status"
+    ) != "closed":
+        return jsonify({
+            "success": False,
+            "error": (
+                "Conclude the current stage "
+                "before advancing."
+            ),
+        }), 400
+
+    next_stage = current_stage + 1
+
+    existing = get_stage(
+        round_id,
+        next_stage,
+    )
+
+    # --------------------------------------------------------
+    # We deliberately DO NOT expose the next stage.
+    # Admin must create/configure it separately.
+    # --------------------------------------------------------
+
+    rounds_col().document(
+        round_id
+    ).set(
+        {
+            "current_stage": next_stage,
+            "status": "draft",
+            "updated_at": (
+                firestore.SERVER_TIMESTAMP
+            ),
+        },
+        merge=True,
+    )
+
+    return jsonify({
+        "success": True,
+        "next_stage": next_stage,
+        "message": (
+            f"Stage {next_stage} is now the next "
+            "stage to configure."
+        ),
+        "already_created": bool(
+            existing
+        ),
+    })
+
+
+# ============================================================
+# ADMIN: CANCEL ROUND
+# ============================================================
+
+@competition_bp.post(
+    "/admin/rounds/<round_id>/cancel"
+)
+@admin_route
+def admin_cancel_round(
+    admin,
+    round_id,
+):
+    round_data = get_round(
+        round_id
+    )
+
+    if not round_data:
+        return jsonify({
+            "success": False,
+            "error": "Round not found.",
+        }), 404
+
+    if round_data.get(
+        "status"
+    ) == "settled":
+        return jsonify({
+            "success": False,
+            "error": (
+                "A settled round cannot be cancelled."
+            ),
+        }), 400
+
+    rounds_col().document(
+        round_id
+    ).set(
+        {
+            "status": "cancelled",
+            "cancelled_by": str(
+                admin.get("id", "")
+            ),
+            "cancelled_at": (
+                firestore.SERVER_TIMESTAMP
+            ),
+            "updated_at": (
+                firestore.SERVER_TIMESTAMP
+            ),
+        },
+        merge=True,
+    )
+
+    return jsonify({
+        "success": True,
+        "message": "Competition round cancelled.",
+    })
+
+
+# ============================================================
+# ADMIN: FORCE SETTLE EXPIRED STAGE
+# ============================================================
+
+@competition_bp.post(
+    "/admin/rounds/<round_id>/stages/<int:stage_no>/settle"
+)
+@admin_route
+def admin_force_settle_stage(
+    admin,
+    round_id,
+    stage_no,
+):
+    round_data = get_round(
+        round_id
+    )
+
+    if not round_data:
+        return jsonify({
+            "success": False,
+            "error": "Round not found.",
+        }), 404
+
+    stage = get_stage(
+        round_id,
+        stage_no,
+    )
+
+    if not stage:
+        return jsonify({
+            "success": False,
+            "error": "Stage not found.",
+        }), 404
+
+    if stage.get("status") == "closed":
+        return jsonify({
+            "success": True,
+            "message": (
+                "Stage was already settled."
+            ),
+        })
+
+    result = settle_stage(
+        round_data,
+        stage,
+    )
+
+    return jsonify({
+        "success": True,
+        "message": (
+            "Stage settled successfully."
+        ),
+        **result,
+    })
+
+
+# ============================================================
+# ADMIN: ROUND PARTICIPANTS
+# ============================================================
+
+@competition_bp.get(
+    "/admin/rounds/<round_id>/participants"
+)
+@admin_route
+def admin_round_participants(
+    admin,
+    round_id,
+):
+    round_data = get_round(
+        round_id
+    )
+
+    if not round_data:
+        return jsonify({
+            "success": False,
+            "error": "Round not found.",
+        }), 404
+
+    entries = round_entries(
+        round_id
+    )
+
+    participants: Dict[str, Dict[str, Any]] = {}
+
+    for entry in entries:
+        telegram_id = str(
+            entry.get("telegram_id", "")
+        )
+
+        if telegram_id not in participants:
+            participants[
+                telegram_id
+            ] = {
+                "telegram_id": telegram_id,
+                "stages": [],
+                "status": "active",
+            }
+
+        participants[
+            telegram_id
+        ]["stages"].append({
+            "stage_no": to_int(
+                entry.get(
+                    "stage_no"
+                ),
+                1,
+            ),
+            "entry_fee": to_int(
+                entry.get(
+                    "entry_fee"
+                ),
+                0,
+            ),
+            "status": entry.get(
+                "status"
+            ),
+            "answer": entry.get(
+                "answer"
+            ),
+            "passed": entry.get(
+                "passed"
+            ),
+            "eliminated": entry.get(
+                "eliminated"
+            ),
+            "result": entry.get(
+                "result"
+            ),
+        })
+
+    results = []
+
+    for telegram_id, participant in participants.items():
+        result = get_result(
+            round_id,
+            telegram_id,
+        )
+
+        if result:
+            participant[
+                "final_result"
+            ] = result_payload(
+                result
+            )
+
+        results.append(
+            participant
+        )
+
+    return jsonify({
+        "success": True,
+        "round_id": round_id,
+        "participants": results,
+    })
+
+
+# ============================================================
+# ADMIN: SET GAME ACTIVE / LOCKED
+# ============================================================
+
+@competition_bp.post(
+    "/admin/games/<game_id>/toggle"
+)
+@admin_route
+def admin_toggle_game(
+    admin,
+    game_id,
+):
+    game = get_game(
+        game_id
+    )
+
+    if not game:
+        game = ensure_game_exists(
+            game_id
+        )
+
+    new_active = not bool(
+        game.get("active", False)
+    )
+
+    games_col().document(
+        game_id
+    ).set(
+        {
+            "active": new_active,
+            "updated_at": (
+                firestore.SERVER_TIMESTAMP
+            ),
+        },
+        merge=True,
+    )
+
+    return jsonify({
+        "success": True,
+        "game_id": game_id,
+        "active": new_active,
+    })
+
+
+# ============================================================
+# ADMIN: LIST GAMES
+# ============================================================
+
+@competition_bp.get(
+    "/admin/games"
+)
+@admin_route
+def admin_games(admin):
+    initialize_games()
+
+    games = []
+
+    for game_id, definition in GAME_DEFINITIONS.items():
+        game = get_game(
+            game_id
+        )
+
+        if game:
+            games.append(
+                game_public(game)
+            )
+
+    return jsonify({
+        "success": True,
+        "games": games,
+    })
+
+
+# ============================================================
+# ADMIN: SET PARTICIPANT VISIBILITY
+# ============================================================
+
+@competition_bp.post(
+    "/admin/settings/participant-visibility"
+)
+@admin_route
+def admin_participant_visibility(
+    admin,
+):
+    payload = request.get_json(
+        silent=True
+    ) or {}
+
+    enabled = bool(
+        payload.get(
+            "show_participants",
+            False,
+        )
+    )
+
+    db.collection(
+        "competition_settings"
+    ).document(
+        "general"
+    ).set(
+        {
+            "show_participants": enabled,
+            "updated_by": str(
+                admin.get("id", "")
+            ),
+            "updated_at": (
+                firestore.SERVER_TIMESTAMP
+            ),
+        },
+        merge=True,
+    )
+
+    return jsonify({
+        "success": True,
+        "show_participants": enabled,
+    })
+
+
+# ============================================================
+# ADMIN: GET SETTINGS
+# ============================================================
+
+@competition_bp.get(
+    "/admin/settings"
+)
+@admin_route
+def admin_get_settings(admin):
+    snap = (
+        db.collection(
+            "competition_settings"
+        )
+        .document("general")
+        .get()
+    )
+
+    data = (
+        snap.to_dict()
+        if snap.exists
+        else {}
+    )
+
+    return jsonify({
+        "success": True,
+        "settings": {
+            "show_participants": bool(
+                data.get(
+                    "show_participants",
+                    False,
+                )
+            ),
+        },
+    })
+
+
+# ============================================================
+# OPTIONAL COMPATIBILITY ENDPOINT
+# ============================================================
+
+@competition_bp.post(
+    "/admin/rounds/<round_id>/advance"
+)
+@admin_route
+def admin_advance_compat(
+    admin,
+    round_id,
+):
+    """
+    Compatibility alias for older admin frontend code.
+    """
+
+    return admin_next_stage(
+        admin,
+        round_id,
+              )
