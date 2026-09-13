@@ -14,12 +14,14 @@ from backend.telegram_auth import validate_telegram_init_data
 from backend.wallet import wallet_bp
 from backend.daily_earning import daily_earning_bp
 from backend.admin import admin_bp
+from backend.competition import competition_bp
 
 
 app = Flask(__name__)
 app.register_blueprint(wallet_bp)
 app.register_blueprint(daily_earning_bp)
 app.register_blueprint(admin_bp)
+app.register_blueprint(competition_bp)
 
 
 CORS(
