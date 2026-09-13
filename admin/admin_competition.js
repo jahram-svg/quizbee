@@ -1,1470 +1,1613 @@
 (function () {
     let currentRoundId = null;
+    let selectedGame = "guess_it";
 
-    const stagedGames = [
+    const GAMES = {
+        guess_it: {
+            emoji: "🎯",
+            name: "Guess It",
+            staged: true,
+            description: "7-stage elimination and survival challenge."
+        },
+        impossible_question: {
+            emoji: "💀",
+            name: "Impossible Question",
+            staged: false,
+            description: "One difficult question. One answer per player."
+        },
+        crowd_trap: {
+            emoji: "🧠",
+            name: "The Crowd Trap",
+            staged: false,
+            description: "Players choose privately. Unique choices survive."
+        },
+        survivor: {
+            emoji: "🏆",
+            name: "The Survivor",
+            staged: true,
+            description: "Choose the safe option and survive to the next stage."
+        },
+        dead_number: {
+            emoji: "☠️",
+            name: "Dead Number",
+            staged: true,
+            description: "Avoid the dead numbers and survive."
+        },
+        impossible_choice: {
+            emoji: "🤔",
+            name: "Impossible Choice",
+            staged: false,
+            description: "Predict the crowd using psychological game mechanics."
+        }
+    };
+
+    const STAGED_GAMES = [
         "guess_it",
         "survivor",
         "dead_number"
     ];
 
-    function h(v) {
-        return escapeHtml(v ?? "");
+    function h(value) {
+        return escapeHtml(value ?? "");
+    }
+
+    function gameInfo(gameId) {
+        return GAMES[gameId] || {
+            emoji: "🎮",
+            name: gameId || "Competition",
+            staged: false,
+            description: ""
+        };
+    }
+
+    function gameLabel(gameId) {
+        const game = gameInfo(gameId);
+        return `${game.emoji} ${game.name}`;
+    }
+
+    function addStyles() {
+        if (document.getElementById("competitionAdminStyles")) return;
+
+        const style = document.createElement("style");
+        style.id = "competitionAdminStyles";
+
+        style.textContent = `
+            #competitionPage {
+                padding-bottom: 100px;
+            }
+
+            #competitionPage .competition-tabs {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 8px;
+                margin-bottom: 15px;
+            }
+
+            #competitionPage .competition-tab {
+                border: 1px solid rgba(255,255,255,.10);
+                background: rgba(255,255,255,.04);
+                color: inherit;
+                border-radius: 12px;
+                padding: 12px 8px;
+                cursor: pointer;
+                text-align: left;
+                font-weight: 700;
+            }
+
+            #competitionPage .competition-tab.active {
+                border-color: var(--yellow);
+                background: rgba(255,255,0,.08);
+            }
+
+            #competitionPage .competition-tab small {
+                display: block;
+                opacity: .65;
+                margin-top: 4px;
+                font-weight: 400;
+                line-height: 1.25;
+            }
+
+            #competitionPage .competition-game-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                gap: 12px;
+                margin-bottom: 15px;
+            }
+
+            #competitionPage .competition-game-header h2 {
+                margin: 0 0 5px;
+            }
+
+            #competitionPage .competition-game-header p {
+                margin: 0;
+                opacity: .7;
+            }
+
+            #competitionPage .competition-action-row {
+                display: flex;
+                gap: 8px;
+                flex-wrap: wrap;
+                margin-top: 12px;
+            }
+
+            #competitionPage .competition-action-row button {
+                flex: 1;
+                min-width: 130px;
+            }
+
+            #competitionPage .competition-stage {
+                border: 1px solid rgba(255,255,255,.09);
+                border-radius: 14px;
+                padding: 14px;
+                margin-top: 12px;
+                background: rgba(255,255,255,.025);
+            }
+
+            #competitionPage .competition-stage-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            #competitionPage .competition-stage-header h3 {
+                margin: 0;
+            }
+
+            #competitionPage .competition-meta {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 8px;
+                margin-top: 12px;
+            }
+
+            #competitionPage .competition-meta-box {
+                background: rgba(255,255,255,.04);
+                border-radius: 10px;
+                padding: 9px;
+            }
+
+            #competitionPage .competition-meta-box small {
+                display: block;
+                opacity: .6;
+                margin-bottom: 3px;
+            }
+
+            #competitionPage .competition-secret {
+                margin-top: 12px;
+                padding: 10px;
+                border-radius: 10px;
+                background: rgba(255,190,0,.07);
+                border: 1px solid rgba(255,190,0,.12);
+            }
+
+            #competitionPage .competition-secret strong {
+                display: block;
+                margin-top: 4px;
+            }
+
+            #competitionPage .competition-form-grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 10px;
+            }
+
+            #competitionPage .competition-form-full {
+                grid-column: 1 / -1;
+            }
+
+            #competitionPage .competition-help {
+                font-size: 12px;
+                opacity: .65;
+                line-height: 1.4;
+                margin-top: 5px;
+            }
+
+            #competitionPage .competition-empty {
+                text-align: center;
+                padding: 25px 12px;
+                opacity: .65;
+            }
+
+            #competitionPage .competition-round-card {
+                border: 1px solid rgba(255,255,255,.08);
+                border-radius: 14px;
+                padding: 14px;
+                margin-bottom: 10px;
+            }
+
+            #competitionPage .competition-round-card h3 {
+                margin: 0 0 5px;
+            }
+
+            #competitionPage .competition-round-top {
+                display: flex;
+                justify-content: space-between;
+                gap: 10px;
+                align-items: flex-start;
+            }
+
+            #competitionPage .competition-status {
+                font-size: 11px;
+                padding: 5px 8px;
+                border-radius: 999px;
+                background: rgba(255,255,255,.08);
+                white-space: nowrap;
+            }
+
+            #competitionPage .competition-warning {
+                margin-top: 10px;
+                padding: 10px;
+                border-radius: 10px;
+                background: rgba(255,80,80,.08);
+                border: 1px solid rgba(255,80,80,.12);
+            }
+
+            #competitionPage .competition-success {
+                margin-top: 10px;
+                padding: 10px;
+                border-radius: 10px;
+                background: rgba(80,220,120,.08);
+                border: 1px solid rgba(80,220,120,.12);
+            }
+
+            #competitionPage .competition-edit-panel {
+                margin-top: 12px;
+                border-top: 1px solid rgba(255,255,255,.08);
+                padding-top: 12px;
+            }
+
+            #competitionPage .competition-participant {
+                display: flex;
+                justify-content: space-between;
+                gap: 10px;
+                align-items: center;
+                padding: 9px 0;
+                border-bottom: 1px solid rgba(255,255,255,.06);
+            }
+
+            #competitionPage .competition-participant:last-child {
+                border-bottom: 0;
+            }
+
+            @media (max-width: 600px) {
+                #competitionPage .competition-form-grid {
+                    grid-template-columns: 1fr;
+                }
+
+                #competitionPage .competition-form-full {
+                    grid-column: auto;
+                }
+
+                #competitionPage .competition-meta {
+                    grid-template-columns: 1fr 1fr;
+                }
+            }
+        `;
+
+        document.head.appendChild(style);
     }
 
     function addUI() {
-        if (
-            document.getElementById(
-                "competitionPage"
-            )
-        ) {
-            return;
-        }
+        if (document.getElementById("competitionPage")) return;
 
-        const main =
-            document.querySelector("main");
-
-        const nav =
-            document.querySelector(
-                ".bottom-nav"
-            );
+        const main = document.querySelector("main");
+        const nav = document.querySelector(".bottom-nav");
 
         if (!main || !nav) return;
 
-        const page =
-            document.createElement(
-                "section"
-            );
+        addStyles();
 
-        page.id =
-            "competitionPage";
-
-        page.className =
-            "page";
+        const page = document.createElement("section");
+        page.id = "competitionPage";
+        page.className = "page";
 
         page.innerHTML = `
             <div class="page-title">
                 <div>
                     <h1>🏆 Competitions</h1>
-
-                    <p>
-                        Private round control,
-                        stage setup and winner settlement
-                    </p>
+                    <p>Manage games, rounds, stages, players and winners</p>
                 </div>
             </div>
 
             <div class="panel">
-                <h2>
-                    Initialize Game Controls
-                </h2>
-
-                <p>
-                    Run this once after installing
-                    the new competition engine.
-                </p>
-
-                <button
-                    class="primary-btn full"
-                    onclick="competitionSetupGames()">
-                    Initialize Competition Games
-                </button>
+                <div class="competition-tabs" id="competitionGameTabs"></div>
             </div>
 
             <div class="panel">
-                <h2>
-                    Create New Competition Round
-                </h2>
-
-                <label>
-                    Game
-                </label>
-
-                <select
-                    id="compRoundGame"
-                    onchange="competitionRoundGameChanged()">
-
-                    <option value="guess_it">
-                        🎯 Guess It
-                    </option>
-
-                    <option value="impossible_question">
-                        💀 Impossible Question
-                    </option>
-
-                    <option value="crowd_trap">
-                        🧠 The Crowd Trap
-                    </option>
-
-                    <option value="survivor">
-                        🏆 The Survivor
-                    </option>
-
-                    <option value="dead_number">
-                        ☠️ Dead Number
-                    </option>
-
-                    <option value="impossible_choice">
-                        🤔 Impossible Choice
-                    </option>
-
-                </select>
-
-                <label>
-                    Round Title
-                </label>
-
-                <input
-                    id="compRoundTitle"
-                    placeholder="e.g. Guess It — September Week 1"
-                >
-
-                <label>
-                    Prize Pool (USD)
-                </label>
-
-                <input
-                    id="compRoundPrize"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value="10"
-                >
-
-                <label>
-                    Entry Fees by Stage
-                </label>
-
-                <input
-                    id="compRoundFees"
-                    value="10,10,10,10,10,10,30"
-                    placeholder="10,10,10,10,10,10,30"
-                >
-
-                <small>
-                    For 7-stage games:
-                    stage 1–6 default to 10 points
-                    and stage 7 defaults to 30.
-                    You can edit them.
-                </small>
-
-                <label>
-                    Round Start
-                </label>
-
-                <input
-                    id="compRoundStart"
-                    type="datetime-local"
-                >
-
-                <button
-                    class="primary-btn full"
-                    onclick="competitionCreateRound()">
-                    CREATE ROUND
-                </button>
+                <div id="competitionGameHeader"></div>
             </div>
 
             <div class="panel">
-
                 <div class="panel-header">
-
-                    <h2>
-                        Competition Rounds
-                    </h2>
-
-                    <button
-                        class="secondary-btn"
-                        onclick="competitionLoadRounds()">
-                        Refresh
-                    </button>
-
+                    <h2>Rounds</h2>
+                    <button class="secondary-btn" onclick="competitionLoadRounds()">REFRESH</button>
                 </div>
 
-                <div
-                    id="competitionRoundsList"
-                    class="list">
+                <div id="competitionRoundsList">
                     Loading...
                 </div>
-
             </div>
 
-            <div
-                class="panel hidden"
-                id="competitionRoundDetailPanel">
-
+            <div class="panel hidden" id="competitionRoundDetailPanel">
                 <div class="panel-header">
-
-                    <h2>
-                        Round Control
-                    </h2>
-
-                    <button
-                        class="secondary-btn"
-                        onclick="competitionLoadRound(currentRoundId)">
-                        Refresh
-                    </button>
-
+                    <h2>Manage Round</h2>
+                    <button class="secondary-btn" onclick="competitionLoadRound(currentRoundId)">REFRESH</button>
                 </div>
 
-                <div
-                    id="competitionRoundDetail">
+                <div id="competitionRoundDetail">
+                    Loading...
                 </div>
-
             </div>
         `;
 
         main.appendChild(page);
 
-        const navButton =
-            document.createElement(
-                "button"
-            );
+        const navButton = document.createElement("button");
+        navButton.className = "nav-item";
+        navButton.innerHTML = `<span>🏆</span>Competitions`;
+        navButton.onclick = window.showCompetitionAdmin;
 
-        navButton.className =
-            "nav-item";
-
-        navButton.innerHTML =
-            `<span>🏆</span>Competitions`;
-
-        navButton.onclick =
-            window.showCompetitionAdmin;
-
-        nav.insertBefore(
-            navButton,
-            nav.lastElementChild
-        );
-    }
-
-    window.showCompetitionAdmin =
-    function () {
-
-        addUI();
-
-        document
-            .querySelectorAll(".page")
-            .forEach(
-                p =>
-                    p.classList.remove(
-                        "active"
-                    )
-            );
-
-        const page =
-            document.getElementById(
-                "competitionPage"
-            );
-
-        if (page) {
-            page.classList.add(
-                "active"
-            );
+        if (nav.lastElementChild) {
+            nav.insertBefore(navButton, nav.lastElementChild);
+        } else {
+            nav.appendChild(navButton);
         }
 
-        document
-            .querySelectorAll(
-                ".nav-item"
-            )
-            .forEach(
-                b =>
-                    b.classList.remove(
-                        "active"
-                    )
-            );
+        renderGameTabs();
+        renderGameHeader();
+    }
 
-        const buttons =
-            document.querySelectorAll(
-                ".nav-item"
-            );
+    function renderGameTabs() {
+        const box = document.getElementById("competitionGameTabs");
+        if (!box) return;
 
-        if (buttons.length) {
-            buttons[
-                buttons.length - 2
-            ]?.classList.add(
-                "active"
-            );
+        box.innerHTML = Object.entries(GAMES).map(([id, game]) => `
+            <button
+                class="competition-tab ${selectedGame === id ? "active" : ""}"
+                onclick="competitionSelectGame('${id}')"
+            >
+                ${game.emoji} ${h(game.name)}
+                <small>${h(game.description)}</small>
+            </button>
+        `).join("");
+    }
+
+    function renderGameHeader() {
+        const box = document.getElementById("competitionGameHeader");
+        if (!box) return;
+
+        const game = gameInfo(selectedGame);
+
+        box.innerHTML = `
+            <div class="competition-game-header">
+                <div>
+                    <h2>${game.emoji} ${h(game.name)}</h2>
+                    <p>${h(game.description)}</p>
+                </div>
+
+                <span class="badge">
+                    ${game.staged ? "7 STAGES" : "OPEN ROUND"}
+                </span>
+            </div>
+
+            <div class="competition-action-row">
+                <button class="primary-btn" onclick="competitionOpenCreateRound()">
+                    ➕ CREATE ROUND
+                </button>
+
+                <button class="secondary-btn" onclick="competitionInitializeGames()">
+                    ⚙️ INITIALIZE
+                </button>
+            </div>
+
+            <div class="competition-help">
+                Initialization only creates/repairs the six competition game definitions.
+                It does not create questions, rounds or winners.
+            </div>
+        `;
+    }
+
+    window.showCompetitionAdmin = function () {
+        addUI();
+
+        document.querySelectorAll(".page").forEach(page => {
+            page.classList.remove("active");
+        });
+
+        const page = document.getElementById("competitionPage");
+
+        if (page) {
+            page.classList.add("active");
+        }
+
+        document.querySelectorAll(".nav-item").forEach(button => {
+            button.classList.remove("active");
+        });
+
+        const buttons = document.querySelectorAll(".nav-item");
+
+        if (buttons.length >= 2) {
+            buttons[buttons.length - 2]?.classList.add("active");
         }
 
         competitionLoadRounds();
     };
 
-    window.competitionSetupGames =
-    async function () {
+    window.competitionSelectGame = function (gameId) {
+        if (!GAMES[gameId]) return;
 
+        selectedGame = gameId;
+        currentRoundId = null;
+
+        const detailPanel = document.getElementById("competitionRoundDetailPanel");
+
+        if (detailPanel) {
+            detailPanel.classList.add("hidden");
+        }
+
+        renderGameTabs();
+        renderGameHeader();
+        competitionLoadRounds();
+    };
+
+    window.competitionInitializeGames = async function () {
         try {
+            const data = await api("/api/admin/competition/setup-games", {
+                method: "POST",
+                body: JSON.stringify({})
+            });
 
-            await api(
-                "/api/admin/competition/setup-games",
+            showToast(
+                data.message ||
+                "Competition games initialized successfully."
+            );
+
+            await competitionLoadRounds();
+        } catch (error) {
+            showToast(error.message || "Unable to initialize games.");
+        }
+    };
+
+    /*
+     * ------------------------------------------------------------
+     * CREATE ROUND
+     * ------------------------------------------------------------
+     */
+
+    window.competitionOpenCreateRound = function () {
+        const list = document.getElementById("competitionRoundsList");
+
+        if (!list) return;
+
+        const game = gameInfo(selectedGame);
+
+        const defaultFees = game.staged
+            ? "10,10,10,10,10,10,30"
+            : "10";
+
+        list.innerHTML = `
+            <div class="panel">
+                <div class="panel-header">
+                    <h2>➕ Create ${h(game.name)} Round</h2>
+                    <button
+                        class="secondary-btn"
+                        onclick="competitionLoadRounds()"
+                    >
+                        CANCEL
+                    </button>
+                </div>
+
+                <div class="competition-form-grid">
+
+                    <div class="competition-form-full">
+                        <label>Round Title</label>
+                        <input
+                            id="compRoundTitle"
+                            placeholder="${h(game.name)} — September Week 1"
+                        >
+                    </div>
+
+                    <div>
+                        <label>Prize Pool (USD)</label>
+                        <input
+                            id="compRoundPrize"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value="10"
+                        >
+                    </div>
+
+                    <div>
+                        <label>Round Start</label>
+                        <input
+                            id="compRoundStart"
+                            type="datetime-local"
+                        >
+                    </div>
+
+                    <div class="competition-form-full">
+                        <label>
+                            Entry Fees
+                        </label>
+
+                        <input
+                            id="compRoundFees"
+                            value="${defaultFees}"
+                        >
+
+                        <div class="competition-help">
+                            ${game.staged
+                                ? "Stage 1–6 default to 10 points. Stage 7 defaults to 30 points."
+                                : "Single entry fee for this round."}
+                        </div>
+                    </div>
+
+                    <div class="competition-form-full">
+                        <button
+                            class="primary-btn full"
+                            onclick="competitionCreateRound()"
+                        >
+                            CREATE ${game.name.toUpperCase()} ROUND
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+        `;
+    };
+
+    function parseFees(value, staged) {
+        const fees = String(value || "")
+            .split(",")
+            .map(item => Number(item.trim()))
+            .filter(item => Number.isFinite(item) && item >= 0);
+
+        if (!fees.length) {
+            return staged
+                ? [10, 10, 10, 10, 10, 10, 30]
+                : [10];
+        }
+
+        return fees;
+    }
+
+    function localIso(id) {
+        const value = document.getElementById(id)?.value;
+
+        if (!value) return null;
+
+        return new Date(value).toISOString();
+    }
+
+    window.competitionCreateRound = async function () {
+        try {
+            const game = gameInfo(selectedGame);
+
+            const title =
+                document.getElementById("compRoundTitle")?.value.trim() ||
+                `${game.name} Round`;
+
+            const prize =
+                Number(
+                    document.getElementById("compRoundPrize")?.value || 0
+                );
+
+            const fees = parseFees(
+                document.getElementById("compRoundFees")?.value,
+                game.staged
+            );
+
+            const startAt = localIso("compRoundStart");
+
+            const data = await api(
+                "/api/admin/competition/rounds/create",
                 {
                     method: "POST",
-                    body: JSON.stringify({})
+                    body: JSON.stringify({
+                        game_id: selectedGame,
+                        title,
+                        prize_pool_usd: prize,
+                        entry_fees: fees,
+                        start_at: startAt
+                    })
                 }
             );
 
             showToast(
-                "Competition games initialized."
-            );
-
-            await competitionLoadRounds();
-
-        } catch (e) {
-
-            showToast(
-                e.message
-            );
-        }
-    };
-
-    window.competitionRoundGameChanged =
-    function () {
-
-        const game =
-            document.getElementById(
-                "compRoundGame"
-            )?.value;
-
-        const fees =
-            document.getElementById(
-                "compRoundFees"
-            );
-
-        if (fees) {
-
-            fees.value =
-                stagedGames.includes(game)
-                    ? "10,10,10,10,10,10,30"
-                    : "10";
-        }
-    };
-
-    function localIso(id) {
-
-        const value =
-            document.getElementById(
-                id
-            )?.value;
-
-        return value
-            ? new Date(value).toISOString()
-            : null;
-    }
-
-    window.competitionCreateRound =
-    async function () {
-
-        try {
-
-            const game =
-                document.getElementById(
-                    "compRoundGame"
-                ).value;
-
-            const fees =
-                document.getElementById(
-                    "compRoundFees"
-                ).value
-                .split(",")
-                .map(
-                    x =>
-                        Number(
-                            x.trim()
-                        )
-                )
-                .filter(
-                    x =>
-                        Number.isFinite(x)
-                );
-
-            const data =
-                await api(
-                    "/api/admin/competition/rounds/create",
-                    {
-                        method: "POST",
-
-                        body:
-                            JSON.stringify({
-                                game_id: game,
-
-                                title:
-                                    document
-                                        .getElementById(
-                                            "compRoundTitle"
-                                        )
-                                        .value
-                                        .trim(),
-
-                                prize_pool_usd:
-                                    Number(
-                                        document
-                                            .getElementById(
-                                                "compRoundPrize"
-                                            )
-                                            .value ||
-                                        0
-                                    ),
-
-                                entry_fees:
-                                    fees,
-
-                                start_at:
-                                    localIso(
-                                        "compRoundStart"
-                                    )
-                            })
-                    }
-                );
-
-            showToast(
+                data.message ||
                 `Round created: ${data.round_id}`
             );
 
-            currentRoundId =
-                data.round_id;
-
-            await competitionLoadRound(
-                currentRoundId
-            );
+            currentRoundId = data.round_id;
 
             await competitionLoadRounds();
+            await competitionLoadRound(currentRoundId);
 
-        } catch (e) {
-
+        } catch (error) {
             showToast(
-                e.message
+                error.message ||
+                "Unable to create competition round."
             );
         }
     };
 
-    window.competitionLoadRounds =
-    async function () {
+    /*
+     * ------------------------------------------------------------
+     * LOAD ROUNDS
+     * ------------------------------------------------------------
+     */
 
+    window.competitionLoadRounds = async function () {
         addUI();
 
         const list =
-            document.getElementById(
-                "competitionRoundsList"
-            );
+            document.getElementById("competitionRoundsList");
 
         if (!list) return;
 
-        list.innerHTML =
-            "Loading rounds...";
+        list.innerHTML = `
+            <div class="competition-empty">
+                Loading ${h(gameInfo(selectedGame).name)} rounds...
+            </div>
+        `;
 
         try {
+            const data = await api(
+                `/api/admin/competition/rounds?game_id=${encodeURIComponent(selectedGame)}`
+            );
 
-            const data =
-                await api(
-                    "/api/admin/competition/rounds"
-                );
+            let rounds = data.rounds || [];
 
-            const rounds =
-                data.rounds || [];
+            /*
+             * Compatibility fallback:
+             * If backend returns all rounds regardless of game_id,
+             * filter them here.
+             */
+            rounds = rounds.filter(
+                round => !round.game_id || round.game_id === selectedGame
+            );
 
             if (!rounds.length) {
-
                 list.innerHTML = `
-                    <div class="list-card">
-                        No competition rounds yet.
+                    <div class="competition-empty">
+                        <div style="font-size:32px;">
+                            ${gameInfo(selectedGame).emoji}
+                        </div>
+
+                        <p>
+                            No ${h(gameInfo(selectedGame).name)}
+                            rounds yet.
+                        </p>
+
+                        <button
+                            class="primary-btn"
+                            onclick="competitionOpenCreateRound()"
+                        >
+                            CREATE FIRST ROUND
+                        </button>
                     </div>
                 `;
 
                 return;
             }
 
-            list.innerHTML =
-                rounds.map(
-                    r => `
-                        <div class="list-card">
+            list.innerHTML = rounds.map(round => {
+                const game = gameInfo(round.game_id || selectedGame);
 
-                            <div class="row">
+                return `
+                    <div class="competition-round-card">
 
-                                <div>
+                        <div class="competition-round-top">
 
-                                    <h3>
-                                        ${h(
-                                            r.title ||
-                                            r.game_id
-                                        )}
-                                    </h3>
+                            <div>
+                                <h3>
+                                    ${game.emoji}
+                                    ${h(round.title || game.name)}
+                                </h3>
 
-                                    <p>
-                                        ${h(r.game_id)}
-                                        ·
-                                        ${h(r.status)}
-                                    </p>
-
-                                </div>
-
-                                <span class="badge">
-                                    ${Number(
-                                        r.winner_count ||
-                                        0
-                                    )}
-                                    winners
-                                </span>
-
+                                <p>
+                                    ${h(round.game_id || selectedGame)}
+                                </p>
                             </div>
 
-                            <p>
-                                Prize:
+                            <span class="competition-status">
+                                ${h(round.status || "draft")}
+                            </span>
+
+                        </div>
+
+                        <div class="competition-meta">
+
+                            <div class="competition-meta-box">
+                                <small>Prize Pool</small>
                                 <strong>
                                     $${Number(
-                                        r.prize_pool_usd ||
-                                        0
+                                        round.prize_pool_usd || 0
                                     ).toFixed(2)}
                                 </strong>
-                            </p>
+                            </div>
+
+                            <div class="competition-meta-box">
+                                <small>Stage</small>
+                                <strong>
+                                    ${Number(round.current_stage || 1)}
+                                    /
+                                    ${Number(round.total_stages || 1)}
+                                </strong>
+                            </div>
+
+                            <div class="competition-meta-box">
+                                <small>Winners</small>
+                                <strong>
+                                    ${Number(round.winner_count || 0)}
+                                </strong>
+                            </div>
+
+                            <div class="competition-meta-box">
+                                <small>Round ID</small>
+                                <strong>
+                                    ${h(round.id || "")}
+                                </strong>
+                            </div>
+
+                        </div>
+
+                        <div class="competition-action-row">
+
+                            <button
+                                class="primary-btn"
+                                onclick="competitionLoadRound('${h(round.id)}')"
+                            >
+                                OPEN / MANAGE
+                            </button>
+
+                        </div>
+
+                    </div>
+                `;
+            }).join("");
+
+        } catch (error) {
+            list.innerHTML = `
+                <div class="competition-warning">
+                    ${h(error.message)}
+                </div>
+            `;
+        }
+    };
+
+    /*
+     * ------------------------------------------------------------
+     * LOAD ROUND DETAIL
+     * ------------------------------------------------------------
+     */
+
+    window.competitionLoadRound = async function (roundId) {
+        addUI();
+
+        currentRoundId = roundId;
+
+        const panel =
+            document.getElementById("competitionRoundDetailPanel");
+
+        const box =
+            document.getElementById("competitionRoundDetail");
+
+        if (!panel || !box) return;
+
+        panel.classList.remove("hidden");
+
+        box.innerHTML = `
+            <div class="competition-empty">
+                Loading round...
+            </div>
+        `;
+
+        try {
+            const data = await api(
+                `/api/admin/competition/rounds/${encodeURIComponent(roundId)}`
+            );
+
+            const round = data.round || {};
+            const stages = data.stages || [];
+            const entries = data.entries || [];
+            const results = data.results || [];
+
+            selectedGame = round.game_id || selectedGame;
+
+            renderGameTabs();
+            renderGameHeader();
+
+            let html = renderRoundSummary(round);
+
+            if (!stages.length) {
+                html += `
+                    <div class="panel">
+                        <div class="competition-empty">
+                            No stages have been created yet.
+                        </div>
+
+                        <button
+                            class="primary-btn full"
+                            onclick="competitionOpenStageEditor('${h(round.id)}', 1)"
+                        >
+                            CREATE FIRST STAGE
+                        </button>
+                    </div>
+                `;
+            } else {
+
+                html += `
+                    <div class="panel">
+                        <h2>Stages</h2>
+                    </div>
+                `;
+
+                for (const stage of stages) {
+                    html += renderStageCard(round, stage);
+                }
+
+                /*
+                 * Only allow the next stage to be prepared after
+                 * the current stage is closed/settled.
+                 */
+                const currentStageNo =
+                    Number(round.current_stage || 1);
+
+                const totalStages =
+                    Number(round.total_stages || 1);
+
+                const currentStage =
+                    stages.find(
+                        stage =>
+                            Number(stage.stage_no) === currentStageNo
+                    );
+
+                const nextStageNo = currentStageNo + 1;
+
+                const nextStageExists =
+                    stages.some(
+                        stage =>
+                            Number(stage.stage_no) === nextStageNo
+                    );
+
+                if (
+                    currentStage &&
+                    currentStage.status === "closed" &&
+                    nextStageNo <= totalStages &&
+                    !nextStageExists
+                ) {
+                    html += `
+                        <div class="panel">
+                            <h3>Next Stage</h3>
 
                             <p>
-                                Current stage:
-                                ${Number(
-                                    r.current_stage ||
-                                    1
-                                )}
-                                /
-                                ${Number(
-                                    r.total_stages ||
-                                    1
-                                )}
+                                Stage ${currentStageNo} has closed.
+                                You can now prepare Stage ${nextStageNo}.
                             </p>
 
                             <button
                                 class="primary-btn full"
-                                onclick="competitionLoadRound('${h(r.id)}')">
-                                OPEN ROUND
+                                onclick="competitionPrepareNextStage('${h(round.id)}')"
+                            >
+                                PREPARE STAGE ${nextStageNo}
                             </button>
-
                         </div>
-                    `
-                )
-                .join("");
-
-        } catch (e) {
-
-            list.innerHTML = `
-                <div class="list-card">
-                    ${h(e.message)}
-                </div>
-            `;
-        }
-    };
-
-    function stageForm(
-        round,
-        nextStage
-    ) {
-
-        const game =
-            round.game_id;
-
-        const defaultFee =
-            Number(
-                (
-                    round.entry_fees ||
-                    [10]
-                )[nextStage - 1] ||
-                (
-                    nextStage === 7
-                        ? 30
-                        : 10
-                )
-            );
-
-        const optionsPlaceholder =
-            game === "survivor"
-                ? "15,14,13,12,11,10,9"
-                : game === "impossible_choice"
-                    ? "Option A,Option B,Option C,Option D"
-                    : "";
-
-        return `
-            <div class="panel">
-
-                <h3>
-                    Prepare Stage ${nextStage}
-                </h3>
-
-                <p>
-                    <strong>
-                        Important:
-                    </strong>
-
-                    future stages are private.
-                    Players only receive the
-                    currently live stage.
-                </p>
-
-                <label>
-                    Stage Title
-                </label>
-
-                <input
-                    id="csTitle"
-                    value="Day ${nextStage}"
-                >
-
-                <label>
-                    Question / Prompt
-                </label>
-
-                <textarea
-                    id="csQuestion"
-                    placeholder="Enter today's challenge">
-                </textarea>
-
-                <label>
-                    Entry Fee (Points)
-                </label>
-
-                <input
-                    id="csFee"
-                    type="number"
-                    min="0"
-                    value="${defaultFee}"
-                >
-
-                <label>
-                    Start Time
-                </label>
-
-                <input
-                    id="csStart"
-                    type="datetime-local"
-                >
-
-                <label>
-                    End Time
-                </label>
-
-                <input
-                    id="csEnd"
-                    type="datetime-local"
-                >
-
-                <label>
-                    Clue (optional)
-                </label>
-
-                <textarea
-                    id="csClue"
-                    placeholder="Optional clue">
-                </textarea>
-
-                <label>
-                    Generation
-                </label>
-
-                <select id="csGeneration">
-
-                    <option value="admin">
-                        Admin chooses actual answer
-                    </option>
-
-                    <option value="random">
-                        System randomly generates answer
-                    </option>
-
-                </select>
-
-                <label>
-                    Options (comma separated)
-                </label>
-
-                <textarea
-                    id="csOptions"
-                    placeholder="${optionsPlaceholder}">
-                </textarea>
-
-                <label>
-                    Correct Answer
-                    (Guess It / Impossible Question)
-                </label>
-
-                <input
-                    id="csCorrect"
-                    placeholder="Admin-approved answer"
-                >
-
-                <label>
-                    Accepted Answers
-                    (comma separated)
-                </label>
-
-                <input
-                    id="csAccepted"
-                    placeholder="Answer 1, Answer 2"
-                >
-
-                <label>
-                    Safe Option
-                    (Survivor)
-                </label>
-
-                <input
-                    id="csSafe"
-                    placeholder="Admin-approved safe option"
-                >
-
-                <label>
-                    Number Range — Minimum
-                </label>
-
-                <input
-                    id="csMin"
-                    type="number"
-                    value="1"
-                >
-
-                <label>
-                    Number Range — Maximum
-                </label>
-
-                <input
-                    id="csMax"
-                    type="number"
-                    value="20"
-                >
-
-                <label>
-                    Dead Numbers
-                    (Dead Number)
-                </label>
-
-                <input
-                    id="csDead"
-                    placeholder="17, 23"
-                >
-
-                <label>
-                    Dead Count (Random)
-                </label>
-
-                <input
-                    id="csDeadCount"
-                    type="number"
-                    min="1"
-                    value="3"
-                >
-
-                <label>
-                    Impossible Choice Mechanic
-                </label>
-
-                <select id="csMechanic">
-
-                    <option value="minority">
-                        Minority
-                    </option>
-
-                    <option value="majority">
-                        Majority
-                    </option>
-
-                    <option value="closest_target">
-                        Closest to target percentage
-                    </option>
-
-                    <option value="within_range">
-                        Within target percentage range
-                    </option>
-
-                </select>
-
-                <label>
-                    Target Percentage
-                </label>
-
-                <input
-                    id="csTarget"
-                    type="number"
-                    step="0.1"
-                    value="50"
-                >
-
-                <label>
-                    Target Minimum %
-                </label>
-
-                <input
-                    id="csTargetMin"
-                    type="number"
-                    step="0.1"
-                    value="40"
-                >
-
-                <label>
-                    Target Maximum %
-                </label>
-
-                <input
-                    id="csTargetMax"
-                    type="number"
-                    step="0.1"
-                    value="60"
-                >
-
-                <button
-                    class="primary-btn full"
-                    onclick="competitionCreateStage('${h(round.id)}', ${nextStage})">
-                    CREATE STAGE
-                </button>
-
-            </div>
-        `;
-    }
-
-    window.competitionCreateStage =
-    async function (
-        roundId,
-        stageNo
-    ) {
-
-        try {
-
-            const options =
-                document
-                    .getElementById(
-                        "csOptions"
-                    )
-                    .value
-                    .split(",")
-                    .map(
-                        x =>
-                            x.trim()
-                    )
-                    .filter(Boolean);
-
-            const accepted =
-                document
-                    .getElementById(
-                        "csAccepted"
-                    )
-                    .value
-                    .split(",")
-                    .map(
-                        x =>
-                            x.trim()
-                    )
-                    .filter(Boolean);
-
-            const dead =
-                document
-                    .getElementById(
-                        "csDead"
-                    )
-                    .value
-                    .split(",")
-                    .map(
-                        x =>
-                            x.trim()
-                    )
-                    .filter(Boolean);
-
-            const data =
-                await api(
-                    `/api/admin/competition/rounds/${encodeURIComponent(roundId)}/stages/create`,
-                    {
-                        method: "POST",
-
-                        body:
-                            JSON.stringify({
-
-                                stage_no:
-                                    stageNo,
-
-                                title:
-                                    document
-                                        .getElementById(
-                                            "csTitle"
-                                        )
-                                        .value
-                                        .trim(),
-
-                                question:
-                                    document
-                                        .getElementById(
-                                            "csQuestion"
-                                        )
-                                        .value
-                                        .trim(),
-
-                                entry_fee:
-                                    Number(
-                                        document
-                                            .getElementById(
-                                                "csFee"
-                                            )
-                                            .value ||
-                                        0
-                                    ),
-
-                                start_at:
-                                    localIso(
-                                        "csStart"
-                                    ),
-
-                                end_at:
-                                    localIso(
-                                        "csEnd"
-                                    ),
-
-                                clue:
-                                    document
-                                        .getElementById(
-                                            "csClue"
-                                        )
-                                        .value
-                                        .trim(),
-
-                                generation_mode:
-                                    document
-                                        .getElementById(
-                                            "csGeneration"
-                                        )
-                                        .value,
-
-                                options,
-
-                                correct_answer:
-                                    document
-                                        .getElementById(
-                                            "csCorrect"
-                                        )
-                                        .value
-                                        .trim(),
-
-                                accepted_answers:
-                                    accepted,
-
-                                safe_option:
-                                    document
-                                        .getElementById(
-                                            "csSafe"
-                                        )
-                                        .value
-                                        .trim(),
-
-                                min_number:
-                                    Number(
-                                        document
-                                            .getElementById(
-                                                "csMin"
-                                            )
-                                            .value ||
-                                        1
-                                    ),
-
-                                max_number:
-                                    Number(
-                                        document
-                                            .getElementById(
-                                                "csMax"
-                                            )
-                                            .value ||
-                                        20
-                                    ),
-
-                                dead_numbers:
-                                    dead,
-
-                                dead_count:
-                                    Number(
-                                        document
-                                            .getElementById(
-                                                "csDeadCount"
-                                            )
-                                            .value ||
-                                        1
-                                    ),
-
-                                mechanic:
-                                    document
-                                        .getElementById(
-                                            "csMechanic"
-                                        )
-                                        .value,
-
-                                target_percentage:
-                                    Number(
-                                        document
-                                            .getElementById(
-                                                "csTarget"
-                                            )
-                                            .value ||
-                                        50
-                                    ),
-
-                                target_min_percentage:
-                                    Number(
-                                        document
-                                            .getElementById(
-                                                "csTargetMin"
-                                            )
-                                            .value ||
-                                        40
-                                    ),
-
-                                target_max_percentage:
-                                    Number(
-                                        document
-                                            .getElementById(
-                                                "csTargetMax"
-                                            )
-                                            .value ||
-                                        60
-                                    )
-                            })
-                    }
-                );
-
-            showToast(
-                "Stage created. Review the actual secret below before approving it."
-            );
-
-            await competitionLoadRound(
-                roundId
-            );
-
-        } catch (e) {
-
-            showToast(
-                e.message
-            );
-        }
-    };
-
-    window.competitionLoadRound =
-    async function (roundId) {
-
-        addUI();
-
-        currentRoundId =
-            roundId;
-
-        const panel =
-            document.getElementById(
-                "competitionRoundDetailPanel"
-            );
-
-        const box =
-            document.getElementById(
-                "competitionRoundDetail"
-            );
-
-        if (!panel || !box) return;
-
-        panel.classList.remove(
-            "hidden"
-        );
-
-        box.innerHTML =
-            "Loading round...";
-
-        try {
-
-            const data =
-                await api(
-                    `/api/admin/competition/rounds/${encodeURIComponent(roundId)}`
-                );
-
-            const r =
-                data.round;
-
-            const stages =
-                data.stages || [];
-
-            const nextStage =
-                Number(
-                    r.current_stage ||
-                    1
-                ) +
-                (
-                    stages.some(
-                        s =>
-                            Number(
-                                s.stage_no
-                            ) ===
-                            Number(
-                                r.current_stage
-                            )
-                    )
-                        ? 1
-                        : 0
-                );
-
-            let html = `
-                <div class="panel">
-
-                    <h2>
-                        ${h(
-                            r.title ||
-                            r.game_id
-                        )}
-                    </h2>
-
-                    <p>
-                        Game:
-                        <strong>
-                            ${h(r.game_id)}
-                        </strong>
-                    </p>
-
-                    <p>
-                        Status:
-                        <strong>
-                            ${h(r.status)}
-                        </strong>
-                    </p>
-
-                    <p>
-                        Prize Pool:
-                        <strong>
-                            $${Number(
-                                r.prize_pool_usd ||
-                                0
-                            ).toFixed(2)}
-                        </strong>
-                    </p>
-
-                    <p>
-                        Current Stage:
-                        <strong>
-                            ${Number(
-                                r.current_stage ||
-                                1
-                            )}
-                            /
-                            ${Number(
-                                r.total_stages ||
-                                1
-                            )}
-                        </strong>
-                    </p>
-
-                </div>
-            `;
-
-            for (
-                const s of stages
-            ) {
-                html +=
-                    renderStageCard(
-                        r,
-                        s
-                    );
+                    `;
+                }
             }
 
-            if (
-                r.status !== "settled" &&
-                nextStage <=
-                    Number(
-                        r.total_stages ||
-                        1
-                    ) &&
-                !stages.some(
-                    s =>
-                        Number(
-                            s.stage_no
-                        ) ===
-                        nextStage
-                )
-            ) {
-                html +=
-                    stageForm(
-                        r,
-                        nextStage
-                    );
-            }
+            html += renderParticipants(entries);
+            html += renderResults(results);
 
-            html += `
-                <div class="panel">
+            box.innerHTML = html;
 
-                    <h3>
-                        Entries:
-                        ${
-                            data.entries?.length ||
-                            0
-                        }
-                    </h3>
-
-                    ${
-                        (
-                            data.entries ||
-                            []
-                        )
-                        .slice(0, 100)
-                        .map(
-                            e => `
-                                <div class="list-card">
-
-                                    <strong>
-                                        ${h(
-                                            e.telegram_id
-                                        )}
-                                    </strong>
-
-                                    <p>
-                                        Stage
-                                        ${Number(
-                                            e.stage_no
-                                        )}
-                                        ·
-                                        ${h(
-                                            e.status
-                                        )}
-                                        ·
-                                        ${h(
-                                            e.answer ||
-                                            "No answer yet"
-                                        )}
-                                    </p>
-
-                                </div>
-                            `
-                        )
-                        .join("")
-                        ||
-                        "<p>No entries yet.</p>"
-                    }
-
-                </div>
-
-                <div class="panel">
-
-                    <h3>
-                        Results
-                    </h3>
-
-                    ${
-                        (
-                            data.results ||
-                            []
-                        )
-                        .map(
-                            x => `
-                                <div class="list-card">
-
-                                    <strong>
-                                        ${h(
-                                            x.telegram_id
-                                        )}
-                                    </strong>
-
-                                    <p>
-                                        $${Number(
-                                            x.amount_usd ||
-                                            0
-                                        ).toFixed(2)}
-                                    </p>
-
-                                </div>
-                            `
-                        )
-                        .join("")
-                        ||
-                        "<p>No winners recorded yet.</p>"
-                    }
-
-                </div>
-            `;
-
-            box.innerHTML =
-                html;
-
-        } catch (e) {
+        } catch (error) {
 
             box.innerHTML = `
-                <div class="list-card">
-                    ${h(e.message)}
+                <div class="competition-warning">
+                    ${h(error.message)}
                 </div>
             `;
         }
     };
 
-    function renderStageCard(
-        round,
-        s
-    ) {
-
-        const gid =
-            round.game_id;
-
-        const secret =
-            gid === "dead_number"
-
-                ? `
-                    Dead numbers:
-                    <strong>
-                        ${h(
-                            (s.dead_numbers || [])
-                                .join(", ")
-                        )}
-                    </strong>
-                  `
-
-                : gid === "survivor"
-
-                    ? `
-                        Safe option:
-                        <strong>
-                            ${h(
-                                s.safe_option ||
-                                "—"
-                            )}
-                        </strong>
-                      `
-
-                    : (
-                        gid === "guess_it" ||
-                        gid === "impossible_question"
-                    )
-
-                        ? `
-                            Correct answer:
-                            <strong>
-                                ${h(
-                                    s.correct_answer ||
-                                    "—"
-                                )}
-                            </strong>
-                          `
-
-                        : `
-                            No hidden answer —
-                            outcome is calculated
-                            from player distribution.
-                          `;
+    function renderRoundSummary(round) {
+        const game = gameInfo(round.game_id);
 
         return `
             <div class="panel">
 
-                <div class="row">
+                <div class="competition-game-header">
 
-                    <h3>
-                        Stage
-                        ${Number(s.stage_no)}
-                        —
-                        ${h(
-                            s.title ||
-                            "Untitled"
-                        )}
-                    </h3>
+                    <div>
+                        <h2>
+                            ${game.emoji}
+                            ${h(round.title || game.name)}
+                        </h2>
 
-                    <span class="badge">
-                        ${h(
-                            s.status ||
-                            "draft"
-                        )}
+                        <p>
+                            ${h(game.name)}
+                        </p>
+                    </div>
+
+                    <span class="competition-status">
+                        ${h(round.status || "draft")}
                     </span>
 
                 </div>
 
-                <p>
-                    Entry:
-                    <strong>
-                        ${Number(
-                            s.entry_fee ||
-                            0
-                        )}
-                        points
-                    </strong>
-                </p>
+                <div class="competition-meta">
 
-                <p>
-                    Start:
-                    ${h(
-                        s.start_at ||
-                        ""
-                    )}
-                </p>
+                    <div class="competition-meta-box">
+                        <small>Prize Pool</small>
+                        <strong>
+                            $${Number(
+                                round.prize_pool_usd || 0
+                            ).toFixed(2)}
+                        </strong>
+                    </div>
 
-                <p>
-                    End:
-                    ${h(
-                        s.end_at ||
-                        ""
-                    )}
-                </p>
+                    <div class="competition-meta-box">
+                        <small>Current Stage</small>
+                        <strong>
+                            ${Number(round.current_stage || 1)}
+                            /
+                            ${Number(round.total_stages || 1)}
+                        </strong>
+                    </div>
 
-                <div class="info-box">
-                    🔐
+                    <div class="competition-meta-box">
+                        <small>Participants</small>
+                        <strong>
+                            ${Number(round.participant_count || 0)}
+                        </strong>
+                    </div>
+
+                    <div class="competition-meta-box">
+                        <small>Winners</small>
+                        <strong>
+                            ${Number(round.winner_count || 0)}
+                        </strong>
+                    </div>
+
+                </div>
+
+                ${
+                    round.status === "settled"
+                        ? `
+                            <div class="competition-success">
+                                🏁 This competition has been concluded.
+                                Winners have been recorded.
+                            </div>
+                        `
+                        : ""
+                }
+
+            </div>
+        `;
+    }
+
+    /*
+     * ------------------------------------------------------------
+     * STAGE CARD
+     * ------------------------------------------------------------
+     */
+
+    function renderStageCard(round, stage) {
+        const gameId = round.game_id;
+
+        const stageNo =
+            Number(stage.stage_no || 1);
+
+        const status =
+            String(stage.status || "draft");
+
+        const editable =
+            status === "draft" ||
+            status === "scheduled";
+
+        let secret = "";
+
+        if (
+            gameId === "guess_it" ||
+            gameId === "impossible_question"
+        ) {
+            secret = `
+                Correct answer:
+                <strong>
+                    ${h(stage.correct_answer || "NOT SET")}
+                </strong>
+            `;
+        } else if (gameId === "survivor") {
+            secret = `
+                Safe option:
+                <strong>
+                    ${h(stage.safe_option || "NOT SET")}
+                </strong>
+            `;
+        } else if (gameId === "dead_number") {
+            const deadNumbers =
+                Array.isArray(stage.dead_numbers)
+                    ? stage.dead_numbers.join(", ")
+                    : "";
+
+            secret = `
+                Dead numbers:
+                <strong>
+                    ${h(deadNumbers || "NOT SET")}
+                </strong>
+            `;
+        } else {
+            secret = `
+                Outcome:
+                <strong>
+                    Calculated from player choices
+                </strong>
+            `;
+        }
+
+        let buttons = "";
+
+        /*
+         * EDIT
+         *
+         * Editing is allowed before a stage becomes live.
+         */
+        if (editable) {
+            buttons += `
+                <button
+                    class="secondary-btn"
+                    onclick="competitionEditStage('${h(round.id)}', ${stageNo})"
+                >
+                    ✏️ EDIT
+                </button>
+            `;
+        }
+
+        /*
+         * APPROVE
+         */
+        if (
+            !stage.secret_approved &&
+            status !== "live" &&
+            status !== "closed"
+        ) {
+            buttons += `
+                <button
+                    class="primary-btn"
+                    onclick="competitionApproveStage('${h(round.id)}', ${stageNo})"
+                >
+                    🔐 APPROVE SECRET
+                </button>
+            `;
+        }
+
+        /*
+         * START
+         */
+        if (
+            (status === "draft" || status === "scheduled") &&
+            stage.secret_approved
+        ) {
+            buttons += `
+                <button
+                    class="primary-btn"
+                    onclick="competitionStartStage('${h(round.id)}', ${stageNo})"
+                >
+                    🚀 START STAGE
+                </button>
+            `;
+        }
+
+        /*
+         * If not approved, explicitly tell Admin why it cannot start.
+         */
+        if (
+            (status === "draft" || status === "scheduled") &&
+            !stage.secret_approved
+        ) {
+            buttons += `
+                <div class="competition-warning">
+                    ⚠️ This stage cannot start until the actual
+                    answer/safe value/dead numbers have been approved.
+                </div>
+            `;
+        }
+
+        /*
+         * END / SETTLE
+         */
+        if (status === "live") {
+            buttons += `
+                <button
+                    class="danger-btn"
+                    onclick="competitionEndStage('${h(round.id)}', ${stageNo})"
+                >
+                    🏁 END / SETTLE STAGE
+                </button>
+            `;
+        }
+
+        /*
+         * CLOSED STAGE
+         */
+        if (status === "closed") {
+            buttons += `
+                <div class="competition-success">
+                    ✅ Stage concluded.
+                    Player outcomes have been calculated.
+                </div>
+            `;
+        }
+
+        /*
+         * LIVE STAGE
+         */
+        if (status === "live") {
+            buttons += `
+                <div class="competition-warning">
+                    🔴 This stage is LIVE.
+                    Editing is disabled while players are participating.
+                </div>
+            `;
+        }
+
+        return `
+            <div class="panel competition-stage">
+
+                <div class="competition-stage-header">
+
+                    <div>
+                        <h3>
+                            Stage ${stageNo}
+                            — ${h(stage.title || "Untitled")}
+                        </h3>
+
+                        <p>
+                            ${h(status.toUpperCase())}
+                        </p>
+                    </div>
+
+                    <span class="competition-status">
+                        ${h(status)}
+                    </span>
+
+                </div>
+
+                <div class="competition-meta">
+
+                    <div class="competition-meta-box">
+                        <small>Entry</small>
+                        <strong>
+                            ${Number(stage.entry_fee || 0)}
+                            points
+                        </strong>
+                    </div>
+
+                    <div class="competition-meta-box">
+                        <small>Approval</small>
+                        <strong>
+                            ${
+                                stage.secret_approved
+                                    ? "APPROVED"
+                                    : "NOT APPROVED"
+                            }
+                        </strong>
+                    </div>
+
+                    <div class="competition-meta-box">
+                        <small>Start</small>
+                        <strong>
+                            ${h(formatDate(stage.start_at))}
+                        </strong>
+                    </div>
+
+                    <div class="competition-meta-box">
+                        <small>End</small>
+                        <strong>
+                            ${h(formatDate(stage.end_at))}
+                        </strong>
+                    </div>
+
+                </div>
+
+                ${
+                    stage.question
+                        ? `
+                            <div class="competition-secret">
+                                <span>Question / Prompt</span>
+                                <strong>
+                                    ${h(stage.question)}
+                                </strong>
+                            </div>
+                        `
+                        : `
+                            <div class="competition-warning">
+                                ⚠️ No question/prompt has been entered.
+                            </div>
+                        `
+                }
+
+                ${
+                    stage.clue
+                        ? `
+                            <div class="competition-secret">
+                                <span>Clue</span>
+                                <strong>
+                                    ${h(stage.clue)}
+                                </strong>
+                            </div>
+                        `
+                        : ""
+                }
+
+                <div class="competition-secret">
+                    <span>🔐 Private Admin Secret</span>
                     ${secret}
                 </div>
 
-                <p>
-                    Approval:
-                    <strong>
-                        ${
-                            s.secret_approved
-                                ? "APPROVED"
-                                : "NOT APPROVED"
-                        }
-                    </strong>
-                </p>
+                ${
+                    Array.isArray(stage.options) &&
+                    stage.options.length
+                        ? `
+                            <div class="competition-secret">
+                                <span>Options</span>
+                                <strong>
+                                    ${h(stage.options.join(" · "))}
+                                </strong>
+                            </div>
+                        `
+                        : ""
+                }
 
-                <div class="form-actions">
+                <div class="competition-action-row">
+                    ${buttons}
+                </div>
+
+                <div
+                    id="competitionEditStage_${stageNo}"
+                    class="competition-edit-panel hidden"
+                ></div>
+
+            </div>
+        `;
+    }
+
+    function formatDate(value) {
+        if (!value) return "—";
+
+        try {
+            return new Date(value).toLocaleString();
+        } catch {
+            return String(value);
+        }
+    }
+
+    /*
+     * ------------------------------------------------------------
+     * STAGE EDITOR
+     * ------------------------------------------------------------
+     */
+
+    window.competitionEditStage = async function (roundId, stageNo) {
+        try {
+            const data = await api(
+                `/api/admin/competition/rounds/${encodeURIComponent(roundId)}`
+            );
+
+            const round = data.round || {};
+            const stage = (data.stages || []).find(
+                item =>
+                    Number(item.stage_no) === Number(stageNo)
+            );
+
+            if (!stage) {
+                showToast("Stage not found.");
+                return;
+            }
+
+            if (
+                stage.status === "live" ||
+                stage.status === "closed"
+            ) {
+                showToast(
+                    "This stage can no longer be edited."
+                );
+                return;
+            }
+
+            const container =
+                document.getElementById(
+                    `competitionEditStage_${stageNo}`
+                );
+
+            if (!container) return;
+
+            container.classList.remove("hidden");
+
+            container.innerHTML =
+                renderStageEditor(round, stage);
+
+        } catch (error) {
+            showToast(error.message);
+        }
+    };
+
+    function renderStageEditor(round, stage) {
+        const gameId = round.game_id;
+
+        const options =
+            Array.isArray(stage.options)
+                ? stage.options.join(", ")
+                : "";
+
+        const accepted =
+            Array.isArray(stage.accepted_answers)
+                ? stage.accepted_answers.join(", ")
+                : "";
+
+        const dead =
+            Array.isArray(stage.dead_numbers)
+                ? stage.dead_numbers.join(", ")
+                : "";
+
+        return `
+            <div class="panel">
+
+                <div class="panel-header">
+                    <h3>
+                        ✏️ Edit Stage ${Number(stage.stage_no)}
+                    </h3>
+
+                    <button
+                        class="secondary-btn"
+                        onclick="competitionCloseStageEditor(${Number(stage.stage_no)})"
+                    >
+                        CLOSE
+                    </button>
+                </div>
+
+                <div class="competition-form-grid">
+
+                    <div class="competition-form-full">
+                        <label>Stage Title</label>
+                        <input
+                            id="editStageTitle_${Number(stage.stage_no)}"
+                            value="${h(stage.title || "")}"
+                        >
+                    </div>
+
+                    <div class="competition-form-full">
+                        <label>Question / Prompt</label>
+                        <textarea
+                            id="editStageQuestion_${Number(stage.stage_no)}"
+                            placeholder="Enter the actual challenge"
+                        >${h(stage.question || "")}</textarea>
+                    </div>
+
+                    <div>
+                        <label>Entry Fee</label>
+                        <input
+                            id="editStageFee_${Number(stage.stage_no)}"
+                            type="number"
+                            min="0"
+                            value="${Number(stage.entry_fee || 0)}"
+                        >
+                    </div>
+
+                    <div>
+                        <label>Start Time</label>
+                        <input
+                            id="editStageStart_${Number(stage.stage_no)}"
+                            type="datetime-local"
+                            value="${toLocalDateTime(stage.start_at)}"
+                        >
+                    </div>
+
+                    <div>
+                        <label>End Time</label>
+                        <input
+                            id="editStageEnd_${Number(stage.stage_no)}"
+                            type="datetime-local"
+                            value="${toLocalDateTime(stage.end_at)}"
+                        >
+                    </div>
+
+                    <div class="competition-form-full">
+                        <label>Clue (Optional)</label>
+                        <textarea
+                            id="editStageClue_${Number(stage.stage_no)}"
+                            placeholder="Optional clue"
+                        >${h(stage.clue || "")}</textarea>
+                    </div>
+
+                    <div class="competition-form-full">
+                        <label>Options (comma separated)</label>
+                        <textarea
+                            id="editStageOptions_${Number(stage.stage_no)}"
+                        >${h(options)}</textarea>
+                    </div>
 
                     ${
-                        !s.secret_approved
+                        gameId === "guess_it" ||
+                        gameId === "impossible_question"
                             ? `
-                                <button
-                                    class="primary-btn"
-                                    onclick="competitionApproveStage(
-                                        '${h(round.id)}',
-                                        ${Number(s.stage_no)}
-                                    )">
-                                    APPROVE SECRET
-                                </button>
-                              `
+                                <div class="competition-form-full">
+                                    <label>Correct Answer</label>
+                                    <input
+                                        id="editStageCorrect_${Number(stage.stage_no)}"
+                                        value="${h(stage.correct_answer || "")}"
+                                    >
+                                </div>
+
+                                <div class="competition-form-full">
+                                    <label>
+                                        Accepted Answers
+                                        (comma separated)
+                                    </label>
+
+                                    <input
+                                        id="editStageAccepted_${Number(stage.stage_no)}"
+                                        value="${h(accepted)}"
+                                    >
+                                </div>
+                            `
                             : ""
                     }
 
                     ${
-                        s.status === "draft" ||
-                        s.status === "scheduled"
+                        gameId === "survivor"
                             ? `
-                                <button
-                                    class="primary-btn"
-                                    onclick="competitionStartStage(
-                                        '${h(round.id)}',
-                                        ${Number(s.stage_no)}
-                                    )">
-                                    START STAGE
-                                </button>
-                              `
+                                <div class="competition-form-full">
+                                    <label>Safe Option</label>
+                                    <input
+                                        id="editStageSafe_${Number(stage.stage_no)}"
+                                        value="${h(stage.safe_option || "")}"
+                                    >
+                                </div>
+                            `
                             : ""
                     }
 
                     ${
-                        s.status === "live"
+                        gameId === "dead_number"
                             ? `
-                                <button
-                                    class="danger-btn"
-                                    onclick="competitionEndStage(
-                                        '${h(round.id)}',
-                                        ${Number(s.stage_no)}
-                                    )">
-                                    END / SETTLE STAGE
-                                </button>
-                              `
+                                <div class="competition-form-full">
+                                    <label>
+                                        Dead Numbers
+                                        (comma separated)
+                                    </label>
+
+                                    <input
+                                        id="editStageDead_${Number(stage.stage_no)}"
+                                        value="${h(dead)}"
+                                    >
+                                </div>
+
+                                <div>
+                                    <label>Dead Count</label>
+                                    <input
+                                        id="editStageDeadCount_${Number(stage.stage_no)}"
+                                        type="number"
+                                        min="1"
+                                        value="${Number(stage.dead_count || 1)}"
+                                    >
+                                </div>
+                            `
                             : ""
                     }
 
+                    <div>
+                        <label>Minimum Number</label>
+                        <input
+                            id="editStageMin_${Number(stage.stage_no)}"
+                            type="number"
+                            value="${Number(stage.min_number || 1)}"
+                        >
+                    </div>
+
+                    <div>
+                        <label>Maximum Number</label>
+                        <input
+                            id="editStageMax_${Number(stage.stage_no)}"
+                            type="number"
+                            value="${Number(stage.max_number || 20)}"
+                        >
+                    </div>
+
                     ${
-                        s.status === "closed" &&
-                        Number(s.stage_no) <
-                            Number(
-                                round.total_stages
-                            )
+                        gameId === "impossible_choice"
                             ? `
-                                <button
-                                    class="primary-btn"
-                                    onclick="competitionAdvance(
-                                        '${h(round.id)}'
-                                    )">
-                                    PREPARE NEXT STAGE
-                                </button>
-                              `
+                                <div class="competition-form-full">
+
+                                    <label>
+                                        Impossible Choice Mechanic
+                                    </label>
+
+                                    <select
+                                        id="editStageMechanic_${Number(stage.stage_no)}"
+                                    >
+                                        <option value="minority"
+                                            ${stage.mechanic === "minority" ? "selected" : ""}>
+                                            Minority
+                                        </option>
+
+                                        <option value="majority"
+                                            ${stage.mechanic === "majority" ? "selected" : ""}>
+                                            Majority
+                                        </option>
+
+                                        <option value="closest_target"
+                                            ${stage.mechanic === "closest_target" ? "selected" : ""}>
+                                            Closest to target percentage
+                                        </option>
+
+                                        <option value="within_range"
+                                            ${stage.mechanic === "within_range" ? "selected" : ""}>
+                                            Within target percentage range
+                                        </option>
+                                    </select>
+
+                                </div>
+
+                                <div>
+                                    <label>Target %</label>
+                                    <input
+                                        id="editStageTarget_${Number(stage.stage_no)}"
+                                        type="number"
+                                        step="0.1"
+                                        value="${Number(stage.target_percentage || 50)}"
+                                    >
+                                </div>
+
+                                <div>
+                                    <label>Target Minimum %</label>
+                                    <input
+                                        id="editStageTargetMin_${Number(stage.stage_no)}"
+                                        type="number"
+                                        step="0.1"
+                                        value="${Number(stage.target_min_percentage || 40)}"
+                                    >
+                                </div>
+
+                                <div>
+                                    <label>Target Maximum %</label>
+                                    <input
+                                        id="editStageTargetMax_${Number(stage.stage_no)}"
+                                        type="number"
+                                        step="0.1"
+                                        value="${Number(stage.target_max_percentage || 60)}"
+                                    >
+                                </div>
+                            `
                             : ""
                     }
+
+                    <div class="competition-form-full">
+
+                        <div class="competition-warning">
+                            ⚠️ Saving changes resets secret approval.
+                            You must review and approve the actual
+                            answer/safe option/dead numbers again
+                            before starting the stage.
+                        </div>
+
+                    </div>
+
+                    <div class="competition-form-full">
+
+                        <button
+                            class="primary-btn full"
+                            onclick="competitionSaveStage('${h(round.id)}', ${Number(stage.stage_no)})"
+                        >
+                            💾 SAVE STAGE CHANGES
+                        </button>
+
+                    </div>
 
                 </div>
 
@@ -1472,152 +1615,871 @@
         `;
     }
 
-    window.competitionApproveStage =
-    async function (
-        rid,
-        stage
-    ) {
+    function toLocalDateTime(value) {
+        if (!value) return "";
 
         try {
+            const date = new Date(value);
 
-            await api(
-                `/api/admin/competition/rounds/${encodeURIComponent(rid)}/stages/${stage}/approve`,
+            const pad = n =>
+                String(n).padStart(2, "0");
+
+            return (
+                `${date.getFullYear()}-` +
+                `${pad(date.getMonth() + 1)}-` +
+                `${pad(date.getDate())}T` +
+                `${pad(date.getHours())}:` +
+                `${pad(date.getMinutes())}`
+            );
+        } catch {
+            return "";
+        }
+    }
+
+    window.competitionCloseStageEditor = function (stageNo) {
+        const container =
+            document.getElementById(
+                `competitionEditStage_${stageNo}`
+            );
+
+        if (container) {
+            container.classList.add("hidden");
+            container.innerHTML = "";
+        }
+    };
+
+    window.competitionSaveStage = async function (
+        roundId,
+        stageNo
+    ) {
+        try {
+            const getValue = id =>
+                document.getElementById(id)?.value?.trim() || "";
+
+            const getNumber = id =>
+                Number(
+                    document.getElementById(id)?.value || 0
+                );
+
+            const splitList = id =>
+                getValue(id)
+                    .split(",")
+                    .map(item => item.trim())
+                    .filter(Boolean);
+
+            const payload = {
+                title:
+                    getValue(`editStageTitle_${stageNo}`),
+
+                question:
+                    getValue(`editStageQuestion_${stageNo}`),
+
+                entry_fee:
+                    getNumber(`editStageFee_${stageNo}`),
+
+                start_at:
+                    toIsoFromInput(
+                        `editStageStart_${stageNo}`
+                    ),
+
+                end_at:
+                    toIsoFromInput(
+                        `editStageEnd_${stageNo}`
+                    ),
+
+                clue:
+                    getValue(`editStageClue_${stageNo}`),
+
+                options:
+                    splitList(`editStageOptions_${stageNo}`),
+
+                correct_answer:
+                    getValue(`editStageCorrect_${stageNo}`),
+
+                accepted_answers:
+                    splitList(`editStageAccepted_${stageNo}`),
+
+                safe_option:
+                    getValue(`editStageSafe_${stageNo}`),
+
+                min_number:
+                    getNumber(`editStageMin_${stageNo}`),
+
+                max_number:
+                    getNumber(`editStageMax_${stageNo}`),
+
+                dead_numbers:
+                    splitList(`editStageDead_${stageNo}`),
+
+                dead_count:
+                    getNumber(`editStageDeadCount_${stageNo}`),
+
+                mechanic:
+                    getValue(`editStageMechanic_${stageNo}`),
+
+                target_percentage:
+                    getNumber(`editStageTarget_${stageNo}`),
+
+                target_min_percentage:
+                    getNumber(`editStageTargetMin_${stageNo}`),
+
+                target_max_percentage:
+                    getNumber(`editStageTargetMax_${stageNo}`)
+            };
+
+            if (!payload.question) {
+                showToast(
+                    "Please enter the question/prompt."
+                );
+                return;
+            }
+
+            const data = await api(
+                `/api/admin/competition/rounds/${encodeURIComponent(roundId)}/stages/${stageNo}/edit`,
+                {
+                    method: "POST",
+                    body: JSON.stringify(payload)
+                }
+            );
+
+            showToast(
+                data.message ||
+                "Stage updated successfully."
+            );
+
+            await competitionLoadRound(roundId);
+
+        } catch (error) {
+            showToast(
+                error.message ||
+                "Unable to save stage."
+            );
+        }
+    };
+
+    function toIsoFromInput(id) {
+        const value =
+            document.getElementById(id)?.value;
+
+        if (!value) return null;
+
+        return new Date(value).toISOString();
+    }
+
+    /*
+     * ------------------------------------------------------------
+     * CREATE STAGE
+     * ------------------------------------------------------------
+     */
+
+    window.competitionPrepareNextStage = async function (roundId) {
+        try {
+            const data = await api(
+                `/api/admin/competition/rounds/${encodeURIComponent(roundId)}/next-stage`,
                 {
                     method: "POST"
                 }
             );
 
             showToast(
-                "Actual answer/safe/dead values approved."
+                data.message ||
+                `Stage ${data.next_stage} is ready.`
             );
 
-            competitionLoadRound(
-                rid
-            );
+            await competitionLoadRound(roundId);
 
-        } catch (e) {
-
+        } catch (error) {
             showToast(
-                e.message
+                error.message ||
+                "Unable to prepare next stage."
             );
         }
     };
 
-    window.competitionStartStage =
-    async function (
-        rid,
-        stage
+    window.competitionOpenStageEditor = function (
+        roundId,
+        stageNo
     ) {
+        const box =
+            document.getElementById("competitionRoundDetail");
 
+        if (!box) return;
+
+        const roundTitle =
+            document.querySelector(
+                "#competitionRoundDetail h2"
+            );
+
+        /*
+         * Open a compact new-stage editor at the bottom.
+         */
+        const existing =
+            document.getElementById(
+                "competitionNewStageEditor"
+            );
+
+        if (existing) {
+            existing.scrollIntoView({
+                behavior: "smooth"
+            });
+            return;
+        }
+
+        const panel =
+            document.createElement("div");
+
+        panel.id =
+            "competitionNewStageEditor";
+
+        panel.className =
+            "panel";
+
+        panel.innerHTML =
+            renderNewStageEditor(
+                roundId,
+                stageNo
+            );
+
+        box.appendChild(panel);
+
+        panel.scrollIntoView({
+            behavior: "smooth"
+        });
+    };
+
+    function renderNewStageEditor(roundId, stageNo) {
+        const gameId = selectedGame;
+
+        const fee =
+            stageNo === 7
+                ? 30
+                : 10;
+
+        return `
+            <div class="panel-header">
+                <h2>
+                    ➕ Create Stage ${Number(stageNo)}
+                </h2>
+
+                <button
+                    class="secondary-btn"
+                    onclick="document.getElementById('competitionNewStageEditor')?.remove()"
+                >
+                    CANCEL
+                </button>
+            </div>
+
+            <div class="competition-warning">
+                Future stages remain private.
+                Players will not see this stage until you approve
+                and start it.
+            </div>
+
+            <div class="competition-form-grid">
+
+                <div class="competition-form-full">
+                    <label>Stage Title</label>
+                    <input
+                        id="newStageTitle"
+                        value="Day ${Number(stageNo)}"
+                    >
+                </div>
+
+                <div class="competition-form-full">
+                    <label>Question / Prompt</label>
+                    <textarea
+                        id="newStageQuestion"
+                        placeholder="Enter today's challenge"
+                    ></textarea>
+                </div>
+
+                <div>
+                    <label>Entry Fee</label>
+                    <input
+                        id="newStageFee"
+                        type="number"
+                        min="0"
+                        value="${fee}"
+                    >
+                </div>
+
+                <div>
+                    <label>Start Time</label>
+                    <input
+                        id="newStageStart"
+                        type="datetime-local"
+                    >
+                </div>
+
+                <div>
+                    <label>End Time</label>
+                    <input
+                        id="newStageEnd"
+                        type="datetime-local"
+                    >
+                </div>
+
+                <div class="competition-form-full">
+                    <label>Clue (Optional)</label>
+                    <textarea
+                        id="newStageClue"
+                        placeholder="Optional clue"
+                    ></textarea>
+                </div>
+
+                <div class="competition-form-full">
+                    <label>Options (comma separated)</label>
+                    <textarea
+                        id="newStageOptions"
+                        placeholder="Option A, Option B, Option C"
+                    ></textarea>
+                </div>
+
+                ${
+                    gameId === "guess_it" ||
+                    gameId === "impossible_question"
+                        ? `
+                            <div class="competition-form-full">
+                                <label>Correct Answer</label>
+                                <input
+                                    id="newStageCorrect"
+                                    placeholder="Admin-approved answer"
+                                >
+                            </div>
+
+                            <div class="competition-form-full">
+                                <label>
+                                    Accepted Answers
+                                </label>
+
+                                <input
+                                    id="newStageAccepted"
+                                    placeholder="Answer 1, Answer 2"
+                                >
+                            </div>
+                        `
+                        : ""
+                }
+
+                ${
+                    gameId === "survivor"
+                        ? `
+                            <div class="competition-form-full">
+                                <label>Safe Option</label>
+                                <input
+                                    id="newStageSafe"
+                                    placeholder="Admin-approved safe option"
+                                >
+                            </div>
+                        `
+                        : ""
+                }
+
+                ${
+                    gameId === "dead_number"
+                        ? `
+                            <div class="competition-form-full">
+                                <label>Dead Numbers</label>
+                                <input
+                                    id="newStageDead"
+                                    placeholder="17, 23"
+                                >
+                            </div>
+
+                            <div>
+                                <label>Dead Count</label>
+                                <input
+                                    id="newStageDeadCount"
+                                    type="number"
+                                    min="1"
+                                    value="3"
+                                >
+                            </div>
+                        `
+                        : ""
+                }
+
+                <div>
+                    <label>Minimum Number</label>
+                    <input
+                        id="newStageMin"
+                        type="number"
+                        value="1"
+                    >
+                </div>
+
+                <div>
+                    <label>Maximum Number</label>
+                    <input
+                        id="newStageMax"
+                        type="number"
+                        value="20"
+                    >
+                </div>
+
+                ${
+                    gameId === "impossible_choice"
+                        ? `
+                            <div class="competition-form-full">
+                                <label>Mechanic</label>
+
+                                <select id="newStageMechanic">
+                                    <option value="minority">
+                                        Minority
+                                    </option>
+
+                                    <option value="majority">
+                                        Majority
+                                    </option>
+
+                                    <option value="closest_target">
+                                        Closest to target percentage
+                                    </option>
+
+                                    <option value="within_range">
+                                        Within target percentage range
+                                    </option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label>Target %</label>
+                                <input
+                                    id="newStageTarget"
+                                    type="number"
+                                    step="0.1"
+                                    value="50"
+                                >
+                            </div>
+
+                            <div>
+                                <label>Target Minimum %</label>
+                                <input
+                                    id="newStageTargetMin"
+                                    type="number"
+                                    step="0.1"
+                                    value="40"
+                                >
+                            </div>
+
+                            <div>
+                                <label>Target Maximum %</label>
+                                <input
+                                    id="newStageTargetMax"
+                                    type="number"
+                                    step="0.1"
+                                    value="60"
+                                >
+                            </div>
+                        `
+                        : ""
+                }
+
+                <div class="competition-form-full">
+                    <button
+                        class="primary-btn full"
+                        onclick="competitionCreateStage('${h(roundId)}', ${Number(stageNo)})"
+                    >
+                        CREATE STAGE
+                    </button>
+                </div>
+
+            </div>
+        `;
+    }
+
+    window.competitionCreateStage = async function (
+        roundId,
+        stageNo
+    ) {
+        try {
+            const getValue = id =>
+                document.getElementById(id)?.value?.trim() || "";
+
+            const getNumber = id =>
+                Number(
+                    document.getElementById(id)?.value || 0
+                );
+
+            const splitList = id =>
+                getValue(id)
+                    .split(",")
+                    .map(item => item.trim())
+                    .filter(Boolean);
+
+            const question =
+                getValue("newStageQuestion");
+
+            if (!question) {
+                showToast(
+                    "Please enter the question/prompt."
+                );
+                return;
+            }
+
+            const payload = {
+                stage_no: Number(stageNo),
+
+                title:
+                    getValue("newStageTitle"),
+
+                question,
+
+                entry_fee:
+                    getNumber("newStageFee"),
+
+                start_at:
+                    toIsoFromInput("newStageStart"),
+
+                end_at:
+                    toIsoFromInput("newStageEnd"),
+
+                clue:
+                    getValue("newStageClue"),
+
+                generation_mode:
+                    "admin",
+
+                options:
+                    splitList("newStageOptions"),
+
+                correct_answer:
+                    getValue("newStageCorrect"),
+
+                accepted_answers:
+                    splitList("newStageAccepted"),
+
+                safe_option:
+                    getValue("newStageSafe"),
+
+                min_number:
+                    getNumber("newStageMin"),
+
+                max_number:
+                    getNumber("newStageMax"),
+
+                dead_numbers:
+                    splitList("newStageDead"),
+
+                dead_count:
+                    getNumber("newStageDeadCount"),
+
+                mechanic:
+                    getValue("newStageMechanic"),
+
+                target_percentage:
+                    getNumber("newStageTarget"),
+
+                target_min_percentage:
+                    getNumber("newStageTargetMin"),
+
+                target_max_percentage:
+                    getNumber("newStageTargetMax")
+            };
+
+            const data = await api(
+                `/api/admin/competition/rounds/${encodeURIComponent(roundId)}/stages/create`,
+                {
+                    method: "POST",
+                    body: JSON.stringify(payload)
+                }
+            );
+
+            showToast(
+                data.message ||
+                "Stage created successfully."
+            );
+
+            await competitionLoadRound(roundId);
+
+        } catch (error) {
+            showToast(
+                error.message ||
+                "Unable to create stage."
+            );
+        }
+    };
+
+    /*
+     * ------------------------------------------------------------
+     * APPROVE SECRET
+     * ------------------------------------------------------------
+     */
+
+    window.competitionApproveStage = async function (
+        roundId,
+        stageNo
+    ) {
         if (
             !confirm(
-                "Start this stage now? Players will be able to see its configuration."
+                "Approve the actual answer/safe option/dead numbers for this stage?"
             )
         ) {
             return;
         }
 
         try {
-
-            await api(
-                `/api/admin/competition/rounds/${encodeURIComponent(rid)}/stages/${stage}/start`,
+            const data = await api(
+                `/api/admin/competition/rounds/${encodeURIComponent(roundId)}/stages/${stageNo}/approve`,
                 {
                     method: "POST"
                 }
             );
 
             showToast(
-                "Stage is live."
+                data.message ||
+                "Stage secret approved."
             );
 
-            competitionLoadRound(
-                rid
-            );
+            await competitionLoadRound(roundId);
 
-        } catch (e) {
-
+        } catch (error) {
             showToast(
-                e.message
+                error.message ||
+                "Unable to approve stage."
             );
         }
     };
 
-    window.competitionEndStage =
-    async function (
-        rid,
-        stage
-    ) {
+    /*
+     * ------------------------------------------------------------
+     * START STAGE
+     * ------------------------------------------------------------
+     */
 
+    window.competitionStartStage = async function (
+        roundId,
+        stageNo
+    ) {
         if (
             !confirm(
-                "End this stage now? Submitted answers will be evaluated."
+                "Start this stage now?\n\nPlayers will be able to participate once it is live."
             )
         ) {
             return;
         }
 
         try {
-
-            const data =
-                await api(
-                    `/api/admin/competition/rounds/${encodeURIComponent(rid)}/stages/${stage}/end`,
-                    {
-                        method: "POST"
-                    }
-                );
-
-            showToast(
-                `Stage closed. Winners: ${
-                    data.winner_count ||
-                    0
-                }`
+            const data = await api(
+                `/api/admin/competition/rounds/${encodeURIComponent(roundId)}/stages/${stageNo}/start`,
+                {
+                    method: "POST"
+                }
             );
 
-            competitionLoadRound(
-                rid
+            showToast(
+                data.message ||
+                "Stage is now live."
             );
 
-        } catch (e) {
+            await competitionLoadRound(roundId);
 
+        } catch (error) {
             showToast(
-                e.message
+                error.message ||
+                "Unable to start stage."
             );
         }
     };
 
-    window.competitionAdvance =
-    async function (rid) {
+    /*
+     * ------------------------------------------------------------
+     * END / SETTLE STAGE
+     * ------------------------------------------------------------
+     */
+
+    window.competitionEndStage = async function (
+        roundId,
+        stageNo
+    ) {
+        if (
+            !confirm(
+                "End and settle this stage now?\n\nSubmitted player entries will be evaluated."
+            )
+        ) {
+            return;
+        }
 
         try {
-
-            const data =
-                await api(
-                    `/api/admin/competition/rounds/${encodeURIComponent(rid)}/next-stage`,
-                    {
-                        method: "POST"
-                    }
-                );
-
-            showToast(
-                `Next stage ${data.next_stage} is ready for configuration.`
+            const data = await api(
+                `/api/admin/competition/rounds/${encodeURIComponent(roundId)}/stages/${stageNo}/end`,
+                {
+                    method: "POST"
+                }
             );
 
-            competitionLoadRound(
-                rid
+            showToast(
+                data.message ||
+                `Stage closed. Winners: ${data.winner_count || 0}`
             );
 
-        } catch (e) {
+            /*
+             * Important:
+             * Refresh immediately so Admin sees the concluded
+             * state and the results.
+             */
+            await competitionLoadRound(roundId);
 
+        } catch (error) {
             showToast(
-                e.message
+                error.message ||
+                "Unable to settle stage."
             );
         }
     };
+
+    /*
+     * ------------------------------------------------------------
+     * PARTICIPANTS
+     * ------------------------------------------------------------
+     */
+
+    function renderParticipants(entries) {
+        const limited =
+            (entries || []).slice(0, 100);
+
+        return `
+            <div class="panel">
+
+                <div class="panel-header">
+                    <h2>
+                        👥 Participants
+                        (${entries?.length || 0})
+                    </h2>
+                </div>
+
+                ${
+                    limited.length
+                        ? limited.map(entry => `
+                            <div class="competition-participant">
+
+                                <div>
+                                    <strong>
+                                        ${h(
+                                            entry.telegram_id ||
+                                            entry.user_id ||
+                                            "Unknown"
+                                        )}
+                                    </strong>
+
+                                    <div style="opacity:.65;font-size:12px;">
+                                        Stage
+                                        ${Number(
+                                            entry.stage_no || 1
+                                        )}
+                                        ·
+                                        ${h(
+                                            entry.status ||
+                                            "unknown"
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div style="text-align:right;">
+                                    ${
+                                        entry.answer
+                                            ? h(entry.answer)
+                                            : "—"
+                                    }
+                                </div>
+
+                            </div>
+                        `).join("")
+                        : `
+                            <div class="competition-empty">
+                                No participants yet.
+                            </div>
+                        `
+                }
+
+                ${
+                    (entries || []).length > 100
+                        ? `
+                            <div class="competition-help">
+                                Showing the first 100 entries.
+                            </div>
+                        `
+                        : ""
+                }
+
+            </div>
+        `;
+    }
+
+    /*
+     * ------------------------------------------------------------
+     * RESULTS / WINNERS
+     * ------------------------------------------------------------
+     */
+
+    function renderResults(results) {
+        return `
+            <div class="panel">
+
+                <div class="panel-header">
+                    <h2>
+                        🏆 Winners / Results
+                        (${results?.length || 0})
+                    </h2>
+                </div>
+
+                ${
+                    results?.length
+                        ? results.map(result => `
+                            <div class="competition-participant">
+
+                                <div>
+                                    <strong>
+                                        ${h(
+                                            result.telegram_id ||
+                                            result.user_id ||
+                                            "Unknown"
+                                        )}
+                                    </strong>
+
+                                    <div style="opacity:.65;font-size:12px;">
+                                        ${
+                                            result.stage_no
+                                                ? `Stage ${Number(result.stage_no)}`
+                                                : "Competition winner"
+                                        }
+                                    </div>
+                                </div>
+
+                                <div style="text-align:right;">
+                                    <strong>
+                                        $${Number(
+                                            result.amount_usd || 0
+                                        ).toFixed(2)}
+                                    </strong>
+                                </div>
+
+                            </div>
+                        `).join("")
+                        : `
+                            <div class="competition-empty">
+                                No winners/results recorded yet.
+                            </div>
+                        `
+                }
+
+            </div>
+        `;
+    }
+
+    /*
+     * ------------------------------------------------------------
+     * AUTOMATIC INITIALIZATION
+     * ------------------------------------------------------------
+     *
+     * We no longer force Admin to initialize before doing normal
+     * work. If setup is needed, the Initialize button remains
+     * available as a repair/setup tool.
+     */
 
     document.addEventListener(
         "DOMContentLoaded",
-        () => {
-
+        function () {
             addUI();
 
             const section =
@@ -1625,11 +2487,7 @@
                     window.location.search
                 ).get("section");
 
-            if (
-                section ===
-                "competition"
-            ) {
-
+            if (section === "competition") {
                 setTimeout(
                     window.showCompetitionAdmin,
                     200
