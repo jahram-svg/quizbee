@@ -2841,7 +2841,7 @@ def admin_end_stage(
                         "status": "wrong",
                         "outcome": "eliminated",
                         "evaluated_at": firestore.SERVER_TIMESTAMP,
-                    )
+                    })
 
         # --------------------------------------------------------
         # CROWD TRAP
