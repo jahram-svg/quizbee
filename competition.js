@@ -1,0 +1,764 @@
+(function () {
+    let selected = null;
+    let timer = null;
+    let stageData = null;
+
+    const STAGED = ["guess_it", "survivor", "dead_number"];
+
+    function stopTimer() {
+        if (timer) {
+            clearInterval(timer);
+            timer = null;
+        }
+    }
+
+    function competitionApi(path, options = {}) {
+        return api(path, options);
+    }
+
+    function gameName(game) {
+        return `${game?.emoji || game?.icon || "🎮"} ${game?.name || "QuizBee Game"}`;
+    }
+
+    function formatTime(ms) {
+        if (ms <= 0) return "00:00";
+
+        const total = Math.floor(ms / 1000);
+        const d = Math.floor(total / 86400);
+        const h = Math.floor((total % 86400) / 3600);
+        const m = Math.floor((total % 3600) / 60);
+        const s = total % 60;
+
+        if (d > 0) {
+            return `${d}d ${String(h).padStart(2, "0")}h ${String(m).padStart(2, "0")}m`;
+        }
+
+        if (h > 0) {
+            return `${String(h).padStart(2, "0")}h ${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`;
+        }
+
+        return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    }
+
+    function renderShell(title, body) {
+        const box = document.getElementById("gameContent");
+
+        if (!box) return;
+
+        box.innerHTML = `
+            <div class="game-detail-card">
+                <div class="challenge-box">
+                    <h3>${escapeHtml(title)}</h3>
+                    ${body}
+                </div>
+            </div>
+        `;
+    }
+
+    function renderStatus(data) {
+        stopTimer();
+        selected = null;
+        stageData = data.stage || null;
+
+        if (data.user) {
+            updateUserState(data.user);
+        }
+
+        const round = data.round || {};
+        const stage = data.stage || {};
+        const game = data.game || currentGame || {};
+
+        const fee = Number(
+            data.entry_fee ??
+            stage.entry_fee ??
+            0
+        );
+
+        if (data.status === "no_round") {
+            renderShell(gameName(game), `
+                <div class="info-box">
+                    No round is currently available.
+                </div>
+
+                <button
+                    class="secondary-btn full"
+                    onclick="competitionRefresh()">
+                    REFRESH
+                </button>
+            `);
+
+            return;
+        }
+
+        if (data.status === "finished") {
+            renderShell(gameName(game), `
+                <div class="info-box">
+                    🏁 This round has finished.
+                </div>
+
+                <p>
+                    ${Number(round.winner_count || 0)}
+                    winner(s) were recorded.
+                </p>
+
+                <button
+                    class="secondary-btn full"
+                    onclick="competitionRefresh()">
+                    REFRESH
+                </button>
+            `);
+
+            return;
+        }
+
+        if (data.status === "eliminated") {
+            renderShell(gameName(game), `
+                <div class="info-box">
+                    ❌
+                    ${escapeHtml(
+                        data.message ||
+                        "You are out of this round."
+                    )}
+                </div>
+
+                <p>
+                    You cannot re-enter this round.
+                    Wait for a fresh round to start.
+                </p>
+            `);
+
+            return;
+        }
+
+        if (data.status === "round_not_started") {
+            renderShell(gameName(game), `
+                <div class="info-box">
+                    ⏳
+                    <strong>Round not started yet.</strong>
+                </div>
+
+                <p>
+                    The next stage is prepared by QuizBee Admin.
+                    Check again when the next round is started.
+                </p>
+
+                <button
+                    class="secondary-btn full"
+                    onclick="competitionRefresh()">
+                    CHECK AGAIN
+                </button>
+            `);
+
+            return;
+        }
+
+        if (data.status === "needs_entry") {
+            renderShell(gameName(game), `
+                ${
+                    round.title
+                        ? `<p><strong>${escapeHtml(round.title)}</strong></p>`
+                        : ""
+                }
+
+                <div class="info-box">
+                    Day/Stage
+                    <strong>
+                        ${Number(
+                            stage.stage_no ||
+                            round.current_stage ||
+                            1
+                        )}
+                    </strong>
+                    <br>
+
+                    Entry:
+                    <strong>
+                        ${fee} QuizBee Points
+                    </strong>
+
+                    ${
+                        Number(stage.stage_no || 1) === 7
+                            ? `
+                                <br>
+                                <strong>
+                                    Final stage fee:
+                                    ${fee} points
+                                </strong>
+                              `
+                            : ""
+                    }
+                </div>
+
+                ${
+                    stage.end_at
+                        ? `
+                            <div
+                                class="competition-timer"
+                                id="competitionTimer">
+                            </div>
+                          `
+                        : ""
+                }
+
+                <button
+                    class="primary-btn full"
+                    onclick="competitionEnter()">
+                    ENTER — ${fee} POINTS
+                </button>
+            `);
+
+            startTimer(stage.end_at);
+            return;
+        }
+
+        if (data.status === "submitted") {
+            renderShell(gameName(game), `
+                <div class="info-box">
+                    🔒
+                    <strong>Answer locked.</strong>
+                </div>
+
+                <p>
+                    ${escapeHtml(
+                        data.message ||
+                        "Your answer has been recorded. Wait for the stage to finish."
+                    )}
+                </p>
+
+                <button
+                    class="secondary-btn full"
+                    onclick="competitionRefresh()">
+                    REFRESH STATUS
+                </button>
+            `);
+
+            startTimer(stage.end_at);
+            return;
+        }
+
+        if (data.status === "ready") {
+            renderChallenge(data);
+            return;
+        }
+
+        renderShell(gameName(game), `
+            <div class="info-box">
+                ${escapeHtml(
+                    data.message ||
+                    "Unable to load this round."
+                )}
+            </div>
+        `);
+    }
+
+    function startTimer(endAt) {
+        stopTimer();
+
+        if (!endAt) return;
+
+        const end = new Date(endAt).getTime();
+
+        const tick = () => {
+            const el = document.getElementById(
+                "competitionTimer"
+            );
+
+            const remaining = end - Date.now();
+
+            if (el) {
+                el.textContent =
+                    `⏱ Time remaining: ${formatTime(remaining)}`;
+            }
+
+            if (remaining <= 0) {
+                stopTimer();
+
+                setTimeout(
+                    competitionRefresh,
+                    300
+                );
+            }
+        };
+
+        tick();
+
+        timer = setInterval(
+            tick,
+            1000
+        );
+    }
+
+    function renderChallenge(data) {
+        const game = data.game || currentGame || {};
+        const stage = data.stage || {};
+
+        const id = game.id;
+
+        const stageNo = Number(
+            stage.stage_no || 1
+        );
+
+        const fee = Number(
+            stage.entry_fee ||
+            data.entry_fee ||
+            0
+        );
+
+        const question =
+            stage.question ||
+            stage.title ||
+            "Choose carefully.";
+
+        let body = `
+            <div class="info-box">
+                Stage
+                <strong>${stageNo}</strong>
+                · Entry
+                <strong>${fee} points</strong>
+            </div>
+
+            ${
+                stage.clue
+                    ? `
+                        <div class="info-box">
+                            💡
+                            <strong>Clue:</strong>
+                            ${escapeHtml(stage.clue)}
+                        </div>
+                      `
+                    : ""
+            }
+
+            <div class="question">
+                ${escapeHtml(question)}
+            </div>
+
+            <div
+                class="competition-timer"
+                id="competitionTimer">
+            </div>
+        `;
+
+        if (
+            id === "guess_it" ||
+            id === "impossible_question"
+        ) {
+            body += `
+                <input
+                    id="competitionAnswer"
+                    class="number-input"
+                    type="text"
+                    placeholder="Your answer..."
+                    autocomplete="off"
+                >
+
+                <button
+                    class="primary-btn full"
+                    onclick="competitionSubmitText()">
+                    SUBMIT ANSWER
+                </button>
+            `;
+        }
+
+        else if (
+            id === "crowd_trap" ||
+            id === "dead_number"
+        ) {
+            const min = Number(
+                stage.min_number ?? 1
+            );
+
+            const max = Number(
+                stage.max_number ?? 20
+            );
+
+            body += `
+                <div class="info-box">
+                    Choose one number from
+                    <strong>${min}</strong>
+                    to
+                    <strong>${max}</strong>.
+                </div>
+
+                <input
+                    id="competitionNumber"
+                    class="number-input"
+                    type="number"
+                    min="${min}"
+                    max="${max}"
+                    placeholder="Enter your number"
+                >
+
+                <button
+                    class="primary-btn full"
+                    onclick="competitionSubmitNumber()">
+                    LOCK MY NUMBER
+                </button>
+            `;
+        }
+
+        else {
+            const options =
+                Array.isArray(stage.options)
+                    ? stage.options
+                    : [];
+
+            body += `
+                <div
+                    class="options"
+                    id="competitionOptions">
+            `;
+
+            body += options.map(
+                (option, index) => `
+                    <button
+                        class="option-btn"
+                        data-comp-index="${index}"
+                        onclick="competitionSelect(${index})">
+                        ${escapeHtml(option)}
+                    </button>
+                `
+            ).join("");
+
+            body += `
+                </div>
+
+                <button
+                    id="competitionChoiceButton"
+                    class="primary-btn full"
+                    onclick="competitionSubmitChoice()"
+                    disabled>
+                    SUBMIT CHOICE
+                </button>
+            `;
+        }
+
+        renderShell(
+            gameName(game),
+            body
+        );
+
+        startTimer(stage.end_at);
+    }
+
+    window.competitionRefresh = async function () {
+        if (!currentGame) return;
+
+        const box =
+            document.getElementById(
+                "gameContent"
+            );
+
+        if (box) {
+            box.innerHTML = `
+                <div class="game-detail-card">
+                    <div class="info-box">
+                        Loading round...
+                    </div>
+                </div>
+            `;
+        }
+
+        try {
+            const data = await competitionApi(
+                `/api/competition/${encodeURIComponent(currentGame.id)}/state`
+            );
+
+            if (!data.success) {
+                throw new Error(
+                    data.error ||
+                    "Unable to load round."
+                );
+            }
+
+            renderStatus(data);
+        }
+
+        catch (error) {
+            renderShell(
+                gameName(currentGame),
+                `
+                    <div class="info-box">
+                        ${escapeHtml(error.message)}
+                    </div>
+
+                    <button
+                        class="primary-btn full"
+                        onclick="competitionRefresh()">
+                        TRY AGAIN
+                    </button>
+                `
+            );
+        }
+    };
+
+    window.openGame = async function (gameId) {
+        const game =
+            games.find(
+                item => item.id === gameId
+            );
+
+        if (!game) {
+            return showToast(
+                "Game not found."
+            );
+        }
+
+        if (!game.active) {
+            return lockedGame();
+        }
+
+        currentGame = game;
+        currentChallenge = null;
+        selected = null;
+
+        const title =
+            document.getElementById(
+                "gameTitle"
+            );
+
+        if (title) {
+            title.textContent =
+                gameName(game);
+        }
+
+        showPage("game");
+
+        await competitionRefresh();
+    };
+
+    window.enterGame =
+    window.competitionEnter =
+    async function () {
+        if (!currentGame) return;
+
+        try {
+            const data =
+                await competitionApi(
+                    `/api/competition/${encodeURIComponent(currentGame.id)}/enter`,
+                    {
+                        method: "POST",
+                        body: JSON.stringify({})
+                    }
+                );
+
+            if (data.user) {
+                updateUserState(
+                    data.user
+                );
+            }
+
+            showToast(
+                data.already_entered
+                    ? "You already paid for this stage."
+                    : "Entry successful! 🎉"
+            );
+
+            await competitionRefresh();
+        }
+
+        catch (error) {
+            showToast(
+                error.message ||
+                "Unable to enter stage."
+            );
+        }
+    };
+
+    async function submit(answer) {
+        if (!currentGame) return;
+
+        const buttons =
+            document.querySelectorAll(
+                "#gameContent button, #gameContent input"
+            );
+
+        buttons.forEach(
+            x => x.disabled = true
+        );
+
+        try {
+            const data =
+                await competitionApi(
+                    `/api/competition/${encodeURIComponent(currentGame.id)}/submit`,
+                    {
+                        method: "POST",
+                        body: JSON.stringify({
+                            answer
+                        })
+                    }
+                );
+
+            if (data.user) {
+                updateUserState(
+                    data.user
+                );
+            }
+
+            showToast(
+                data.message ||
+                "Answer submitted."
+            );
+
+            await competitionRefresh();
+        }
+
+        catch (error) {
+            showToast(
+                error.message ||
+                "Unable to submit answer."
+            );
+
+            buttons.forEach(
+                x => x.disabled = false
+            );
+        }
+    }
+
+    window.competitionSubmitText =
+    async function () {
+        const input =
+            document.getElementById(
+                "competitionAnswer"
+            );
+
+        if (
+            !input ||
+            !input.value.trim()
+        ) {
+            return showToast(
+                "Enter an answer first."
+            );
+        }
+
+        await submit(
+            input.value.trim()
+        );
+    };
+
+    window.competitionSubmitNumber =
+    async function () {
+        const input =
+            document.getElementById(
+                "competitionNumber"
+            );
+
+        if (
+            !input ||
+            input.value === ""
+        ) {
+            return showToast(
+                "Enter a number."
+            );
+        }
+
+        const n =
+            Number(input.value);
+
+        const stage =
+            stageData || {};
+
+        if (
+            !Number.isInteger(n) ||
+            n < Number(
+                stage.min_number ?? 1
+            ) ||
+            n > Number(
+                stage.max_number ?? 20
+            )
+        ) {
+            return showToast(
+                "Choose a valid number in the allowed range."
+            );
+        }
+
+        await submit(
+            String(n)
+        );
+    };
+
+    window.competitionSelect =
+    function (index) {
+        selected = index;
+
+        document
+            .querySelectorAll(
+                "[data-comp-index]"
+            )
+            .forEach(button => {
+                button.style.borderColor = "";
+                button.style.background = "";
+            });
+
+        const selectedButton =
+            document.querySelector(
+                `[data-comp-index="${index}"]`
+            );
+
+        if (selectedButton) {
+            selectedButton.style.borderColor =
+                "var(--yellow)";
+
+            selectedButton.style.background =
+                "#303642";
+        }
+
+        const button =
+            document.getElementById(
+                "competitionChoiceButton"
+            );
+
+        if (button) {
+            button.disabled = false;
+        }
+    };
+
+    window.competitionSubmitChoice =
+    async function () {
+        if (selected === null) {
+            return showToast(
+                "Select an option first."
+            );
+        }
+
+        const options =
+            Array.isArray(stageData?.options)
+                ? stageData.options
+                : [];
+
+        if (
+            options[selected] === undefined
+        ) {
+            return showToast(
+                "Invalid choice."
+            );
+        }
+
+        await submit(
+            options[selected]
+        );
+    };
+
+    // Small visual layer.
+    // Avoids touching the existing stylesheet.
+    const style =
+        document.createElement("style");
+
+    style.textContent = `
+        .competition-timer {
+            margin: 12px 0;
+            padding: 10px;
+            border-radius: 10px;
+            text-align: center;
+            font-weight: 700;
+            background: rgba(255,255,255,.06);
+        }
+
+        #gameContent .full {
+            width: 100%;
+            margin-top: 10px;
+        }
+    `;
+
+    document.head.appendChild(style);
+})();
