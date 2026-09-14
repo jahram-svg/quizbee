@@ -330,26 +330,26 @@ def list_users():
             ""
         ).strip().lower()
 
-    try:
-    limit = int(
-        request.args.get(
-            "limit",
-            100
-        )
-    )
-    except (
-    TypeError,
-    ValueError
-):
-    limit = 100
+        try:
+            limit = int(
+                request.args.get(
+                    "limit",
+                    100
+                )
+            )
+        except (
+            TypeError,
+            ValueError
+        ):
+            limit = 100
 
-limit = max(
-    1,
-    min(
-        limit,
-        200
-    )
-)
+        limit = max(
+            1,
+            min(
+                limit,
+                200
+            )
+        )
 
         docs = list(
             db.collection(
@@ -413,11 +413,7 @@ limit = max(
                 break
 
         results.sort(
-            key=lambda x:
-                x.get(
-                    "created_at",
-                    ""
-                ),
+            key=lambda x: x.get("created_at", ""),
             reverse=True
         )
 
@@ -427,7 +423,6 @@ limit = max(
         })
 
     except Exception as e:
-
         return jsonify({
             "success": False,
             "error": str(e)
