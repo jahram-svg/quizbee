@@ -1360,9 +1360,18 @@ def settle_stage(
             stage,
         )
 
-        winner_ids = {
+    # --------------------------------------------------------
+    # WINNER IDS
+    #
+    # IMPORTANT:
+    # This must be created AFTER winners are determined and
+    # BEFORE every entry is processed.
+    # --------------------------------------------------------
+
+    winner_ids = {
         str(entry.get("telegram_id"))
         for entry in winners
+        if entry.get("telegram_id") is not None
     }
 
     # --------------------------------------------------------
@@ -1395,14 +1404,8 @@ def settle_stage(
     )
 
     # --------------------------------------------------------
-    # IMPORTANT:
-    # Every submitted player receives a permanent result.
-    #
-    # This is what fixes the original problem where users
-    # could only see "next stage not started" after a timer.
+    # NEXT STAGE
     # --------------------------------------------------------
-
-    result_count = 0
 
     next_stage = (
         stage_no + 1
@@ -1410,7 +1413,14 @@ def settle_stage(
         else None
     )
 
+    # --------------------------------------------------------
+    # CREATE PER-PLAYER RESULTS
+    # --------------------------------------------------------
+
+    result_count = 0
+
     for entry in entries:
+
         telegram_id = str(
             entry.get("telegram_id", "")
         )
@@ -1426,8 +1436,12 @@ def settle_stage(
             telegram_id in winner_ids
         )
 
+        # ----------------------------------------------------
+        # PLAYER DID NOT SUBMIT
+        # ----------------------------------------------------
+
         if not submitted:
-            # Paid but failed to submit before the stage ended.
+
             passed = False
             eliminated = True
             advanced = False
@@ -1435,15 +1449,27 @@ def settle_stage(
             outcome = "failed"
 
             message = (
-                f" You did not submit an answer before "
+                f"❌ You did not submit an answer before "
                 f"Stage {stage_no} ended. You are out of this round."
             )
 
+        # ----------------------------------------------------
+        # PLAYER PASSED / WON STAGE
+        # ----------------------------------------------------
+
         elif is_winner_of_stage:
+
             passed = True
             eliminated = False
-            advanced = next_stage is not None
-            winner = next_stage is None
+
+            advanced = (
+                next_stage is not None
+            )
+
+            winner = (
+                next_stage is None
+            )
+
             outcome = (
                 "winner"
                 if winner
@@ -1460,7 +1486,12 @@ def settle_stage(
                 correct_answer=correct_answer,
             )
 
+        # ----------------------------------------------------
+        # PLAYER FAILED
+        # ----------------------------------------------------
+
         else:
+
             passed = False
             eliminated = True
             advanced = False
@@ -1468,26 +1499,31 @@ def settle_stage(
             outcome = "failed"
 
             # Crowd Trap / Impossible Choice / Dead Number
-            # do not necessarily have a conventional correct answer.
+            # do not necessarily have a conventional answer.
+
             if game_id == "crowd_trap":
+
                 message = (
-                    f"❌ Your Stage {stage_no} choice was not unique. "
-                    "You are out of this round."
+                    f"❌ Your Stage {stage_no} choice was "
+                    "not unique. You are out of this round."
                 )
 
             elif game_id == "dead_number":
+
                 message = (
-                    f"❌ You selected a dead number in Stage "
-                    f"{stage_no}. You are out of this round."
+                    f"❌ You selected a dead number in "
+                    f"Stage {stage_no}. You are out of this round."
                 )
 
             elif game_id == "impossible_choice":
+
                 message = (
                     f"❌ Your choice did not satisfy the "
                     f"Stage {stage_no} rule. You are out of this round."
                 )
 
             else:
+
                 message = result_message(
                     game_id,
                     stage_no,
@@ -1497,6 +1533,10 @@ def settle_stage(
                     next_stage=None,
                     correct_answer=correct_answer,
                 )
+
+        # ----------------------------------------------------
+        # SAVE PLAYER RESULT
+        # ----------------------------------------------------
 
         create_or_update_player_result(
             round_data=round_data,
@@ -1513,17 +1553,22 @@ def settle_stage(
             correct_answer=correct_answer,
             extra={
                 "dead_numbers": dead_numbers,
+
+                # Aggregate stage statistics
                 "stage_total_entries": stage_total_entries,
                 "stage_submitted_count": stage_submitted_count,
                 "stage_advanced_count": stage_advanced_count,
                 "stage_winner_count": stage_winner_count,
                 "stage_failed_count": stage_failed_count,
-             },
+            },
         )
 
         result_count += 1
 
-        # Keep the entry itself synchronized.
+        # ----------------------------------------------------
+        # KEEP ENTRY SYNCHRONIZED
+        # ----------------------------------------------------
+
         entries_col().document(
             entry["id"]
         ).set(
@@ -1538,7 +1583,7 @@ def settle_stage(
         )
 
     # --------------------------------------------------------
-    # FINAL WINNERS
+    # FINAL WINNERS / ROUND STATUS
     # --------------------------------------------------------
 
     prize_info = {
@@ -1548,6 +1593,7 @@ def settle_stage(
     }
 
     if stage_no == total_stages:
+
         prize_info = distribute_prize(
             round_data,
             winners,
@@ -1556,30 +1602,41 @@ def settle_stage(
         round_status = "settled"
 
     else:
+
         round_status = "closed"
 
     # --------------------------------------------------------
-    # MARK STAGE CLOSED / SETTLED
+    # MARK STAGE CLOSED
+    #
+    # IMPORTANT:
+    # This MUST happen for BOTH final and non-final stages.
     # --------------------------------------------------------
 
-        stages_col().document(stage["id"]).set(
+    stages_col().document(
+        stage["id"]
+    ).set(
         {
             "status": "closed",
             "closed_at": firestore.SERVER_TIMESTAMP,
+
             "winner_count": len(winners),
+
             "advanced_count": (
                 len(winners)
                 if stage_no < total_stages
                 else 0
             ),
+
             "participant_count": stage_total_entries,
             "submitted_count": stage_submitted_count,
             "failed_count": stage_failed_count,
+
             "dead_numbers": dead_numbers,
+
             "updated_at": firestore.SERVER_TIMESTAMP,
         },
         merge=True,
-        )
+    )
 
     # --------------------------------------------------------
     # UPDATE ROUND
@@ -1597,9 +1654,11 @@ def settle_stage(
     }
 
     if stage_no < total_stages:
+
         round_update["current_stage"] = stage_no
 
     else:
+
         round_update["current_stage"] = total_stages
         round_update["ended_at"] = firestore.SERVER_TIMESTAMP
 
@@ -1610,19 +1669,35 @@ def settle_stage(
         merge=True,
     )
 
+    # --------------------------------------------------------
+    # RETURN SETTLEMENT SUMMARY
+    # --------------------------------------------------------
+
     return {
         "winner_count": len(winners),
+
         "advanced_count": (
             len(winners)
             if stage_no < total_stages
             else 0
         ),
+
+        "stage_total_entries": stage_total_entries,
+        "stage_submitted_count": stage_submitted_count,
+        "stage_advanced_count": stage_advanced_count,
+        "stage_winner_count": stage_winner_count,
+        "stage_failed_count": stage_failed_count,
+
         "result_count": result_count,
+
         "prize": prize_info,
+
         "dead_numbers": dead_numbers,
+
         "next_stage": next_stage,
+
         "round_status": round_status,
-    }
+        }
 
 
 # ============================================================
