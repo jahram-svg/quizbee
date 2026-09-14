@@ -28,7 +28,7 @@
             description: "Choose the safe option and survive to the next stage."
         },
         dead_number: {
-            emoji: "☠️",
+            emoji: "️",
             name: "Dead Number",
             staged: true,
             description: "Avoid the dead numbers and survive."
@@ -53,7 +53,7 @@
 
     function gameInfo(gameId) {
         return GAMES[gameId] || {
-            emoji: "🎮",
+            emoji: "",
             name: gameId || "Competition",
             staged: false,
             description: ""
@@ -306,7 +306,7 @@
         page.innerHTML = `
             <div class="page-title">
                 <div>
-                    <h1>🏆 Competitions</h1>
+                    <h1> Competitions</h1>
                     <p>Manage games, rounds, stages, players and winners</p>
                 </div>
             </div>
@@ -326,7 +326,7 @@
                 </div>
 
                 <div id="competitionRoundsList">
-                    Loading...
+                    loading…
                 </div>
             </div>
 
@@ -337,7 +337,7 @@
                 </div>
 
                 <div id="competitionRoundDetail">
-                    Loading...
+                    loading…
                 </div>
             </div>
         `;
@@ -346,7 +346,7 @@
 
         const navButton = document.createElement("button");
         navButton.className = "nav-item";
-        navButton.innerHTML = `<span>🏆</span>Competitions`;
+        navButton.innerHTML = `<span></span>Competitions`;
         navButton.onclick = window.showCompetitionAdmin;
 
         if (nav.lastElementChild) {
@@ -398,13 +398,13 @@
                 </button>
 
                 <button class="secondary-btn" onclick="competitionInitializeGames()">
-                    ⚙️ INITIALIZE
+                    ️ INITIALIZE
                 </button>
             </div>
 
             <div class="competition-help">
-                Initialization only creates/repairs the six competition game definitions.
-                It does not create questions, rounds or winners.
+                initialization only creates/repairs the six competition game definitions.
+                it does not create questions, rounds or winners.
             </div>
         `;
     }
@@ -505,7 +505,7 @@
                         <label>Round Title</label>
                         <input
                             id="compRoundTitle"
-                            placeholder="${h(game.name)} — September Week 1"
+                            placeholder="${h(game.name)} - September Week 1"
                         >
                     </div>
 
@@ -530,7 +530,7 @@
 
                     <div class="competition-form-full">
                         <label>
-                            Entry Fees
+                            entry Fees
                         </label>
 
                         <input
@@ -540,7 +540,7 @@
 
                         <div class="competition-help">
                             ${game.staged
-                                ? "Stage 1–6 default to 10 points. Stage 7 defaults to 30 points."
+                                ? "Stage 1-6 default to 10 points. Stage 7 defaults to 30 points."
                                 : "Single entry fee for this round."}
                         </div>
                     </div>
@@ -650,7 +650,7 @@
 
         list.innerHTML = `
             <div class="competition-empty">
-                Loading ${h(gameInfo(selectedGame).name)} rounds...
+                loading ${h(gameInfo(selectedGame).name)} rounds…
             </div>
         `;
 
@@ -678,7 +678,7 @@
                         </div>
 
                         <p>
-                            No ${h(gameInfo(selectedGame).name)}
+                            no ${h(gameInfo(selectedGame).name)}
                             rounds yet.
                         </p>
 
@@ -802,7 +802,7 @@
 
         box.innerHTML = `
             <div class="competition-empty">
-                Loading round...
+                loading round…
             </div>
         `;
 
@@ -827,7 +827,7 @@
                 html += `
                     <div class="panel">
                         <div class="competition-empty">
-                            No stages have been created yet.
+                            no stages have been created yet.
                         </div>
 
                         <button
@@ -885,8 +885,8 @@
                             <h3>Next Stage</h3>
 
                             <p>
-                                Stage ${currentStageNo} has closed.
-                                You can now prepare Stage ${nextStageNo}.
+                                stage ${currentStageNo} has closed.
+                                you can now prepare Stage ${nextStageNo}.
                             </p>
 
                             <button
@@ -900,7 +900,7 @@
                 }
             }
 
-            html += renderParticipants(entries);
+            html += renderParticipants(entries, round);
             html += renderResults(results);
 
             box.innerHTML = html;
@@ -980,8 +980,8 @@
                     round.status === "settled"
                         ? `
                             <div class="competition-success">
-                                🏁 This competition has been concluded.
-                                Winners have been recorded.
+                                 this competition has been concluded.
+                                winners have been recorded.
                             </div>
                         `
                         : ""
@@ -1017,14 +1017,14 @@
             gameId === "impossible_question"
         ) {
             secret = `
-                Correct answer:
+                correct answer:
                 <strong>
                     ${h(stage.correct_answer || "NOT SET")}
                 </strong>
             `;
         } else if (gameId === "survivor") {
             secret = `
-                Safe option:
+                safe option:
                 <strong>
                     ${h(stage.safe_option || "NOT SET")}
                 </strong>
@@ -1036,16 +1036,16 @@
                     : "";
 
             secret = `
-                Dead numbers:
+                dead numbers:
                 <strong>
                     ${h(deadNumbers || "NOT SET")}
                 </strong>
             `;
         } else {
             secret = `
-                Outcome:
+                outcome:
                 <strong>
-                    Calculated from player choices
+                    calculated from player choices
                 </strong>
             `;
         }
@@ -1081,7 +1081,7 @@
                     class="primary-btn"
                     onclick="competitionApproveStage('${h(round.id)}', ${stageNo})"
                 >
-                    🔐 APPROVE SECRET
+                     APPROVE SECRET
                 </button>
             `;
         }
@@ -1098,7 +1098,7 @@
                     class="primary-btn"
                     onclick="competitionStartStage('${h(round.id)}', ${stageNo})"
                 >
-                    🚀 START STAGE
+                     START STAGE
                 </button>
             `;
         }
@@ -1112,7 +1112,7 @@
         ) {
             buttons += `
                 <div class="competition-warning">
-                    ⚠️ This stage cannot start until the actual
+                    ️ This stage cannot start until the actual
                     answer/safe value/dead numbers have been approved.
                 </div>
             `;
@@ -1127,7 +1127,7 @@
                     class="danger-btn"
                     onclick="competitionEndStage('${h(round.id)}', ${stageNo})"
                 >
-                    🏁 END / SETTLE STAGE
+                     END / SETTLE STAGE
                 </button>
             `;
         }
@@ -1139,7 +1139,7 @@
             buttons += `
                 <div class="competition-success">
                     ✅ Stage concluded.
-                    Player outcomes have been calculated.
+                    player outcomes have been calculated.
                 </div>
             `;
         }
@@ -1151,7 +1151,7 @@
             buttons += `
                 <div class="competition-warning">
                     🔴 This stage is LIVE.
-                    Editing is disabled while players are participating.
+                    editing is disabled while players are participating.
                 </div>
             `;
         }
@@ -1163,8 +1163,8 @@
 
                     <div>
                         <h3>
-                            Stage ${stageNo}
-                            — ${h(stage.title || "Untitled")}
+                            stage ${stageNo}
+${h(stage.title || "Untitled")}
                         </h3>
 
                         <p>
@@ -1227,7 +1227,7 @@
                         `
                         : `
                             <div class="competition-warning">
-                                ⚠️ No question/prompt has been entered.
+                                ️ No question/prompt has been entered.
                             </div>
                         `
                 }
@@ -1246,7 +1246,7 @@
                 }
 
                 <div class="competition-secret">
-                    <span>🔐 Private Admin Secret</span>
+                    <span> Private Admin Secret</span>
                     ${secret}
                 </div>
 
@@ -1259,6 +1259,55 @@
                                 <strong>
                                     ${h(stage.options.join(" · "))}
                                 </strong>
+                            </div>
+                        `
+                        : ""
+                }
+
+                ${
+                    status === "closed"
+                        ? `
+                            <div class="competition-result-summary">
+                                <div class="competition-secret">
+                                    <span>
+                                        ${
+                                            stageNo <
+                                            Number(round.total_stages || 1)
+                                                ? "Correct Answer / Stage Outcome"
+                                                : "Final Answer / Stage Outcome"
+                                        }
+                                    </span>
+
+                                    <strong>
+                                        ${secret}
+                                    </strong>
+                                </div>
+
+                                <div class="competition-meta">
+                                    <div class="competition-meta-box">
+                                        <small>
+                                            ${
+                                                stageNo <
+                                                Number(round.total_stages || 1)
+                                                    ? "Players Advanced"
+                                                    : "Final Winners"
+                                            }
+                                        </small>
+
+                                        <strong>
+                                            ${Number(
+                                                stage.advanced_count ??
+                                                stage.winner_count ??
+                                                0
+                                            )}
+                                        </strong>
+                                    </div>
+                                </div>
+
+                                <div class="competition-success">
+                                    🔒 Only the total is shown. Individual
+                                    player contact details are hidden.
+                                </div>
                             </div>
                         `
                         : ""
@@ -1278,7 +1327,7 @@
     }
 
     function formatDate(value) {
-        if (!value) return "—";
+        if (!value) return "-";
 
         try {
             return new Date(value).toLocaleString();
@@ -1446,7 +1495,7 @@
 
                                 <div class="competition-form-full">
                                     <label>
-                                        Accepted Answers
+                                        accepted Answers
                                         (comma separated)
                                     </label>
 
@@ -1478,7 +1527,7 @@
                             ? `
                                 <div class="competition-form-full">
                                     <label>
-                                        Dead Numbers
+                                        dead Numbers
                                         (comma separated)
                                     </label>
 
@@ -1525,7 +1574,7 @@
                                 <div class="competition-form-full">
 
                                     <label>
-                                        Impossible Choice Mechanic
+                                        impossible Choice Mechanic
                                     </label>
 
                                     <select
@@ -1533,22 +1582,22 @@
                                     >
                                         <option value="minority"
                                             ${stage.mechanic === "minority" ? "selected" : ""}>
-                                            Minority
+                                            minority
                                         </option>
 
                                         <option value="majority"
                                             ${stage.mechanic === "majority" ? "selected" : ""}>
-                                            Majority
+                                            majority
                                         </option>
 
                                         <option value="closest_target"
                                             ${stage.mechanic === "closest_target" ? "selected" : ""}>
-                                            Closest to target percentage
+                                            closest to target percentage
                                         </option>
 
                                         <option value="within_range"
                                             ${stage.mechanic === "within_range" ? "selected" : ""}>
-                                            Within target percentage range
+                                            within target percentage range
                                         </option>
                                     </select>
 
@@ -1590,8 +1639,8 @@
                     <div class="competition-form-full">
 
                         <div class="competition-warning">
-                            ⚠️ Saving changes resets secret approval.
-                            You must review and approve the actual
+                            ️ Saving changes resets secret approval.
+                            you must review and approve the actual
                             answer/safe option/dead numbers again
                             before starting the stage.
                         </div>
@@ -1604,7 +1653,7 @@
                             class="primary-btn full"
                             onclick="competitionSaveStage('${h(round.id)}', ${Number(stage.stage_no)})"
                         >
-                            💾 SAVE STAGE CHANGES
+                             SAVE STAGE CHANGES
                         </button>
 
                     </div>
@@ -1870,8 +1919,8 @@
             </div>
 
             <div class="competition-warning">
-                Future stages remain private.
-                Players will not see this stage until you approve
+                future stages remain private.
+                players will not see this stage until you approve
                 and start it.
             </div>
 
@@ -1949,7 +1998,7 @@
 
                             <div class="competition-form-full">
                                 <label>
-                                    Accepted Answers
+                                    accepted Answers
                                 </label>
 
                                 <input
@@ -2025,19 +2074,19 @@
 
                                 <select id="newStageMechanic">
                                     <option value="minority">
-                                        Minority
+                                        minority
                                     </option>
 
                                     <option value="majority">
-                                        Majority
+                                        majority
                                     </option>
 
                                     <option value="closest_target">
-                                        Closest to target percentage
+                                        closest to target percentage
                                     </option>
 
                                     <option value="within_range">
-                                        Within target percentage range
+                                        within target percentage range
                                     </option>
                                 </select>
                             </div>
@@ -2334,17 +2383,71 @@
      * ------------------------------------------------------------
      */
 
-    function renderParticipants(entries) {
-        const limited =
-            (entries || []).slice(0, 100);
+    function renderParticipants(entries, round = {}) {
+        const rows = Array.isArray(entries) ? entries : [];
+
+        // After a stage/round is concluded, show only aggregate
+        // information. Do not expose Telegram IDs/user contact data.
+        const concluded =
+            round.status === "closed" ||
+            round.status === "settled";
+
+        if (concluded) {
+            const advanced = rows.filter(
+                entry => entry.passed === true && entry.eliminated !== true
+            ).length;
+
+            const eliminated = rows.filter(
+                entry => entry.eliminated === true
+            ).length;
+
+            const submitted = rows.filter(
+                entry => entry.status === "submitted"
+            ).length;
+
+            return `
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2>Stage Participation Summary</h2>
+                    </div>
+
+                    <div class="competition-meta">
+                        <div class="competition-meta-box">
+                            <small>Total Entries</small>
+                            <strong>${rows.length}</strong>
+                        </div>
+
+                        <div class="competition-meta-box">
+                            <small>Submitted</small>
+                            <strong>${submitted}</strong>
+                        </div>
+
+                        <div class="competition-meta-box">
+                            <small>Advanced</small>
+                            <strong>${advanced}</strong>
+                        </div>
+
+                        <div class="competition-meta-box">
+                            <small>Eliminated</small>
+                            <strong>${eliminated}</strong>
+                        </div>
+                    </div>
+
+                    <div class="competition-success">
+                        🔒 Individual Telegram IDs and contact details are hidden
+                        after conclusion. Only totals are shown.
+                    </div>
+                </div>
+            `;
+        }
+
+        const limited = rows.slice(0, 100);
 
         return `
             <div class="panel">
-
                 <div class="panel-header">
                     <h2>
-                        👥 Participants
-                        (${entries?.length || 0})
+                        Participants (${rows.length})
                     </h2>
                 </div>
 
@@ -2352,7 +2455,6 @@
                     limited.length
                         ? limited.map(entry => `
                             <div class="competition-participant">
-
                                 <div>
                                     <strong>
                                         ${h(
@@ -2363,15 +2465,8 @@
                                     </strong>
 
                                     <div style="opacity:.65;font-size:12px;">
-                                        Stage
-                                        ${Number(
-                                            entry.stage_no || 1
-                                        )}
-                                        ·
-                                        ${h(
-                                            entry.status ||
-                                            "unknown"
-                                        )}
+                                        Stage ${Number(entry.stage_no || 1)}
+                                        · ${h(entry.status || "unknown")}
                                     </div>
                                 </div>
 
@@ -2379,10 +2474,9 @@
                                     ${
                                         entry.answer
                                             ? h(entry.answer)
-                                            : "—"
+                                            : "-"
                                     }
                                 </div>
-
                             </div>
                         `).join("")
                         : `
@@ -2391,17 +2485,6 @@
                             </div>
                         `
                 }
-
-                ${
-                    (entries || []).length > 100
-                        ? `
-                            <div class="competition-help">
-                                Showing the first 100 entries.
-                            </div>
-                        `
-                        : ""
-                }
-
             </div>
         `;
     }
@@ -2413,56 +2496,69 @@
      */
 
     function renderResults(results) {
+        const rows = Array.isArray(results) ? results : [];
+
+        const advanced = rows.filter(
+            result => result.advanced === true
+        ).length;
+
+        const eliminated = rows.filter(
+            result => result.eliminated === true
+        ).length;
+
+        const winners = rows.filter(
+            result => result.winner === true
+        ).length;
+
+        const failed = rows.filter(
+            result =>
+                result.outcome === "failed" &&
+                result.eliminated === true
+        ).length;
+
         return `
             <div class="panel">
-
                 <div class="panel-header">
-                    <h2>
-                        🏆 Winners / Results
-                        (${results?.length || 0})
-                    </h2>
+                    <h2>📊 Results Summary</h2>
+                </div>
+
+                <div class="competition-meta">
+                    <div class="competition-meta-box">
+                        <small>Total Results</small>
+                        <strong>${rows.length}</strong>
+                    </div>
+
+                    <div class="competition-meta-box">
+                        <small>Advanced</small>
+                        <strong>${advanced}</strong>
+                    </div>
+
+                    <div class="competition-meta-box">
+                        <small>Eliminated</small>
+                        <strong>${eliminated}</strong>
+                    </div>
+
+                    <div class="competition-meta-box">
+                        <small>Final Winners</small>
+                        <strong>${winners}</strong>
+                    </div>
                 </div>
 
                 ${
-                    results?.length
-                        ? results.map(result => `
-                            <div class="competition-participant">
-
-                                <div>
-                                    <strong>
-                                        ${h(
-                                            result.telegram_id ||
-                                            result.user_id ||
-                                            "Unknown"
-                                        )}
-                                    </strong>
-
-                                    <div style="opacity:.65;font-size:12px;">
-                                        ${
-                                            result.stage_no
-                                                ? `Stage ${Number(result.stage_no)}`
-                                                : "Competition winner"
-                                        }
-                                    </div>
-                                </div>
-
-                                <div style="text-align:right;">
-                                    <strong>
-                                        $${Number(
-                                            result.amount_usd || 0
-                                        ).toFixed(2)}
-                                    </strong>
-                                </div>
-
-                            </div>
-                        `).join("")
-                        : `
-                            <div class="competition-empty">
-                                No winners/results recorded yet.
+                    failed
+                        ? `
+                            <div class="competition-warning">
+                                ⏰ ${failed} player(s) failed to submit before
+                                the stage ended.
                             </div>
                         `
+                        : ""
                 }
 
+                <div class="competition-success">
+                    🔒 Individual Telegram IDs/contact details are not shown
+                    in the result summary.
+                </div>
             </div>
         `;
     }
@@ -2496,4 +2592,18 @@
         }
     );
 
+})();
+(function () {
+    const style = document.createElement("style");
+    style.textContent = `
+        .competition-result-summary {
+            margin-top: 14px;
+            padding-top: 14px;
+            border-top: 1px solid rgba(255,255,255,.08);
+        }
+        .competition-result-summary .competition-meta {
+            margin-top: 10px;
+        }
+    `;
+    document.head.appendChild(style);
 })();
