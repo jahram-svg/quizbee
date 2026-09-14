@@ -330,12 +330,26 @@ def list_users():
             ""
         ).strip().lower()
 
-        limit = int(
-            request.args.get(
-                "limit",
-                100
-            )
+    try:
+    limit = int(
+        request.args.get(
+            "limit",
+            100
         )
+    )
+    except (
+    TypeError,
+    ValueError
+):
+    limit = 100
+
+limit = max(
+    1,
+    min(
+        limit,
+        200
+    )
+)
 
         docs = list(
             db.collection(
@@ -501,6 +515,662 @@ def get_user(telegram_id):
         return jsonify({
             "success": False,
             "error": str(e)
+        }), 500
+
+
+# ============================================================
+# USER MANAGEMENT
+# ============================================================
+
+def create_admin_action(
+    admin,
+    action,
+    target_telegram_id,
+    reason="",
+    details=None
+):
+    """
+    Record an important Admin action.
+
+    This creates an audit trail for manual account
+    management actions such as balance adjustments
+    and blocking/unblocking users.
+    """
+
+    data = {
+        "admin_telegram_id":
+            str(admin["telegram_id"]),
+
+        "admin_username":
+            admin.get("username", ""),
+
+        "admin_first_name":
+            admin.get("first_name", ""),
+
+        "action":
+            str(action),
+
+        "target_telegram_id":
+            str(target_telegram_id),
+
+        "reason":
+            str(reason or "").strip(),
+
+        "details":
+            details or {},
+
+        "created_at":
+            now()
+    }
+
+    ref = (
+        db.collection(
+            "admin_actions"
+        ).document()
+    )
+
+    ref.set(data)
+
+    return ref.id
+
+
+def get_user_ref(telegram_id):
+    return (
+        db.collection("users")
+        .document(str(telegram_id))
+    )
+
+
+# ------------------------------------------------------------
+# ADJUST USER BALANCE
+# ------------------------------------------------------------
+
+@admin_bp.post(
+    "/users/<telegram_id>/adjust-balance"
+)
+def adjust_user_balance(telegram_id):
+
+    admin, error = require_admin()
+
+    if error:
+        return admin_error(error)
+
+    try:
+
+        telegram_id = str(
+            telegram_id
+        ).strip()
+
+        if not telegram_id:
+            return jsonify({
+                "success": False,
+                "error": "Telegram ID is required."
+            }), 400
+
+        body = (
+            request.get_json(
+                silent=True
+            )
+            or {}
+        )
+
+        balance_type = str(
+            body.get(
+                "balance_type",
+                ""
+            )
+        ).strip()
+
+        action = str(
+            body.get(
+                "action",
+                ""
+            )
+        ).strip().lower()
+
+        reason = str(
+            body.get(
+                "reason",
+                ""
+            )
+        ).strip()
+
+        raw_amount = body.get(
+            "amount"
+        )
+
+        # ----------------------------------------------------
+        # VALIDATION
+        # ----------------------------------------------------
+
+        if balance_type not in (
+            "points",
+            "prize_balance"
+        ):
+            return jsonify({
+                "success": False,
+                "error":
+                    "Invalid balance type."
+            }), 400
+
+        if action not in (
+            "add",
+            "deduct"
+        ):
+            return jsonify({
+                "success": False,
+                "error":
+                    "Action must be add or deduct."
+            }), 400
+
+        if not reason:
+            return jsonify({
+                "success": False,
+                "error":
+                    "A reason is required."
+            }), 400
+
+        try:
+            amount = float(
+                raw_amount
+            )
+        except (
+            TypeError,
+            ValueError
+        ):
+            return jsonify({
+                "success": False,
+                "error":
+                    "Invalid amount."
+            }), 400
+
+        if amount <= 0:
+            return jsonify({
+                "success": False,
+                "error":
+                    "Amount must be greater than zero."
+            }), 400
+
+        # Points must always be whole numbers.
+        if balance_type == "points":
+
+            if not amount.is_integer():
+                return jsonify({
+                    "success": False,
+                    "error":
+                        "Points must be a whole number."
+                }), 400
+
+            amount = int(amount)
+
+        else:
+            # Prize balance is kept to 2 decimals.
+            amount = round(
+                amount,
+                2
+            )
+
+        ref = get_user_ref(
+            telegram_id
+        )
+
+        snap = ref.get()
+
+        if not snap.exists:
+            return jsonify({
+                "success": False,
+                "error":
+                    "User not found."
+            }), 404
+
+        user = snap.to_dict() or {}
+
+        field = (
+            "quizbee_points"
+            if balance_type == "points"
+            else "prize_balance"
+        )
+
+        current_balance = float(
+            user.get(
+                field,
+                0
+            ) or 0
+        )
+
+        if action == "deduct":
+
+            if current_balance < amount:
+                return jsonify({
+                    "success": False,
+                    "error":
+                        "Insufficient balance for this deduction.",
+                    "current_balance":
+                        current_balance
+                }), 400
+
+            new_balance = (
+                current_balance
+                - amount
+            )
+
+            delta = -amount
+
+        else:
+
+            new_balance = (
+                current_balance
+                + amount
+            )
+
+            delta = amount
+
+        # ----------------------------------------------------
+        # UPDATE USER
+        # ----------------------------------------------------
+
+        ref.update({
+            field:
+                firestore.Increment(
+                    delta
+                ),
+
+            "updated_at":
+                now()
+        })
+
+        # ----------------------------------------------------
+        # TRANSACTION RECORD
+        # ----------------------------------------------------
+
+        currency = (
+            "quizbee_points"
+            if balance_type == "points"
+            else "usd"
+        )
+
+        transaction_type = (
+            "admin_points_adjustment"
+            if balance_type == "points"
+            else "admin_prize_balance_adjustment"
+        )
+
+        signed_amount = (
+            amount
+            if action == "add"
+            else -amount
+        )
+
+        tx_ref = (
+            db.collection(
+                "transactions"
+            ).document()
+        )
+
+        tx_ref.set({
+            "telegram_id":
+                telegram_id,
+
+            "type":
+                transaction_type,
+
+            "amount":
+                signed_amount,
+
+            "currency":
+                currency,
+
+            "balance_type":
+                balance_type,
+
+            "status":
+                "completed",
+
+            "provider":
+                "admin",
+
+            "description":
+                reason,
+
+            "admin_telegram_id":
+                str(
+                    admin["telegram_id"]
+                ),
+
+            "created_at":
+                now(),
+
+            "updated_at":
+                now()
+        })
+
+        # ----------------------------------------------------
+        # ADMIN AUDIT LOG
+        # ----------------------------------------------------
+
+        action_id = create_admin_action(
+            admin=admin,
+            action=(
+                "add_points"
+                if balance_type == "points"
+                and action == "add"
+                else
+                "deduct_points"
+                if balance_type == "points"
+                and action == "deduct"
+                else
+                "add_prize_balance"
+                if balance_type == "prize_balance"
+                and action == "add"
+                else
+                "deduct_prize_balance"
+            ),
+            target_telegram_id=
+                telegram_id,
+            reason=reason,
+            details={
+                "amount":
+                    amount,
+
+                "balance_type":
+                    balance_type,
+
+                "old_balance":
+                    current_balance,
+
+                "new_balance":
+                    new_balance,
+
+                "transaction_id":
+                    tx_ref.id
+            }
+        )
+
+        return jsonify({
+            "success": True,
+
+            "telegram_id":
+                telegram_id,
+
+            "balance_type":
+                balance_type,
+
+            "action":
+                action,
+
+            "amount":
+                amount,
+
+            "old_balance":
+                current_balance,
+
+            "new_balance":
+                new_balance,
+
+            "transaction_id":
+                tx_ref.id,
+
+            "admin_action_id":
+                action_id
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "success": False,
+            "error":
+                str(e)
+        }), 500
+
+
+# ------------------------------------------------------------
+# BLOCK / UNBLOCK USER
+# ------------------------------------------------------------
+
+@admin_bp.post(
+    "/users/<telegram_id>/block"
+)
+def block_user(telegram_id):
+
+    admin, error = require_admin()
+
+    if error:
+        return admin_error(error)
+
+    try:
+
+        telegram_id = str(
+            telegram_id
+        ).strip()
+
+        body = (
+            request.get_json(
+                silent=True
+            )
+            or {}
+        )
+
+        reason = str(
+            body.get(
+                "reason",
+                ""
+            )
+        ).strip()
+
+        if not reason:
+            return jsonify({
+                "success": False,
+                "error":
+                    "A reason is required."
+            }), 400
+
+        ref = get_user_ref(
+            telegram_id
+        )
+
+        snap = ref.get()
+
+        if not snap.exists:
+            return jsonify({
+                "success": False,
+                "error":
+                    "User not found."
+            }), 404
+
+        ref.update({
+            "blocked": True,
+
+            "blocked_at":
+                now(),
+
+            "blocked_by":
+                str(
+                    admin["telegram_id"]
+                ),
+
+            "blocked_reason":
+                reason,
+
+            "updated_at":
+                now()
+        })
+
+        action_id = create_admin_action(
+            admin=admin,
+            action="block_user",
+            target_telegram_id=
+                telegram_id,
+            reason=reason
+        )
+
+        return jsonify({
+            "success": True,
+            "telegram_id":
+                telegram_id,
+            "blocked":
+                True,
+            "admin_action_id":
+                action_id
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "success": False,
+            "error":
+                str(e)
+        }), 500
+
+
+@admin_bp.post(
+    "/users/<telegram_id>/unblock"
+)
+def unblock_user(telegram_id):
+
+    admin, error = require_admin()
+
+    if error:
+        return admin_error(error)
+
+    try:
+
+        telegram_id = str(
+            telegram_id
+        ).strip()
+
+        body = (
+            request.get_json(
+                silent=True
+            )
+            or {}
+        )
+
+        reason = str(
+            body.get(
+                "reason",
+                ""
+            )
+        ).strip()
+
+        if not reason:
+            return jsonify({
+                "success": False,
+                "error":
+                    "A reason is required."
+            }), 400
+
+        ref = get_user_ref(
+            telegram_id
+        )
+
+        snap = ref.get()
+
+        if not snap.exists:
+            return jsonify({
+                "success": False,
+                "error":
+                    "User not found."
+            }), 404
+
+        ref.update({
+            "blocked": False,
+
+            "unblocked_at":
+                now(),
+
+            "unblocked_by":
+                str(
+                    admin["telegram_id"]
+                ),
+
+            "unblocked_reason":
+                reason,
+
+            "updated_at":
+                now()
+        })
+
+        action_id = create_admin_action(
+            admin=admin,
+            action="unblock_user",
+            target_telegram_id=
+                telegram_id,
+            reason=reason
+        )
+
+        return jsonify({
+            "success": True,
+            "telegram_id":
+                telegram_id,
+            "blocked":
+                False,
+            "admin_action_id":
+                action_id
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "success": False,
+            "error":
+                str(e)
+        }), 500
+
+
+# ------------------------------------------------------------
+# ADMIN ACTION HISTORY FOR A USER
+# ------------------------------------------------------------
+
+@admin_bp.get(
+    "/users/<telegram_id>/admin-actions"
+)
+def user_admin_actions(telegram_id):
+
+    admin, error = require_admin()
+
+    if error:
+        return admin_error(error)
+
+    try:
+
+        docs = (
+            db.collection(
+                "admin_actions"
+            )
+            .where(
+                "target_telegram_id",
+                "==",
+                str(telegram_id)
+            )
+            .stream()
+        )
+
+        actions = [
+            serialize_doc(doc)
+            for doc in docs
+        ]
+
+        actions.sort(
+            key=lambda x:
+                x.get(
+                    "created_at",
+                    ""
+                ),
+            reverse=True
+        )
+
+        return jsonify({
+            "success": True,
+            "actions":
+                actions[:100]
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "success": False,
+            "error":
+                str(e)
         }), 500
 
 
