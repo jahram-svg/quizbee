@@ -55,6 +55,88 @@
         `;
     }
 
+    function renderAggregateSummary(
+    result,
+    finalStage = false
+) {
+    if (!result) {
+        return "";
+    }
+
+    const total = Number(
+        result.stage_total_entries || 0
+    );
+
+    const submitted = Number(
+        result.stage_submitted_count || 0
+    );
+
+    const advanced = Number(
+        result.stage_advanced_count || 0
+    );
+
+    const winners = Number(
+        result.stage_winner_count || 0
+    );
+
+    const failed = Number(
+        result.stage_failed_count ??
+        Math.max(
+            total -
+            (
+                finalStage
+                    ? winners
+                    : advanced
+            ),
+            0
+        )
+    );
+
+    if (!total) {
+        return "";
+    }
+
+    return `
+        <div class="competition-result-summary">
+
+            <div class="competition-result-summary-title">
+                📊 Stage Results
+            </div>
+
+            <div class="competition-result-row">
+                👥 Total participants:
+                <strong>${total}</strong>
+            </div>
+
+            <div class="competition-result-row">
+                📝 Answers submitted:
+                <strong>${submitted}</strong>
+            </div>
+
+            ${
+                finalStage
+                    ? `
+                        <div class="competition-result-row">
+                            🏆 People who won:
+                            <strong>${winners}</strong>
+                        </div>
+                    `
+                    : `
+                        <div class="competition-result-row">
+                            🎉 People who advanced:
+                            <strong>${advanced}</strong>
+                        </div>
+                    `
+            }
+
+            <div class="competition-result-row">
+                ❌ People who failed:
+                <strong>${failed}</strong>
+            </div>
+
+        </div>
+    `;
+                                                     }
     function renderStatus(data) {
         stopTimer();
         selected = null;
