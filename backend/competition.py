@@ -671,49 +671,127 @@ def result_payload(
     result: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
-    normalize a stored result for the frontend.
+    Normalize a stored player result for the frontend.
 
-    this is deliberately game-independent.
+    Includes the player's personal result plus aggregate
+    statistics for the concluded stage.
+
+    No other player's Telegram ID or personal information
+    is exposed through this payload.
     """
 
     return {
+        # ----------------------------------------------------
+        # BASIC RESULT INFORMATION
+        # ----------------------------------------------------
         "round_id": result.get("round_id"),
         "game_id": result.get("game_id"),
-        "stage_no": to_int(result.get("stage_no"), 1),
+        "stage_no": to_int(
+            result.get("stage_no"),
+            1,
+        ),
+
+        # ----------------------------------------------------
+        # PLAYER'S PERSONAL RESULT
+        # ----------------------------------------------------
         "outcome": result.get("outcome"),
-        "passed": bool(result.get("passed", False)),
-        "advanced": bool(result.get("advanced", False)),
-        "winner": bool(result.get("winner", False)),
-        "eliminated": bool(result.get("eliminated", False)),
-        "final": bool(result.get("final", False)),
-        "message": result.get("message", ""),
-        "correct_answer": result.get("correct_answer"),
-        "submitted_answer": result.get("submitted_answer"),
-        "amount_usd": to_number(
-            result.get("amount_usd"),
-            0,
+
+        "passed": bool(
+            result.get("passed", False)
         ),
-        "settled_at": iso(result.get("settled_at")),
-        "next_stage": result.get("next_stage"),
+
+        "advanced": bool(
+            result.get("advanced", False)
+        ),
+
+        "winner": bool(
+            result.get("winner", False)
+        ),
+
+        "eliminated": bool(
+            result.get("eliminated", False)
+        ),
+
+        "final": bool(
+            result.get("final", False)
+        ),
+
+        "message": result.get(
+            "message",
+            "",
+        ),
+
+        # ----------------------------------------------------
+        # ANSWER INFORMATION
+        # ----------------------------------------------------
+        "correct_answer": result.get(
+            "correct_answer"
+        ),
+
+        "submitted_answer": result.get(
+            "submitted_answer"
+        ),
+
+        # ----------------------------------------------------
+        # STAGE AGGREGATE RESULTS
+        #
+        # These are safe for the normal user Mini App.
+        # They contain counts only — never other players'
+        # Telegram IDs, usernames, or contact information.
+        # ----------------------------------------------------
         "stage_total_entries": to_int(
-            result.get("stage_total_entries"),
+            result.get(
+                "stage_total_entries"
+            ),
             0,
         ),
+
         "stage_submitted_count": to_int(
-            result.get("stage_submitted_count"),
+            result.get(
+                "stage_submitted_count"
+            ),
             0,
         ),
+
         "stage_advanced_count": to_int(
-            result.get("stage_advanced_count"),
+            result.get(
+                "stage_advanced_count"
+            ),
             0,
         ),
+
         "stage_winner_count": to_int(
-            result.get("stage_winner_count"),
+            result.get(
+                "stage_winner_count"
+            ),
             0,
         ),
+
         "stage_failed_count": to_int(
-            result.get("stage_failed_count"),
+            result.get(
+                "stage_failed_count"
+            ),
             0,
+        ),
+
+        # ----------------------------------------------------
+        # PRIZE INFORMATION
+        # ----------------------------------------------------
+        "amount_usd": to_number(
+            result.get(
+                "amount_usd"
+            ),
+            0,
+        ),
+
+        "settled_at": iso(
+            result.get(
+                "settled_at"
+            )
+        ),
+
+        "next_stage": result.get(
+            "next_stage"
         ),
     }
 
