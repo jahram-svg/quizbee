@@ -3087,6 +3087,30 @@ document.addEventListener(
 
         boot();
 
+        const search =
+            document.getElementById(
+                "userSearch"
+            );
+
+        if (search) {
+
+            search.addEventListener(
+                "keydown",
+                event => {
+
+                    if (
+                        event.key === "Enter"
+                    ) {
+
+                        loadUsers();
+
+                    }
+
+                }
+            );
+
+        }
+
     }
 );
 
