@@ -253,17 +253,61 @@ def get_init_data() -> str:
 
 
 def require_user():
+
     init_data = get_init_data()
 
     if not init_data:
-        raise ValueError("Telegram authentication data is missing.")
+        raise ValueError(
+            "Telegram authentication data is missing."
+        )
 
-    user_data = validate_telegram_init_data(init_data)
+    user_data = (
+        validate_telegram_init_data(
+            init_data
+        )
+    )
 
     if not user_data:
-        raise ValueError("Invalid Telegram authentication.")
+        raise ValueError(
+            "Invalid Telegram authentication."
+        )
 
-    return user_data
+    telegram_id = str(
+        user_data["id"]
+    )
+
+    try:
+
+        snap = (
+            db.collection("users")
+            .document(
+                telegram_id
+            )
+            .get()
+        )
+
+        if snap.exists:
+
+            data = snap.to_dict() or {}
+
+            if data.get(
+                "blocked",
+                False
+            ):
+                raise ValueError(
+                    "Your QuizBee account is blocked."
+                )
+
+    except ValueError:
+        raise
+
+    except Exception:
+
+        raise ValueError(
+            "Unable to verify account status."
+        )
+
+    return user_data 
 
 
 def user_route(fn):
