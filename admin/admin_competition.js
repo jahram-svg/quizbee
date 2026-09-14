@@ -2384,109 +2384,62 @@ ${h(stage.title || "Untitled")}
      */
 
     function renderParticipants(entries, round = {}) {
-        const rows = Array.isArray(entries) ? entries : [];
+    const rows = Array.isArray(entries) ? entries : [];
+    const limited = rows.slice(0, 100);
 
-        // After a stage/round is concluded, show only aggregate
-        // information. Do not expose Telegram IDs/user contact data.
-        const concluded =
-            round.status === "closed" ||
-            round.status === "settled";
+    return `
+        <div class="panel">
+            <div class="panel-header">
+                <h2>
+                    Participants (${rows.length})
+                </h2>
+            </div>
 
-        if (concluded) {
-            const advanced = rows.filter(
-                entry => entry.passed === true && entry.eliminated !== true
-            ).length;
+            ${
+                limited.length
+                    ? limited.map(entry => `
+                        <div class="competition-participant">
+                            <div>
+                                <strong>
+                                    ${h(
+                                        entry.telegram_id ||
+                                        entry.user_id ||
+                                        "Unknown"
+                                    )}
+                                </strong>
 
-            const eliminated = rows.filter(
-                entry => entry.eliminated === true
-            ).length;
-
-            const submitted = rows.filter(
-                entry => entry.status === "submitted"
-            ).length;
-
-            return `
-                <div class="panel">
-                    <div class="panel-header">
-                        <h2>Stage Participation Summary</h2>
-                    </div>
-
-                    <div class="competition-meta">
-                        <div class="competition-meta-box">
-                            <small>Total Entries</small>
-                            <strong>${rows.length}</strong>
-                        </div>
-
-                        <div class="competition-meta-box">
-                            <small>Submitted</small>
-                            <strong>${submitted}</strong>
-                        </div>
-
-                        <div class="competition-meta-box">
-                            <small>Advanced</small>
-                            <strong>${advanced}</strong>
-                        </div>
-
-                        <div class="competition-meta-box">
-                            <small>Eliminated</small>
-                            <strong>${eliminated}</strong>
-                        </div>
-                    </div>
-
-                    <div class="competition-success">
-                        🔒 Individual Telegram IDs and contact details are hidden
-                        after conclusion. Only totals are shown.
-                    </div>
-                </div>
-            `;
-        }
-
-        const limited = rows.slice(0, 100);
-
-        return `
-            <div class="panel">
-                <div class="panel-header">
-                    <h2>
-                        Participants (${rows.length})
-                    </h2>
-                </div>
-
-                ${
-                    limited.length
-                        ? limited.map(entry => `
-                            <div class="competition-participant">
-                                <div>
-                                    <strong>
-                                        ${h(
-                                            entry.telegram_id ||
-                                            entry.user_id ||
-                                            "Unknown"
-                                        )}
-                                    </strong>
-
-                                    <div style="opacity:.65;font-size:12px;">
-                                        Stage ${Number(entry.stage_no || 1)}
-                                        · ${h(entry.status || "unknown")}
-                                    </div>
-                                </div>
-
-                                <div style="text-align:right;">
+                                <div style="opacity:.65;font-size:12px;">
+                                    Stage ${Number(entry.stage_no || 1)}
+                                    · ${h(entry.status || "unknown")}
                                     ${
-                                        entry.answer
-                                            ? h(entry.answer)
-                                            : "-"
+                                        entry.passed === true
+                                            ? " · Advanced"
+                                            : entry.eliminated === true
+                                                ? " · Eliminated"
+                                                : ""
                                     }
                                 </div>
                             </div>
-                        `).join("")
-                        : `
-                            <div class="competition-empty">
-                                No participants yet.
+
+                            <div style="text-align:right;">
+                                ${
+                                    entry.answer !== undefined &&
+                                    entry.answer !== null &&
+                                    entry.answer !== ""
+                                        ? h(String(entry.answer))
+                                        : "-"
+                                }
                             </div>
-                        `
-                }
-            </div>
-        `;
+                        </div>
+                    `).join("")
+                    : `
+                        <div class="competition-empty">
+                            No participants yet.
+                        </div>
+                    `
+            }
+        </div>
+    `;
     }
 
     /*
