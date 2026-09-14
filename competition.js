@@ -210,6 +210,7 @@
                         `
                         : ""
                 }
+                ${renderAggregateSummary(result, true)}
             `);
             return;
         }
@@ -249,6 +250,7 @@
                         `
                         : ""
                 }
+                ${renderAggregateSummary(result, false)}
 
                 <p>
                     Return when the next stage is live and pay
@@ -292,6 +294,10 @@
                         `
                         : ""
                 }
+                ${renderAggregateSummary(
+    result,
+    Boolean(result.final)
+)}
 
                 <p>
                     You cannot re-enter this round.
@@ -339,6 +345,7 @@
                             ${Number(previous.stage_no || 1)}!
                         </strong>
                     </div>
+                    ${renderAggregateSummary(previous, false)}
 
                     <div class="info-box">
                         ⏳ <strong>
