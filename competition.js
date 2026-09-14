@@ -686,7 +686,7 @@
             );
 
         buttons.forEach(
-            X => x.disabled = true
+            x => x.disabled = true
         );
 
         try {
@@ -722,7 +722,7 @@
             );
 
             buttons.forEach(
-                X => x.disabled = false
+                x => x.disabled = false
             );
         }
     }
@@ -772,10 +772,10 @@
 
         if (
             !Number.isInteger(n) ||
-            N < Number(
+            n < Number(
                 stage.min_number ?? 1
             ) ||
-            N > Number(
+            n > Number(
                 stage.max_number ?? 20
             )
         ) {
