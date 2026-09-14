@@ -1340,10 +1340,39 @@ def settle_stage(
             stage,
         )
 
-    winner_ids = {
+        winner_ids = {
         str(entry.get("telegram_id"))
         for entry in winners
     }
+
+    # --------------------------------------------------------
+    # STAGE RESULT SUMMARY
+    # --------------------------------------------------------
+
+    stage_total_entries = len(entries)
+
+    stage_submitted_count = sum(
+        1
+        for entry in entries
+        if entry.get("status") == "submitted"
+    )
+
+    stage_advanced_count = (
+        len(winners)
+        if stage_no < total_stages
+        else 0
+    )
+
+    stage_winner_count = (
+        len(winners)
+        if stage_no == total_stages
+        else 0
+    )
+
+    stage_failed_count = max(
+        stage_total_entries - len(winners),
+        0,
+    )
 
     # --------------------------------------------------------
     # IMPORTANT:
@@ -1464,7 +1493,12 @@ def settle_stage(
             correct_answer=correct_answer,
             extra={
                 "dead_numbers": dead_numbers,
-            },
+                "stage_total_entries": stage_total_entries,
+                "stage_submitted_count": stage_submitted_count,
+                "stage_advanced_count": stage_advanced_count,
+                "stage_winner_count": stage_winner_count,
+                "stage_failed_count": stage_failed_count,
+             },
         )
 
         result_count += 1
