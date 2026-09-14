@@ -695,6 +695,26 @@ def result_payload(
         ),
         "settled_at": iso(result.get("settled_at")),
         "next_stage": result.get("next_stage"),
+        "stage_total_entries": to_int(
+            result.get("stage_total_entries"),
+            0,
+        ),
+        "stage_submitted_count": to_int(
+            result.get("stage_submitted_count"),
+            0,
+        ),
+        "stage_advanced_count": to_int(
+            result.get("stage_advanced_count"),
+            0,
+        ),
+        "stage_winner_count": to_int(
+            result.get("stage_winner_count"),
+            0,
+        ),
+        "stage_failed_count": to_int(
+            result.get("stage_failed_count"),
+            0,
+        ),
     }
 
 
