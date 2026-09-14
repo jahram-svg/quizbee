@@ -79,76 +79,216 @@
                 <div class="info-box">
                     No round is currently available.
                 </div>
-
-                <button
-                    class="secondary-btn full"
-                    onclick="competitionRefresh()">
+                <button class="secondary-btn full" onclick="competitionRefresh()">
                     REFRESH
                 </button>
             `);
+            return;
+        }
 
+        if (data.status === "winner") {
+            const result = data.result || {};
+
+            renderShell(gameName(game), `
+                <div class="info-box">
+                    🏆 <strong>Congratulations! You won!</strong>
+                </div>
+
+                <p>
+                    ${escapeHtml(
+                        result.message ||
+                        "You survived the competition and are a winner."
+                    )}
+                </p>
+
+                ${
+                    Number(result.amount_usd || 0) > 0
+                        ? `
+                            <div class="info-box">
+                                💰 Prize won:
+                                <strong>
+                                    $${Number(result.amount_usd).toFixed(2)}
+                                </strong>
+                            </div>
+                        `
+                        : ""
+                }
+
+                ${
+                    result.correct_answer !== null &&
+                    result.correct_answer !== undefined &&
+                    result.correct_answer !== ""
+                        ? `
+                            <div class="info-box">
+                                Correct answer:
+                                <strong>
+                                    ${escapeHtml(String(result.correct_answer))}
+                                </strong>
+                            </div>
+                        `
+                        : ""
+                }
+            `);
+            return;
+        }
+
+        if (data.status === "advanced") {
+            const result = data.result || {};
+            const nextStage = Number(result.next_stage || 0);
+
+            renderShell(gameName(game), `
+                <div class="info-box">
+                    🎉 <strong>
+                        You passed Stage ${Number(result.stage_no || 1)}!
+                    </strong>
+                </div>
+
+                <div class="info-box">
+                    ➡️ <strong>
+                        You advanced ${
+                            nextStage
+                                ? `to Stage ${nextStage}`
+                                : "to the next stage"
+                        }.
+                    </strong>
+                </div>
+
+                ${
+                    result.correct_answer !== null &&
+                    result.correct_answer !== undefined &&
+                    result.correct_answer !== ""
+                        ? `
+                            <div class="info-box">
+                                Correct answer:
+                                <strong>
+                                    ${escapeHtml(String(result.correct_answer))}
+                                </strong>
+                            </div>
+                        `
+                        : ""
+                }
+
+                <p>
+                    Return when the next stage is live and pay
+                    its entry fee to continue.
+                </p>
+
+                <button class="secondary-btn full" onclick="competitionRefresh()">
+                    CHECK NEXT STAGE
+                </button>
+            `);
+            return;
+        }
+
+        if (data.status === "eliminated") {
+            const result = data.result || {};
+
+            renderShell(gameName(game), `
+                <div class="info-box">
+                    ❌ <strong>You have been eliminated.</strong>
+                </div>
+
+                <p>
+                    ${escapeHtml(
+                        result.message ||
+                        data.message ||
+                        "You did not pass this stage."
+                    )}
+                </p>
+
+                ${
+                    result.correct_answer !== null &&
+                    result.correct_answer !== undefined &&
+                    result.correct_answer !== ""
+                        ? `
+                            <div class="info-box">
+                                Correct answer:
+                                <strong>
+                                    ${escapeHtml(String(result.correct_answer))}
+                                </strong>
+                            </div>
+                        `
+                        : ""
+                }
+
+                <p>
+                    You cannot re-enter this round.
+                    Wait for a fresh competition round.
+                </p>
+            `);
             return;
         }
 
         if (data.status === "finished") {
             renderShell(gameName(game), `
                 <div class="info-box">
-                    🏁 This round has finished.
+                    🏁 <strong>This competition has finished.</strong>
                 </div>
 
                 <p>
-                    ${Number(round.winner_count || 0)}
-                    winner(s) were recorded.
+                    Final winners:
+                    <strong>${Number(round.winner_count || 0)}</strong>
                 </p>
 
-                <button
-                    class="secondary-btn full"
-                    onclick="competitionRefresh()">
-                    REFRESH
-                </button>
+                ${
+                    Number(round.prize_pool_usd || 0) > 0
+                        ? `
+                            <p>
+                                Prize pool:
+                                <strong>
+                                    $${Number(round.prize_pool_usd).toFixed(2)}
+                                </strong>
+                            </p>
+                        `
+                        : ""
+                }
             `);
-
-            return;
-        }
-
-        if (data.status === "eliminated") {
-            renderShell(gameName(game), `
-                <div class="info-box">
-                    ❌
-                    ${escapeHtml(
-                        data.message ||
-                        "You are out of this round."
-                    )}
-                </div>
-
-                <p>
-                    You cannot re-enter this round.
-                    Wait for a fresh round to start.
-                </p>
-            `);
-
             return;
         }
 
         if (data.status === "round_not_started") {
-            renderShell(gameName(game), `
-                <div class="info-box">
-                    ⏳
-                    <strong>Round not started yet.</strong>
-                </div>
+            const previous = data.previous_result || null;
 
-                <p>
-                    The next stage is prepared by QuizBee Admin.
-                    Check again when the next round is started.
-                </p>
+            if (previous && previous.advanced) {
+                renderShell(gameName(game), `
+                    <div class="info-box">
+                        🎉 <strong>
+                            You advanced from Stage
+                            ${Number(previous.stage_no || 1)}!
+                        </strong>
+                    </div>
 
-                <button
-                    class="secondary-btn full"
-                    onclick="competitionRefresh()">
-                    CHECK AGAIN
-                </button>
-            `);
+                    <div class="info-box">
+                        ⏳ <strong>
+                            Stage ${Number(round.current_stage || 2)}
+                            has not started yet.
+                        </strong>
+                    </div>
 
+                    <p>
+                        QuizBee Admin is preparing the next stage.
+                        Come back when it goes live.
+                    </p>
+
+                    <button class="secondary-btn full" onclick="competitionRefresh()">
+                        CHECK AGAIN
+                    </button>
+                `);
+            } else {
+                renderShell(gameName(game), `
+                    <div class="info-box">
+                        ⏳ <strong>Round not started yet.</strong>
+                    </div>
+
+                    <p>
+                        The next stage is being prepared by QuizBee Admin.
+                    </p>
+
+                    <button class="secondary-btn full" onclick="competitionRefresh()">
+                        CHECK AGAIN
+                    </button>
+                `);
+            }
             return;
         }
 
@@ -161,49 +301,26 @@
                 }
 
                 <div class="info-box">
-                    Day/Stage
-                    <strong>
-                        ${Number(
-                            stage.stage_no ||
-                            round.current_stage ||
-                            1
-                        )}
-                    </strong>
+                    Stage
+                    <strong>${Number(stage.stage_no || round.current_stage || 1)}</strong>
                     <br>
-
                     Entry:
-                    <strong>
-                        ${fee} QuizBee Points
-                    </strong>
-
+                    <strong>${fee} QuizBee Points</strong>
                     ${
                         Number(stage.stage_no || 1) === 7
-                            ? `
-                                <br>
-                                <strong>
-                                    Final stage fee:
-                                    ${fee} points
-                                </strong>
-                              `
+                            ? `<br><strong>Final stage fee: ${fee} points</strong>`
                             : ""
                     }
                 </div>
 
                 ${
                     stage.end_at
-                        ? `
-                            <div
-                                class="competition-timer"
-                                id="competitionTimer">
-                            </div>
-                          `
+                        ? `<div class="competition-timer" id="competitionTimer"></div>`
                         : ""
                 }
 
-                <button
-                    class="primary-btn full"
-                    onclick="competitionEnter()">
-                    ENTER — ${fee} POINTS
+                <button class="primary-btn full" onclick="competitionEnter()">
+                    ENTER - ${fee} POINTS
                 </button>
             `);
 
@@ -214,20 +331,17 @@
         if (data.status === "submitted") {
             renderShell(gameName(game), `
                 <div class="info-box">
-                    🔒
-                    <strong>Answer locked.</strong>
+                    🔒 <strong>Answer locked.</strong>
                 </div>
 
                 <p>
                     ${escapeHtml(
                         data.message ||
-                        "Your answer has been recorded. Wait for the stage to finish."
+                        "Your answer has been recorded. Wait for the stage to conclude."
                     )}
                 </p>
 
-                <button
-                    class="secondary-btn full"
-                    onclick="competitionRefresh()">
+                <button class="secondary-btn full" onclick="competitionRefresh()">
                     REFRESH STATUS
                 </button>
             `);
@@ -241,14 +355,12 @@
             return;
         }
 
-        renderShell(gameName(game), `
-            <div class="info-box">
-                ${escapeHtml(
-                    data.message ||
-                    "Unable to load this round."
-                )}
-            </div>
-        `);
+        renderShell(
+            gameName(game),
+            `<div class="info-box">${escapeHtml(
+                data.message || "Unable to load this round."
+            )}</div>`
+        );
     }
 
     function startTimer(endAt) {
@@ -267,7 +379,7 @@
 
             if (el) {
                 el.textContent =
-                    `⏱ Time remaining: ${formatTime(remaining)}`;
+                    ` Time remaining: ${formatTime(remaining)}`;
             }
 
             if (remaining <= 0) {
@@ -311,7 +423,7 @@
 
         let body = `
             <div class="info-box">
-                Stage
+                stage
                 <strong>${stageNo}</strong>
                 · Entry
                 <strong>${fee} points</strong>
@@ -321,7 +433,7 @@
                 stage.clue
                     ? `
                         <div class="info-box">
-                            💡
+
                             <strong>Clue:</strong>
                             ${escapeHtml(stage.clue)}
                         </div>
@@ -348,7 +460,7 @@
                     id="competitionAnswer"
                     class="number-input"
                     type="text"
-                    placeholder="Your answer..."
+                    placeholder="Your answer…"
                     autocomplete="off"
                 >
 
@@ -374,7 +486,7 @@
 
             body += `
                 <div class="info-box">
-                    Choose one number from
+                    choose one number from
                     <strong>${min}</strong>
                     to
                     <strong>${max}</strong>.
@@ -453,7 +565,7 @@
             box.innerHTML = `
                 <div class="game-detail-card">
                     <div class="info-box">
-                        Loading round...
+                        loading round…
                     </div>
                 </div>
             `;
@@ -551,7 +663,7 @@
             showToast(
                 data.already_entered
                     ? "You already paid for this stage."
-                    : "Entry successful! 🎉"
+                    : "Entry successful! "
             );
 
             await competitionRefresh();
@@ -574,7 +686,7 @@
             );
 
         buttons.forEach(
-            x => x.disabled = true
+            X => x.disabled = true
         );
 
         try {
@@ -610,7 +722,7 @@
             );
 
             buttons.forEach(
-                x => x.disabled = false
+                X => x.disabled = false
             );
         }
     }
@@ -660,10 +772,10 @@
 
         if (
             !Number.isInteger(n) ||
-            n < Number(
+            N < Number(
                 stage.min_number ?? 1
             ) ||
-            n > Number(
+            N > Number(
                 stage.max_number ?? 20
             )
         ) {
