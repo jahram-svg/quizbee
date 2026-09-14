@@ -1,7 +1,7 @@
 """
-QuizBee Competition Engine
+quizBee Competition Engine
 
-Six competition games:
+six competition games:
 1. Guess It
 2. Impossible Question
 3. The Crowd Trap
@@ -9,7 +9,7 @@ Six competition games:
 5. Dead Number
 6. Impossible Choice
 
-Important architecture rules:
+important architecture rules:
 - Users only see the currently live stage.
 - Future stages remain private.
 - Stage entry is paid separately.
@@ -52,7 +52,7 @@ GAME_DEFINITIONS = {
     "guess_it": {
         "id": "guess_it",
         "name": "Guess It",
-        "emoji": "🎯",
+        "emoji": "",
         "description": "A 7-stage survival challenge.",
         "active": True,
         "staged": True,
@@ -61,7 +61,7 @@ GAME_DEFINITIONS = {
     "impossible_question": {
         "id": "impossible_question",
         "name": "Impossible Question",
-        "emoji": "💀",
+        "emoji": "",
         "description": "One difficult question. One answer. No retry.",
         "active": True,
         "staged": False,
@@ -70,7 +70,7 @@ GAME_DEFINITIONS = {
     "crowd_trap": {
         "id": "crowd_trap",
         "name": "The Crowd Trap",
-        "emoji": "🧠",
+        "emoji": "",
         "description": "Choose a number nobody else chooses.",
         "active": False,
         "staged": False,
@@ -79,7 +79,7 @@ GAME_DEFINITIONS = {
     "survivor": {
         "id": "survivor",
         "name": "The Survivor",
-        "emoji": "🏆",
+        "emoji": "",
         "description": "Choose the safe option and survive.",
         "active": False,
         "staged": True,
@@ -88,7 +88,7 @@ GAME_DEFINITIONS = {
     "dead_number": {
         "id": "dead_number",
         "name": "Dead Number",
-        "emoji": "☠️",
+        "emoji": "️",
         "description": "Avoid the dead numbers.",
         "active": False,
         "staged": True,
@@ -97,7 +97,7 @@ GAME_DEFINITIONS = {
     "impossible_choice": {
         "id": "impossible_choice",
         "name": "Impossible Choice",
-        "emoji": "🤔",
+        "emoji": "",
         "description": "Predict the crowd.",
         "active": False,
         "staged": False,
@@ -213,7 +213,7 @@ def unique_list(values: Any) -> List[str]:
 
 def public_user(user: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Return only wallet information that the frontend needs.
+    return only wallet information that the frontend needs.
     """
 
     return {
@@ -610,9 +610,9 @@ def public_stage_data(
     stage: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
-    Never expose secret answers before the stage is concluded.
+    never expose secret answers before the stage is concluded.
 
-    Secret fields remain server-side.
+    secret fields remain server-side.
     """
 
     game_id = round_data.get("game_id")
@@ -671,9 +671,9 @@ def result_payload(
     result: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
-    Normalize a stored result for the frontend.
+    normalize a stored result for the frontend.
 
-    This is deliberately game-independent.
+    this is deliberately game-independent.
     """
 
     return {
@@ -1214,25 +1214,25 @@ def result_message(
 
     if winner:
         return (
-            "🏆 Congratulations! You are one of the "
+            " Congratulations! You are one of the "
             "winners of this competition."
         )
 
     if final and passed:
         return (
-            "🎉 Congratulations! You survived the final "
+            " Congratulations! You survived the final "
             "stage and are among the winners."
         )
 
     if passed and next_stage:
         return (
-            f"🎉 Congratulations! You passed Stage {stage_no}. "
+            f" Congratulations! You passed Stage {stage_no}. "
             f"You have advanced to Stage {next_stage}."
         )
 
     if passed:
         return (
-            f"🎉 Congratulations! You passed Stage {stage_no}."
+            f" Congratulations! You passed Stage {stage_no}."
         )
 
     if extra_message:
@@ -1386,7 +1386,7 @@ def settle_stage(
             outcome = "failed"
 
             message = (
-                f"⏰ You did not submit an answer before "
+                f" You did not submit an answer before "
                 f"Stage {stage_no} ended. You are out of this round."
             )
 
@@ -1515,6 +1515,11 @@ def settle_stage(
             "status": "closed",
             "closed_at": firestore.SERVER_TIMESTAMP,
             "winner_count": len(winners),
+            "advanced_count": (
+                len(winners)
+                if stage_no < total_stages
+                else 0
+            ),
             "dead_numbers": dead_numbers,
             "updated_at": firestore.SERVER_TIMESTAMP,
         },
@@ -1552,6 +1557,11 @@ def settle_stage(
 
     return {
         "winner_count": len(winners),
+        "advanced_count": (
+            len(winners)
+            if stage_no < total_stages
+            else 0
+        ),
         "result_count": result_count,
         "prize": prize_info,
         "dead_numbers": dead_numbers,
@@ -1718,7 +1728,10 @@ def competition_state(user, game_id):
 
         # If player advanced, don't hide the advancement behind
         # the next-stage state.
-        if stored_result.get("advanced"):
+        if (
+            stored_result.get("advanced")
+            and result_stage == current_stage_no
+        ):
             return jsonify({
                 "success": True,
                 "status": "advanced",
@@ -1894,6 +1907,20 @@ def competition_state(user, game_id):
             and now_utc() < start_at
         )
     ):
+        previous_result = None
+
+        if (
+            stored_result
+            and stored_result.get("advanced")
+            and to_int(
+                stored_result.get("stage_no"),
+                1,
+            ) < current_stage_no
+        ):
+            previous_result = result_payload(
+                stored_result
+            )
+
         return jsonify({
             "success": True,
             "status": "round_not_started",
@@ -1909,6 +1936,7 @@ def competition_state(user, game_id):
                 round_data,
                 stage,
             ),
+            "previous_result": previous_result,
             "user": public_user(
                 get_user_by_telegram_id(telegram_id)
             ),
@@ -2121,6 +2149,45 @@ def competition_enter(user, game_id):
         round_data.get("current_stage"),
         1,
     )
+
+    # A player eliminated in an earlier stage cannot buy their
+    # way into a later stage of the same staged round.
+    if game_id in STAGED_GAMES and stage_no > 1:
+        previous_result = get_result(
+            round_id,
+            telegram_id,
+        )
+
+        if (
+            previous_result
+            and to_int(
+                previous_result.get("stage_no"),
+                1,
+            ) < stage_no
+            and previous_result.get("eliminated")
+        ):
+            return jsonify({
+                "success": False,
+                "error": (
+                    "You were eliminated in an earlier stage "
+                    "and cannot enter this stage."
+                ),
+            }), 400
+
+        if (
+            previous_result
+            and to_int(
+                previous_result.get("stage_no"),
+                1,
+            ) < stage_no
+            and not previous_result.get("advanced")
+        ):
+            return jsonify({
+                "success": False,
+                "error": (
+                    "You did not advance from the previous stage."
+                ),
+            }), 400
 
     stage = get_stage(
         round_id,
@@ -4532,7 +4599,7 @@ def admin_advance_compat(
     round_id,
 ):
     """
-    Compatibility alias for older admin frontend code.
+    compatibility alias for older admin frontend code.
     """
 
     return admin_next_stage(
