@@ -2383,10 +2383,7 @@ ${h(stage.title || "Untitled")}
      * ------------------------------------------------------------
      */
 
-    function renderParticipants(
-    entries,
-    round = {}
-) {
+    function renderParticipants(entries, round = {}) {
     const rows = Array.isArray(entries)
         ? entries
         : [];
@@ -2398,89 +2395,145 @@ ${h(stage.title || "Untitled")}
 
             <div class="panel-header">
                 <h2>
-                    Participants (${rows.length})
+                    👥 Participants (${rows.length})
                 </h2>
             </div>
 
             ${
                 limited.length
-                    ? limited.map(entry => `
-                        <div class="competition-participant">
+                    ? limited.map(entry => {
 
-                            <div>
-                                <strong>
-                                    ${h(
-                                        entry.telegram_id ||
-                                        entry.user_id ||
-                                        "Unknown"
-                                    )}
-                                </strong>
+                        const status =
+                            entry.status ||
+                            entry.result ||
+                            "unknown";
+
+                        const passed =
+                            entry.passed === true;
+
+                        const eliminated =
+                            entry.eliminated === true;
+
+                        const winner =
+                            entry.winner === true ||
+                            status === "winner";
+
+                        const answer =
+                            entry.answer !== undefined &&
+                            entry.answer !== null &&
+                            entry.answer !== ""
+                                ? String(entry.answer)
+                                : "-";
+
+                        const correctAnswer =
+                            entry.correct_answer !== undefined &&
+                            entry.correct_answer !== null &&
+                            entry.correct_answer !== ""
+                                ? String(entry.correct_answer)
+                                : "-";
+
+                        let resultLabel =
+                            "Pending";
+
+                        if (winner) {
+                            resultLabel =
+                                "🏆 Winner";
+                        } else if (passed) {
+                            resultLabel =
+                                "🎉 Advanced";
+                        } else if (eliminated) {
+                            resultLabel =
+                                "❌ Eliminated";
+                        }
+
+                        return `
+                            <div class="competition-participant">
+
+                                <div>
+
+                                    <strong>
+                                        ${h(
+                                            entry.telegram_id ||
+                                            entry.user_id ||
+                                            "Unknown"
+                                        )}
+                                    </strong>
+
+                                    <div
+                                        style="
+                                            opacity:.7;
+                                            font-size:12px;
+                                            margin-top:4px;
+                                        "
+                                    >
+                                        Stage
+                                        ${Number(
+                                            entry.stage_no || 1
+                                        )}
+
+                                        ·
+
+                                        ${h(
+                                            status
+                                        )}
+
+                                        ·
+
+                                        ${resultLabel}
+                                    </div>
+
+                                </div>
 
                                 <div
                                     style="
-                                        opacity:.65;
-                                        font-size:12px;
-                                        margin-top:4px;
+                                        text-align:right;
+                                        font-size:13px;
                                     "
                                 >
-                                    Stage
-                                    ${Number(
-                                        entry.stage_no || 1
-                                    )}
 
-                                    ·
+                                    <div>
+                                        <strong>
+                                            Answer:
+                                        </strong>
 
-                                    ${h(
-                                        entry.status ||
-                                        "unknown"
-                                    )}
+                                        ${h(answer)}
+                                    </div>
 
-                                    ${
-                                        entry.passed === true
-                                            ? " · Advanced"
-                                            : entry.eliminated === true
-                                                ? " · Eliminated"
-                                                : ""
-                                    }
+                                    <div
+                                        style="
+                                            opacity:.7;
+                                            margin-top:3px;
+                                        "
+                                    >
+                                        Correct:
+                                        ${h(
+                                            correctAnswer
+                                        )}
+                                    </div>
 
-                                    ${
-                                        entry.result
-                                            ? ` · ${h(
-                                                entry.result
-                                            )}`
-                                            : ""
-                                    }
                                 </div>
+
                             </div>
-
-                            <div
-                                style="
-                                    text-align:right;
-                                    max-width:45%;
-                                    word-break:break-word;
-                                "
-                            >
-                                ${
-                                    entry.answer !== undefined &&
-                                    entry.answer !== null &&
-                                    entry.answer !== ""
-                                        ? h(
-                                            String(
-                                                entry.answer
-                                            )
-                                        )
-                                        : "-"
-                                }
-                            </div>
-
-                        </div>
-                    `).join("")
-
+                        `;
+                    }).join("")
                     : `
                         <div class="competition-empty">
                             No participants yet.
                         </div>
                     `
+            }
+
+            ${
+                rows.length > 100
+                    ? `
+                        <div
+                            class="competition-empty"
+                            style="margin-top:10px;"
+                        >
+                            Showing first 100 participants.
+                        </div>
+                    `
+                    : ""
             }
 
         </div>
@@ -2498,19 +2551,18 @@ ${h(stage.title || "Untitled")}
         ? results
         : [];
 
+    const limited = rows.slice(0, 100);
+
     const advanced = rows.filter(
-        result =>
-            result.advanced === true
+        result => result.advanced === true
     ).length;
 
     const eliminated = rows.filter(
-        result =>
-            result.eliminated === true
+        result => result.eliminated === true
     ).length;
 
     const winners = rows.filter(
-        result =>
-            result.winner === true
+        result => result.winner === true
     ).length;
 
     return `
@@ -2524,136 +2576,184 @@ ${h(stage.title || "Untitled")}
 
             <div
                 style="
+                    display:grid;
+                    grid-template-columns:
+                        repeat(
+                            auto-fit,
+                            minmax(110px, 1fr)
+                        );
+                    gap:8px;
                     margin-bottom:15px;
-                    opacity:.8;
                 "
             >
-                Advanced:
-                <strong>${advanced}</strong>
-                ·
-                Eliminated:
-                <strong>${eliminated}</strong>
-                ·
-                Winners:
-                <strong>${winners}</strong>
+
+                <div class="competition-stat">
+                    👥 Total
+                    <strong>
+                        ${rows.length}
+                    </strong>
+                </div>
+
+                <div class="competition-stat">
+                    🎉 Advanced
+                    <strong>
+                        ${advanced}
+                    </strong>
+                </div>
+
+                <div class="competition-stat">
+                    ❌ Eliminated
+                    <strong>
+                        ${eliminated}
+                    </strong>
+                </div>
+
+                <div class="competition-stat">
+                    🏆 Winners
+                    <strong>
+                        ${winners}
+                    </strong>
+                </div>
+
             </div>
 
             ${
-                rows.length
-                    ? rows.map(result => `
-                        <div
-                            class="competition-participant"
-                            style="display:block;"
-                        >
+                limited.length
+                    ? limited.map(result => {
 
-                            <div>
-                                <strong>
-                                    ${h(
-                                        result.telegram_id ||
-                                        result.user_id ||
-                                        "Unknown"
-                                    )}
-                                </strong>
-                            </div>
+                        let resultLabel =
+                            "Pending";
 
+                        if (
+                            result.winner === true
+                        ) {
+                            resultLabel =
+                                "🏆 Winner";
+                        } else if (
+                            result.advanced === true
+                        ) {
+                            resultLabel =
+                                "🎉 Advanced";
+                        } else if (
+                            result.eliminated === true
+                        ) {
+                            resultLabel =
+                                "❌ Eliminated";
+                        }
+
+                        const submitted =
+                            result.submitted_answer !==
+                                undefined &&
+                            result.submitted_answer !==
+                                null &&
+                            result.submitted_answer !==
+                                ""
+                                ? String(
+                                    result.submitted_answer
+                                )
+                                : "-";
+
+                        const correct =
+                            result.correct_answer !==
+                                undefined &&
+                            result.correct_answer !==
+                                null &&
+                            result.correct_answer !==
+                                ""
+                                ? String(
+                                    result.correct_answer
+                                )
+                                : "-";
+
+                        return `
                             <div
-                                style="
-                                    margin-top:6px;
-                                    font-size:13px;
-                                    opacity:.8;
+                                class="
+                                    competition-participant
                                 "
                             >
-                                Stage:
-                                ${Number(
-                                    result.stage_no || 1
-                                )}
+
+                                <div>
+
+                                    <strong>
+                                        ${h(
+                                            result.telegram_id ||
+                                            result.user_id ||
+                                            "Unknown"
+                                        )}
+                                    </strong>
+
+                                    <div
+                                        style="
+                                            opacity:.7;
+                                            font-size:12px;
+                                            margin-top:4px;
+                                        "
+                                    >
+                                        Stage
+                                        ${Number(
+                                            result.stage_no || 1
+                                        )}
+
+                                        ·
+
+                                        ${resultLabel}
+                                    </div>
+
+                                </div>
+
+                                <div
+                                    style="
+                                        text-align:right;
+                                        font-size:13px;
+                                    "
+                                >
+
+                                    <div>
+                                        <strong>
+                                            Submitted:
+                                        </strong>
+
+                                        ${h(
+                                            submitted
+                                        )}
+                                    </div>
+
+                                    <div
+                                        style="
+                                            opacity:.7;
+                                            margin-top:3px;
+                                        "
+                                    >
+                                        Correct:
+                                        ${h(
+                                            correct
+                                        )}
+                                    </div>
+
+                                </div>
+
                             </div>
+                        `;
 
-                            <div
-                                style="
-                                    margin-top:4px;
-                                    font-size:13px;
-                                "
-                            >
-                                Status:
-                                <strong>
-                                    ${h(
-                                        result.outcome ||
-                                        result.status ||
-                                        "unknown"
-                                    )}
-                                </strong>
-                            </div>
-
-                            <div
-                                style="
-                                    margin-top:4px;
-                                    font-size:13px;
-                                "
-                            >
-                                Submitted answer:
-                                <strong>
-                                    ${
-                                        result.submitted_answer !== undefined &&
-                                        result.submitted_answer !== null &&
-                                        result.submitted_answer !== ""
-                                            ? h(
-                                                String(
-                                                    result.submitted_answer
-                                                )
-                                            )
-                                            : "-"
-                                    }
-                                </strong>
-                            </div>
-
-                            <div
-                                style="
-                                    margin-top:4px;
-                                    font-size:13px;
-                                "
-                            >
-                                Correct answer:
-                                <strong>
-                                    ${
-                                        result.correct_answer !== undefined &&
-                                        result.correct_answer !== null &&
-                                        result.correct_answer !== ""
-                                            ? h(
-                                                String(
-                                                    result.correct_answer
-                                                )
-                                            )
-                                            : "-"
-                                    }
-                                </strong>
-                            </div>
-
-                            <div
-                                style="
-                                    margin-top:4px;
-                                    font-size:13px;
-                                "
-                            >
-                                ${
-                                    result.winner === true
-                                        ? "🏆 Winner"
-                                        : result.advanced === true
-                                            ? "✅ Advanced"
-                                            : result.eliminated === true
-                                                ? "❌ Eliminated"
-                                                : "—"
-                                }
-                            </div>
-
-                        </div>
-                    `).join("")
-
+                    }).join("")
                     : `
                         <div class="competition-empty">
                             No results yet.
                         </div>
                     `
+            }
+
+            ${
+                rows.length > 100
+                    ? `
+                        <div
+                            class="competition-empty"
+                            style="margin-top:10px;"
+                        >
+                            Showing first 100 results.
+                        </div>
+                    `
+                    : ""
             }
 
         </div>
