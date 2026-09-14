@@ -127,10 +127,34 @@ def require_telegram_user():
 
     user = get_authenticated_telegram_user()
 
-    if user:
-        return user
+    if not user:
+        return None
 
-    return None
+    try:
+
+        ref = user_ref(
+            user["telegram_id"]
+        )
+
+        snap = ref.get()
+
+        if snap.exists:
+
+            data = snap.to_dict() or {}
+
+            if data.get(
+                "blocked",
+                False
+            ):
+                return None
+
+    except Exception:
+
+        # Do not silently grant access
+        # if account-status verification fails.
+        return None
+
+    return user 
 
 
 # ============================================================
