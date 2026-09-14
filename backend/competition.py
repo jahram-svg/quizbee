@@ -1542,9 +1542,7 @@ def settle_stage(
     # MARK STAGE CLOSED / SETTLED
     # --------------------------------------------------------
 
-    stages_col().document(
-        stage["id"]
-    ).set(
+        stages_col().document(stage["id"]).set(
         {
             "status": "closed",
             "closed_at": firestore.SERVER_TIMESTAMP,
@@ -1554,11 +1552,14 @@ def settle_stage(
                 if stage_no < total_stages
                 else 0
             ),
+            "participant_count": stage_total_entries,
+            "submitted_count": stage_submitted_count,
+            "failed_count": stage_failed_count,
             "dead_numbers": dead_numbers,
             "updated_at": firestore.SERVER_TIMESTAMP,
         },
         merge=True,
-    )
+        )
 
     # --------------------------------------------------------
     # UPDATE ROUND
