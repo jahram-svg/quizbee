@@ -565,12 +565,19 @@ function renderUserCard(user) {
 
                 </div>
 
-                <span class="badge">
-                    ${Number(
-                        user.quizbee_points || 0
-                    ).toLocaleString()}
-                    pts
-                </span>
+                <span class="badge ${
+    user.blocked
+    ? "danger"
+    : ""
+}">
+    ${
+        user.blocked
+        ? "🚫 BLOCKED"
+        : `${Number(
+            user.quizbee_points || 0
+        ).toLocaleString()} pts`
+    }
+</span>
 
             </div>
 
@@ -619,33 +626,70 @@ async function openUser(telegramId) {
         const user =
             data.user || {};
 
+        const blocked =
+            Boolean(
+                user.blocked
+            );
+
         box.innerHTML = `
 
+            <!-- USER OVERVIEW -->
             <div class="panel">
 
-                <h2>
-                    ${escapeHtml(
-                        user.first_name ||
-                        user.username ||
-                        "User"
-                    )}
-                </h2>
+                <div class="row">
 
-                <p>
-                    Telegram ID:
-                    <strong>
-                        ${escapeHtml(
-                            user.telegram_id || telegramId
-                        )}
-                    </strong>
-                </p>
+                    <div>
 
-                <p>
-                    Username:
-                    @${escapeHtml(
-                        user.username || "none"
-                    )}
-                </p>
+                        <h2>
+                            ${escapeHtml(
+                                [
+                                    user.first_name,
+                                    user.last_name
+                                ]
+                                .filter(Boolean)
+                                .join(" ")
+                                ||
+                                user.username
+                                ||
+                                "User"
+                            )}
+                        </h2>
+
+                        <p>
+                            Telegram ID:
+                            <strong>
+                                ${escapeHtml(
+                                    user.telegram_id ||
+                                    telegramId
+                                )}
+                            </strong>
+                        </p>
+
+                        <p>
+                            Username:
+                            @${escapeHtml(
+                                user.username ||
+                                "none"
+                            )}
+                        </p>
+
+                    </div>
+
+                    <span class="badge ${
+                        blocked
+                        ? "danger"
+                        : "active"
+                    }">
+
+                        ${
+                            blocked
+                            ? "🚫 BLOCKED"
+                            : "✅ ACTIVE"
+                        }
+
+                    </span>
+
+                </div>
 
                 <hr>
 
@@ -688,9 +732,149 @@ async function openUser(telegramId) {
                     )}
                 </p>
 
+                ${
+                    blocked
+                    ? `
+                        <div class="info-box">
+
+                            <strong>
+                                🚫 Account Blocked
+                            </strong>
+
+                            <p>
+                                Reason:
+                                ${escapeHtml(
+                                    user.blocked_reason ||
+                                    "No reason recorded."
+                                )}
+                            </p>
+
+                        </div>
+                    `
+                    : ""
+                }
+
             </div>
 
 
+            <!-- BALANCE MANAGEMENT -->
+            <div class="panel">
+
+                <h2>
+                    💰 Balance Management
+                </h2>
+
+                <p>
+                    Manually add or deduct
+                    user balances.
+                </p>
+
+                <label>
+                    Balance
+                </label>
+
+                <select
+                    id="adjustBalanceType"
+                >
+
+                    <option value="points">
+                        🪙 QuizBee Points
+                    </option>
+
+                    <option value="prize_balance">
+                        💵 Prize Balance (USD)
+                    </option>
+
+                </select>
+
+
+                <label>
+                    Action
+                </label>
+
+                <select
+                    id="adjustBalanceAction"
+                >
+
+                    <option value="add">
+                        ➕ Add
+                    </option>
+
+                    <option value="deduct">
+                        ➖ Deduct
+                    </option>
+
+                </select>
+
+
+                <label>
+                    Amount
+                </label>
+
+                <input
+                    id="adjustBalanceAmount"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="Enter amount"
+                >
+
+
+                <label>
+                    Reason
+                </label>
+
+                <textarea
+                    id="adjustBalanceReason"
+                    placeholder="Required: promo, cheating penalty, correction, compensation, etc."
+                ></textarea>
+
+
+                <button
+                    class="primary-btn full"
+                    onclick="adjustUserBalance('${telegramId}')"
+                >
+                    Apply Balance Change
+                </button>
+
+            </div>
+
+
+            <!-- ACCOUNT MANAGEMENT -->
+            <div class="panel">
+
+                <h2>
+                    🛡️ Account Management
+                </h2>
+
+                ${
+                    blocked
+                    ? `
+
+                        <button
+                            class="primary-btn full"
+                            onclick="unblockUser('${telegramId}')"
+                        >
+                            ✅ Unblock User
+                        </button>
+
+                    `
+                    : `
+
+                        <button
+                            class="danger-btn full"
+                            onclick="blockUser('${telegramId}')"
+                        >
+                            🚫 Block User
+                        </button>
+
+                    `
+                }
+
+            </div>
+
+
+            <!-- TRANSACTIONS -->
             <div class="panel">
 
                 <h2>
@@ -704,6 +888,7 @@ async function openUser(telegramId) {
             </div>
 
 
+            <!-- DAILY EARNING -->
             <div class="panel">
 
                 <h2>
@@ -715,7 +900,39 @@ async function openUser(telegramId) {
                 )}
 
             </div>
+
+
+            <!-- ADMIN HISTORY -->
+            <div class="panel">
+
+                <div class="row">
+
+                    <h2>
+                        Admin Actions
+                    </h2>
+
+                    <button
+                        class="secondary-btn"
+                        onclick="loadUserAdminActions('${telegramId}')"
+                    >
+                        Refresh
+                    </button>
+
+                </div>
+
+                <div
+                    id="userAdminActions"
+                >
+                    Loading...
+                </div>
+
+            </div>
+
         `;
+
+        loadUserAdminActions(
+            telegramId
+        );
 
     } catch (error) {
 
@@ -727,6 +944,379 @@ async function openUser(telegramId) {
             </div>`;
     }
 }
+
+
+/* ============================================================
+   USER MANAGEMENT
+============================================================ */
+
+async function adjustUserBalance(
+    telegramId
+) {
+
+    const balanceType =
+        document
+        .getElementById(
+            "adjustBalanceType"
+        )
+        .value;
+
+    const action =
+        document
+        .getElementById(
+            "adjustBalanceAction"
+        )
+        .value;
+
+    const amount =
+        document
+        .getElementById(
+            "adjustBalanceAmount"
+        )
+        .value;
+
+    const reason =
+        document
+        .getElementById(
+            "adjustBalanceReason"
+        )
+        .value
+        .trim();
+
+    if (!amount) {
+
+        showToast(
+            "Enter an amount."
+        );
+
+        return;
+    }
+
+    if (Number(amount) <= 0) {
+
+        showToast(
+            "Amount must be greater than zero."
+        );
+
+        return;
+    }
+
+    if (!reason) {
+
+        showToast(
+            "A reason is required."
+        );
+
+        return;
+    }
+
+    const balanceName =
+        balanceType === "points"
+        ? "QuizBee Points"
+        : "Prize Balance";
+
+    const actionName =
+        action === "add"
+        ? "add"
+        : "deduct";
+
+    const confirmed =
+        confirm(
+            `Are you sure you want to ${actionName} ${amount} ${balanceName}?\n\nReason: ${reason}`
+        );
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+
+        const data =
+            await api(
+                `/api/admin/users/${encodeURIComponent(telegramId)}/adjust-balance`,
+                {
+                    method: "POST",
+
+                    body:
+                        JSON.stringify({
+
+                            balance_type:
+                                balanceType,
+
+                            action:
+                                action,
+
+                            amount:
+                                Number(amount),
+
+                            reason:
+                                reason
+
+                        })
+                }
+            );
+
+        showToast(
+            `Balance updated successfully. New balance: ${
+                balanceType === "points"
+                ? Number(
+                    data.new_balance || 0
+                  ).toLocaleString()
+                : `$${Number(
+                    data.new_balance || 0
+                  ).toFixed(2)}`
+            }`
+        );
+
+        await openUser(
+            telegramId
+        );
+
+    } catch (error) {
+
+        showToast(
+            error.message
+        );
+    }
+}
+
+
+async function blockUser(
+    telegramId
+) {
+
+    const reason =
+        prompt(
+            "Why are you blocking this user?"
+        );
+
+    if (!reason) {
+        return;
+    }
+
+    const confirmed =
+        confirm(
+            "Block this user?\n\n" +
+            "They will no longer be allowed to use QuizBee."
+        );
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+
+        await api(
+            `/api/admin/users/${encodeURIComponent(telegramId)}/block`,
+            {
+                method: "POST",
+
+                body:
+                    JSON.stringify({
+                        reason:
+                            reason.trim()
+                    })
+            }
+        );
+
+        showToast(
+            "User blocked."
+        );
+
+        await openUser(
+            telegramId
+        );
+
+    } catch (error) {
+
+        showToast(
+            error.message
+        );
+    }
+}
+
+
+async function unblockUser(
+    telegramId
+) {
+
+    const reason =
+        prompt(
+            "Why are you unblocking this user?"
+        );
+
+    if (!reason) {
+        return;
+    }
+
+    try {
+
+        await api(
+            `/api/admin/users/${encodeURIComponent(telegramId)}/unblock`,
+            {
+                method: "POST",
+
+                body:
+                    JSON.stringify({
+                        reason:
+                            reason.trim()
+                    })
+            }
+        );
+
+        showToast(
+            "User unblocked."
+        );
+
+        await openUser(
+            telegramId
+        );
+
+    } catch (error) {
+
+        showToast(
+            error.message
+        );
+    }
+}
+
+
+async function loadUserAdminActions(
+    telegramId
+) {
+
+    const box =
+        document.getElementById(
+            "userAdminActions"
+        );
+
+    if (!box) {
+        return;
+    }
+
+    box.innerHTML =
+        "Loading admin history...";
+
+    try {
+
+        const data =
+            await api(
+                `/api/admin/users/${encodeURIComponent(telegramId)}/admin-actions`
+            );
+
+        const actions =
+            data.actions || [];
+
+        if (!actions.length) {
+
+            box.innerHTML =
+                "<p>No manual admin actions recorded.</p>";
+
+            return;
+        }
+
+        box.innerHTML =
+            actions
+            .map(
+                renderAdminAction
+            )
+            .join("");
+
+    } catch (error) {
+
+        box.innerHTML =
+            `<p>
+                ${escapeHtml(
+                    error.message
+                )}
+            </p>`;
+    }
+}
+
+
+function renderAdminAction(
+    item
+) {
+
+    const details =
+        item.details || {};
+
+    const amount =
+        details.amount;
+
+    return `
+
+        <div class="list-card">
+
+            <strong>
+                ${escapeHtml(
+                    item.action || ""
+                )}
+            </strong>
+
+            <p>
+                Admin:
+                ${escapeHtml(
+                    item.admin_first_name ||
+                    item.admin_username ||
+                    item.admin_telegram_id ||
+                    ""
+                )}
+            </p>
+
+            <p>
+                Reason:
+                ${escapeHtml(
+                    item.reason ||
+                    "No reason"
+                )}
+            </p>
+
+            ${
+                amount !== undefined
+                ? `
+                    <p>
+                        Amount:
+                        ${escapeHtml(
+                            String(amount)
+                        )}
+                    </p>
+                `
+                : ""
+            }
+
+            ${
+                details.old_balance !== undefined
+                ? `
+                    <p>
+                        Balance:
+                        ${escapeHtml(
+                            String(
+                                details.old_balance
+                            )
+                        )}
+                        →
+                        ${escapeHtml(
+                            String(
+                                details.new_balance
+                            )
+                        )}
+                    </p>
+                `
+                : ""
+            }
+
+            <small>
+                ${escapeHtml(
+                    item.created_at ||
+                    ""
+                )}
+            </small>
+
+        </div>
+
+    `;
+                }
 
 
 function renderTransactions(items) {
