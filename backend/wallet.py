@@ -49,12 +49,35 @@ def get_authenticated_telegram_user():
 
 
 def require_user():
+
     user = get_authenticated_telegram_user()
 
     if not user:
         return None
 
-    return user
+    try:
+
+        snap = (
+            user_ref(
+                user["telegram_id"]
+            ).get()
+        )
+
+        if snap.exists:
+
+            data = snap.to_dict() or {}
+
+            if data.get(
+                "blocked",
+                False
+            ):
+                return None
+
+    except Exception:
+
+        return None
+
+    return user 
 
 
 def user_ref(telegram_id):
