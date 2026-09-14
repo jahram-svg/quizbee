@@ -164,12 +164,13 @@ function showPage(page) {
         );
 
     const navIndex = {
-        dashboard: 0,
-        users: 1,
-        games: 2,
-        daily: 3,
-        wallet: 4
-    };
+    dashboard: 0,
+    users: 1,
+    games: 2,
+    daily: 3,
+    wallet: 4,
+    settings: 5
+}; 
 
     if (
         navButtons[
