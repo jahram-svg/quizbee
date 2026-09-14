@@ -454,7 +454,7 @@
 
     window.competitionInitializeGames = async function () {
         try {
-            const data = await api("/api/admin/competition/setup-games", {
+            const data = await api("/api/competition/admin/setup-games", {
                 method: "POST",
                 body: JSON.stringify({})
             });
@@ -603,7 +603,7 @@
             const startAt = localIso("compRoundStart");
 
             const data = await api(
-                "/api/admin/competition/rounds/create",
+                "/api/competition/admin/rounds/create",
                 {
                     method: "POST",
                     body: JSON.stringify({
@@ -656,7 +656,7 @@
 
         try {
             const data = await api(
-                `/api/admin/competition/rounds?game_id=${encodeURIComponent(selectedGame)}`
+                `/api/competition/admin/rounds?game_id=${encodeURIComponent(selectedGame)}`
             );
 
             let rounds = data.rounds || [];
@@ -808,7 +808,7 @@
 
         try {
             const data = await api(
-                `/api/admin/competition/rounds/${encodeURIComponent(roundId)}`
+                `/api/competition/admin/rounds/${encodeURIComponent(roundId)}`
             );
 
             const round = data.round || {};
@@ -1296,7 +1296,7 @@
     window.competitionEditStage = async function (roundId, stageNo) {
         try {
             const data = await api(
-                `/api/admin/competition/rounds/${encodeURIComponent(roundId)}`
+                `/api/competition/admin/rounds/${encodeURIComponent(roundId)}`
             );
 
             const round = data.round || {};
@@ -1735,7 +1735,7 @@
             }
 
             const data = await api(
-                `/api/admin/competition/rounds/${encodeURIComponent(roundId)}/stages/${stageNo}/edit`,
+                `/api/competition/admin/rounds/${encodeURIComponent(roundId)}/stages/${stageNo}/edit`,
                 {
                     method: "POST",
                     body: JSON.stringify(payload)
@@ -1775,7 +1775,7 @@
     window.competitionPrepareNextStage = async function (roundId) {
         try {
             const data = await api(
-                `/api/admin/competition/rounds/${encodeURIComponent(roundId)}/next-stage`,
+                `/api/competition/admin/rounds/${encodeURIComponent(roundId)}/next-stage`,
                 {
                     method: "POST"
                 }
@@ -2178,7 +2178,7 @@
             };
 
             const data = await api(
-                `/api/admin/competition/rounds/${encodeURIComponent(roundId)}/stages/create`,
+                `/api/competition/admin/rounds/${encodeURIComponent(roundId)}/stages/create`,
                 {
                     method: "POST",
                     body: JSON.stringify(payload)
@@ -2220,7 +2220,7 @@
 
         try {
             const data = await api(
-                `/api/admin/competition/rounds/${encodeURIComponent(roundId)}/stages/${stageNo}/approve`,
+                `/api/competition/admin/rounds/${encodeURIComponent(roundId)}/stages/${stageNo}/approve`,
                 {
                     method: "POST"
                 }
@@ -2261,7 +2261,7 @@
 
         try {
             const data = await api(
-                `/api/admin/competition/rounds/${encodeURIComponent(roundId)}/stages/${stageNo}/start`,
+                `/api/competition/admin/rounds/${encodeURIComponent(roundId)}/stages/${stageNo}/start`,
                 {
                     method: "POST"
                 }
@@ -2302,7 +2302,7 @@
 
         try {
             const data = await api(
-                `/api/admin/competition/rounds/${encodeURIComponent(roundId)}/stages/${stageNo}/end`,
+                `/api/competition/admin/rounds/${encodeURIComponent(roundId)}/stages/${stageNo}/end`,
                 {
                     method: "POST"
                 }
