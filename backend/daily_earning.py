@@ -106,6 +106,11 @@ def accepted_answer_set(round_data):
 
 def require_user():
 
+    """
+    Authenticate normal QuizBee Mini App users
+    and reject blocked accounts.
+    """
+
     init_data = request.headers.get(
         "X-Telegram-Init-Data",
         ""
@@ -121,22 +126,55 @@ def require_user():
     if not user:
         return None
 
-    return {
-        "telegram_id": str(
-            user["id"]
-        ),
-        "username": user.get(
-            "username",
-            ""
-        ),
-        "first_name": user.get(
-            "first_name",
-            ""
-        ),
-        "last_name": user.get(
-            "last_name",
-            ""
+    telegram_id = str(
+        user["id"]
+    )
+
+    try:
+
+        snap = (
+            db.collection("users")
+            .document(
+                telegram_id
+            )
+            .get()
         )
+
+        if snap.exists:
+
+            data = snap.to_dict() or {}
+
+            if data.get(
+                "blocked",
+                False
+            ):
+                return None
+
+    except Exception:
+
+        return None
+
+    return {
+        "telegram_id":
+            telegram_id,
+
+        "username":
+            user.get(
+                "username",
+                ""
+            ),
+
+        "first_name":
+            user.get(
+                "first_name",
+                ""
+            ),
+
+        "last_name":
+            user.get(
+                "last_name",
+                ""
+            )
     }
 
 
