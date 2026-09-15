@@ -694,16 +694,64 @@
 
                 <label class="switch-row">
 
-                    <span>
-                        Maintenance Mode
-                    </span>
+    <span>
+        🚧 Global Maintenance Mode
+    </span>
 
-                    <input
-                        id="maintenanceMode"
-                        type="checkbox"
-                    >
+    <input
+        id="maintenanceMode"
+        type="checkbox"
+    >
 
-                </label>
+</label>
+
+<div class="info-box">
+
+    <strong>
+        Global Maintenance
+    </strong>
+
+    <p>
+        When enabled, normal users cannot
+        access QuizBee. Test users listed
+        below can continue using the app.
+    </p>
+
+</div>
+
+<label>
+    Maintenance Message
+</label>
+
+<textarea
+    id="maintenanceMessage"
+    placeholder="Message shown to users during maintenance."
+    rows="4"
+></textarea>
+
+<label>
+    Maintenance Test Users
+</label>
+
+<textarea
+    id="maintenanceExceptions"
+    placeholder="Enter Telegram IDs, one per line..."
+    rows="6"
+></textarea>
+
+<div class="info-box">
+
+    <strong>
+        🧪 Test User Bypass
+    </strong>
+
+    <p>
+        Telegram IDs listed here can use
+        QuizBee normally while maintenance
+        mode is active.
+    </p>
+
+</div>
 
 
                 <label class="switch-row">
