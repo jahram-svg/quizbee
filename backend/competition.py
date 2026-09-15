@@ -213,14 +213,23 @@ def unique_list(values: Any) -> List[str]:
 
 def public_user(user: Dict[str, Any]) -> Dict[str, Any]:
     """
-    return only wallet information that the frontend needs.
+    Return the public QuizBee account state needed by the frontend.
+
+    ``quizbee_points`` is the canonical spendable balance. The temporary
+    fallback to ``points`` keeps older accounts usable until their balance
+    is migrated by the normal account/wallet flow.
     """
+
+    points = user.get("quizbee_points")
+    if points is None:
+        points = user.get("points", 0)
 
     return {
         "telegram_id": str(user.get("telegram_id", "")),
         "first_name": user.get("first_name", ""),
         "username": user.get("username", ""),
-        "points": to_int(user.get("points", 0)),
+        "quizbee_points": to_int(points, 0),
+        "wins": to_int(user.get("wins", 0), 0),
         "prize_balance_usd": round(
             to_number(user.get("prize_balance_usd", 0)),
             4,
@@ -253,61 +262,17 @@ def get_init_data() -> str:
 
 
 def require_user():
-
     init_data = get_init_data()
 
     if not init_data:
-        raise ValueError(
-            "Telegram authentication data is missing."
-        )
+        raise ValueError("Telegram authentication data is missing.")
 
-    user_data = (
-        validate_telegram_init_data(
-            init_data
-        )
-    )
+    user_data = validate_telegram_init_data(init_data)
 
     if not user_data:
-        raise ValueError(
-            "Invalid Telegram authentication."
-        )
+        raise ValueError("Invalid Telegram authentication.")
 
-    telegram_id = str(
-        user_data["id"]
-    )
-
-    try:
-
-        snap = (
-            db.collection("users")
-            .document(
-                telegram_id
-            )
-            .get()
-        )
-
-        if snap.exists:
-
-            data = snap.to_dict() or {}
-
-            if data.get(
-                "blocked",
-                False
-            ):
-                raise ValueError(
-                    "Your QuizBee account is blocked."
-                )
-
-    except ValueError:
-        raise
-
-    except Exception:
-
-        raise ValueError(
-            "Unable to verify account status."
-        )
-
-    return user_data 
+    return user_data
 
 
 def user_route(fn):
@@ -715,128 +680,30 @@ def result_payload(
     result: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
-    Normalize a stored player result for the frontend.
+    normalize a stored result for the frontend.
 
-    Includes the player's personal result plus aggregate
-    statistics for the concluded stage.
-
-    No other player's Telegram ID or personal information
-    is exposed through this payload.
+    this is deliberately game-independent.
     """
 
     return {
-        # ----------------------------------------------------
-        # BASIC RESULT INFORMATION
-        # ----------------------------------------------------
         "round_id": result.get("round_id"),
         "game_id": result.get("game_id"),
-        "stage_no": to_int(
-            result.get("stage_no"),
-            1,
-        ),
-
-        # ----------------------------------------------------
-        # PLAYER'S PERSONAL RESULT
-        # ----------------------------------------------------
+        "stage_no": to_int(result.get("stage_no"), 1),
         "outcome": result.get("outcome"),
-
-        "passed": bool(
-            result.get("passed", False)
-        ),
-
-        "advanced": bool(
-            result.get("advanced", False)
-        ),
-
-        "winner": bool(
-            result.get("winner", False)
-        ),
-
-        "eliminated": bool(
-            result.get("eliminated", False)
-        ),
-
-        "final": bool(
-            result.get("final", False)
-        ),
-
-        "message": result.get(
-            "message",
-            "",
-        ),
-
-        # ----------------------------------------------------
-        # ANSWER INFORMATION
-        # ----------------------------------------------------
-        "correct_answer": result.get(
-            "correct_answer"
-        ),
-
-        "submitted_answer": result.get(
-            "submitted_answer"
-        ),
-
-        # ----------------------------------------------------
-        # STAGE AGGREGATE RESULTS
-        #
-        # These are safe for the normal user Mini App.
-        # They contain counts only — never other players'
-        # Telegram IDs, usernames, or contact information.
-        # ----------------------------------------------------
-        "stage_total_entries": to_int(
-            result.get(
-                "stage_total_entries"
-            ),
-            0,
-        ),
-
-        "stage_submitted_count": to_int(
-            result.get(
-                "stage_submitted_count"
-            ),
-            0,
-        ),
-
-        "stage_advanced_count": to_int(
-            result.get(
-                "stage_advanced_count"
-            ),
-            0,
-        ),
-
-        "stage_winner_count": to_int(
-            result.get(
-                "stage_winner_count"
-            ),
-            0,
-        ),
-
-        "stage_failed_count": to_int(
-            result.get(
-                "stage_failed_count"
-            ),
-            0,
-        ),
-
-        # ----------------------------------------------------
-        # PRIZE INFORMATION
-        # ----------------------------------------------------
+        "passed": bool(result.get("passed", False)),
+        "advanced": bool(result.get("advanced", False)),
+        "winner": bool(result.get("winner", False)),
+        "eliminated": bool(result.get("eliminated", False)),
+        "final": bool(result.get("final", False)),
+        "message": result.get("message", ""),
+        "correct_answer": result.get("correct_answer"),
+        "submitted_answer": result.get("submitted_answer"),
         "amount_usd": to_number(
-            result.get(
-                "amount_usd"
-            ),
+            result.get("amount_usd"),
             0,
         ),
-
-        "settled_at": iso(
-            result.get(
-                "settled_at"
-            )
-        ),
-
-        "next_stage": result.get(
-            "next_stage"
-        ),
+        "settled_at": iso(result.get("settled_at")),
+        "next_stage": result.get("next_stage"),
     }
 
 
@@ -1396,6 +1263,70 @@ def result_message(
 # ROUND RESULT SETTLEMENT
 # ============================================================
 
+def award_competition_win_once(
+    round_id: str,
+    stage_no: int,
+    telegram_id: str,
+) -> bool:
+    """
+    Award exactly one leaderboard win for a successful stage.
+
+    Stage settlement can be triggered by Admin, by an expired user request,
+    or by another concurrent request. The entry-level marker is therefore
+    checked and written in the same Firestore transaction so the same
+    successful stage can never award the same player twice.
+    """
+
+    entry_ref = entries_col().document(
+        f"{round_id}_{int(stage_no)}_{telegram_id}"
+    )
+    user_ref = get_user_ref(telegram_id)
+
+    transaction = db.transaction()
+
+    @firestore.transactional
+    def award(transaction):
+        entry_snap = entry_ref.get(
+            transaction=transaction
+        )
+
+        if not entry_snap.exists:
+            return False
+
+        entry_data = entry_snap.to_dict() or {}
+
+        if entry_data.get("wins_awarded") is True:
+            return False
+
+        user_snap = user_ref.get(
+            transaction=transaction
+        )
+
+        if not user_snap.exists:
+            return False
+
+        transaction.update(
+            user_ref,
+            {
+                "wins": firestore.Increment(1),
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            },
+        )
+
+        transaction.update(
+            entry_ref,
+            {
+                "wins_awarded": True,
+                "win_awarded_at": firestore.SERVER_TIMESTAMP,
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            },
+        )
+
+        return True
+
+    return award(transaction)
+
+
 def settle_stage(
     round_data: Dict[str, Any],
     stage: Dict[str, Any],
@@ -1408,6 +1339,28 @@ def settle_stage(
         round_data.get("total_stages"),
         1,
     )
+
+    # Settlement is intentionally idempotent. This protects both wins and
+    # prize distribution when an expired-stage request races with Admin.
+    if stage.get("status") in {"closed", "settled"}:
+        return {
+            "winner_count": to_int(stage.get("winner_count"), 0),
+            "advanced_count": to_int(stage.get("advanced_count"), 0),
+            "result_count": len(round_entries(round_id, stage_no)),
+            "prize": {
+                "winner_count": to_int(round_data.get("winner_count"), 0)
+                if stage_no == total_stages else 0,
+                "amount_each": 0,
+                "total_distributed": 0,
+            },
+            "dead_numbers": stage.get("dead_numbers", []),
+            "next_stage": (
+                stage_no + 1
+                if stage_no < total_stages else None
+            ),
+            "round_status": round_data.get("status", "closed"),
+            "already_settled": True,
+        }
 
     entries = round_entries(
         round_id,
@@ -1482,52 +1435,20 @@ def settle_stage(
             stage,
         )
 
-    # --------------------------------------------------------
-    # WINNER IDS
-    #
-    # IMPORTANT:
-    # This must be created AFTER winners are determined and
-    # BEFORE every entry is processed.
-    # --------------------------------------------------------
-
     winner_ids = {
         str(entry.get("telegram_id"))
         for entry in winners
-        if entry.get("telegram_id") is not None
     }
 
     # --------------------------------------------------------
-    # STAGE RESULT SUMMARY
+    # IMPORTANT:
+    # Every submitted player receives a permanent result.
+    #
+    # This is what fixes the original problem where users
+    # could only see "next stage not started" after a timer.
     # --------------------------------------------------------
 
-    stage_total_entries = len(entries)
-
-    stage_submitted_count = sum(
-        1
-        for entry in entries
-        if entry.get("status") == "submitted"
-    )
-
-    stage_advanced_count = (
-        len(winners)
-        if stage_no < total_stages
-        else 0
-    )
-
-    stage_winner_count = (
-        len(winners)
-        if stage_no == total_stages
-        else 0
-    )
-
-    stage_failed_count = max(
-        stage_total_entries - len(winners),
-        0,
-    )
-
-    # --------------------------------------------------------
-    # NEXT STAGE
-    # --------------------------------------------------------
+    result_count = 0
 
     next_stage = (
         stage_no + 1
@@ -1535,14 +1456,7 @@ def settle_stage(
         else None
     )
 
-    # --------------------------------------------------------
-    # CREATE PER-PLAYER RESULTS
-    # --------------------------------------------------------
-
-    result_count = 0
-
     for entry in entries:
-
         telegram_id = str(
             entry.get("telegram_id", "")
         )
@@ -1558,12 +1472,8 @@ def settle_stage(
             telegram_id in winner_ids
         )
 
-        # ----------------------------------------------------
-        # PLAYER DID NOT SUBMIT
-        # ----------------------------------------------------
-
         if not submitted:
-
+            # Paid but failed to submit before the stage ended.
             passed = False
             eliminated = True
             advanced = False
@@ -1571,27 +1481,15 @@ def settle_stage(
             outcome = "failed"
 
             message = (
-                f"❌ You did not submit an answer before "
+                f" You did not submit an answer before "
                 f"Stage {stage_no} ended. You are out of this round."
             )
 
-        # ----------------------------------------------------
-        # PLAYER PASSED / WON STAGE
-        # ----------------------------------------------------
-
         elif is_winner_of_stage:
-
             passed = True
             eliminated = False
-
-            advanced = (
-                next_stage is not None
-            )
-
-            winner = (
-                next_stage is None
-            )
-
+            advanced = next_stage is not None
+            winner = next_stage is None
             outcome = (
                 "winner"
                 if winner
@@ -1601,86 +1499,14 @@ def settle_stage(
             message = result_message(
                 game_id,
                 stage_no,
-                Passed=True,
-                Winner=winner,
-                Final=(next_stage is None),
-                Next_stage=next_stage,
-                Correct_answer=correct_answer,
+                passed=True,
+                winner=winner,
+                final=(next_stage is None),
+                next_stage=next_stage,
+                correct_answer=correct_answer,
             )
-
-            # ------------------------------------------------
-            # PHASE 6 — AWARD +1 WIN
-            #
-            # Every valid first correct competition answer
-            # earns exactly 1 win.
-            #
-            # The entry is marked "wins_awarded" so that
-            # settling the same stage again cannot award
-            # another win.
-            # ------------------------------------------------
-
-            entry_ref = Entries_col().document(
-                entry["id"]
-            )
-
-            user_ref = Users_col().document(
-                telegram_id
-            )
-
-            transaction = firestore.client().transaction()
-
-            @firestore.transactional
-            def award_competition_win(
-                transaction
-            ):
-                entry_snapshot = transaction.get(
-                    entry_ref
-                )
-
-                if not entry_snapshot.exists:
-                    return False
-
-                entry_data = (
-                    entry_snapshot.to_dict()
-                    or {}
-                )
-
-                # Already received the win for this stage.
-                if entry_data.get("wins_awarded") is True:
-                    return False
-
-                # Award exactly +1 win.
-                transaction.update(
-                    user_ref,
-                    {
-                        "wins": firestore.Increment(1),
-                        "updated_at": firestore.SERVER_TIMESTAMP,
-                    },
-                )
-
-                # Mark this stage entry so it cannot
-                # award another win if settlement runs again.
-                transaction.update(
-                    entry_ref,
-                    {
-                        "wins_awarded": True,
-                        "win_awarded_at": firestore.SERVER_TIMESTAMP,
-                        "updated_at": firestore.SERVER_TIMESTAMP,
-                    },
-                )
-
-                return True
-
-            award_competition_win(
-                transaction
-            )
-
-        # ----------------------------------------------------
-        # PLAYER FAILED
-        # ----------------------------------------------------
 
         else:
-
             passed = False
             eliminated = True
             advanced = False
@@ -1688,77 +1514,65 @@ def settle_stage(
             outcome = "failed"
 
             # Crowd Trap / Impossible Choice / Dead Number
-            # do not necessarily have a conventional answer.
-
+            # do not necessarily have a conventional correct answer.
             if game_id == "crowd_trap":
-
                 message = (
-                    f"❌ Your Stage {stage_no} choice was "
-                    "not unique. You are out of this round."
+                    f"❌ Your Stage {stage_no} choice was not unique. "
+                    "You are out of this round."
                 )
 
             elif game_id == "dead_number":
-
                 message = (
-                    f"❌ You selected a dead number in "
-                    f"Stage {stage_no}. You are out of this round."
+                    f"❌ You selected a dead number in Stage "
+                    f"{stage_no}. You are out of this round."
                 )
 
             elif game_id == "impossible_choice":
-
                 message = (
                     f"❌ Your choice did not satisfy the "
                     f"Stage {stage_no} rule. You are out of this round."
                 )
 
             else:
-
                 message = result_message(
                     game_id,
                     stage_no,
-                    Passed=False,
-                    Winner=False,
-                    Final=(next_stage is None),
-                    Next_stage=None,
-                    Correct_answer=correct_answer,
+                    passed=False,
+                    winner=False,
+                    final=(next_stage is None),
+                    next_stage=None,
+                    correct_answer=correct_answer,
                 )
 
-        # ----------------------------------------------------
-        # SAVE PLAYER RESULT
-        # ----------------------------------------------------
+        if is_winner_of_stage:
+            award_competition_win_once(
+                round_id=round_id,
+                stage_no=stage_no,
+                telegram_id=telegram_id,
+            )
 
         create_or_update_player_result(
-            Round_data=round_data,
-            Stage=stage,
-            Telegram_id=telegram_id,
-            Outcome=outcome,
-            Passed=passed,
-            Advanced=advanced,
-            Winner=winner,
-            Eliminated=eliminated,
-            Final=(next_stage is None),
-            Message=message,
-            Submitted_answer=entry.get("answer"),
-            Correct_answer=correct_answer,
-            Extra={
+            round_data=round_data,
+            stage=stage,
+            telegram_id=telegram_id,
+            outcome=outcome,
+            passed=passed,
+            advanced=advanced,
+            winner=winner,
+            eliminated=eliminated,
+            final=(next_stage is None),
+            message=message,
+            submitted_answer=entry.get("answer"),
+            correct_answer=correct_answer,
+            extra={
                 "dead_numbers": dead_numbers,
-
-                # Aggregate stage statistics
-                "stage_total_entries": stage_total_entries,
-                "stage_submitted_count": stage_submitted_count,
-                "stage_advanced_count": stage_advanced_count,
-                "stage_winner_count": stage_winner_count,
-                "stage_failed_count": stage_failed_count,
             },
         )
 
         result_count += 1
 
-        # ----------------------------------------------------
-        # KEEP ENTRY SYNCHRONIZED
-        # ----------------------------------------------------
-
-        Entries_col().document(
+        # Keep the entry itself synchronized.
+        entries_col().document(
             entry["id"]
         ).set(
             {
@@ -1772,7 +1586,7 @@ def settle_stage(
         )
 
     # --------------------------------------------------------
-    # FINAL WINNERS / ROUND STATUS
+    # FINAL WINNERS
     # --------------------------------------------------------
 
     prize_info = {
@@ -1782,7 +1596,6 @@ def settle_stage(
     }
 
     if stage_no == total_stages:
-
         prize_info = distribute_prize(
             round_data,
             winners,
@@ -1791,37 +1604,25 @@ def settle_stage(
         round_status = "settled"
 
     else:
-
         round_status = "closed"
 
     # --------------------------------------------------------
-    # MARK STAGE CLOSED
-    #
-    # IMPORTANT:
-    # This MUST happen for BOTH final and non-final stages.
+    # MARK STAGE CLOSED / SETTLED
     # --------------------------------------------------------
 
-    Stages_col().document(
+    stages_col().document(
         stage["id"]
     ).set(
         {
             "status": "closed",
             "closed_at": firestore.SERVER_TIMESTAMP,
-
             "winner_count": len(winners),
-
             "advanced_count": (
                 len(winners)
                 if stage_no < total_stages
                 else 0
             ),
-
-            "participant_count": stage_total_entries,
-            "submitted_count": stage_submitted_count,
-            "failed_count": stage_failed_count,
-
             "dead_numbers": dead_numbers,
-
             "updated_at": firestore.SERVER_TIMESTAMP,
         },
         merge=True,
@@ -1843,48 +1644,30 @@ def settle_stage(
     }
 
     if stage_no < total_stages:
-
         round_update["current_stage"] = stage_no
 
     else:
-
         round_update["current_stage"] = total_stages
         round_update["ended_at"] = firestore.SERVER_TIMESTAMP
 
-    Rounds_col().document(
+    rounds_col().document(
         round_id
     ).set(
         round_update,
         merge=True,
     )
 
-    # --------------------------------------------------------
-    # RETURN SETTLEMENT SUMMARY
-    # --------------------------------------------------------
-
     return {
         "winner_count": len(winners),
-
         "advanced_count": (
             len(winners)
             if stage_no < total_stages
             else 0
         ),
-
-        "stage_total_entries": stage_total_entries,
-        "stage_submitted_count": stage_submitted_count,
-        "stage_advanced_count": stage_advanced_count,
-        "stage_winner_count": stage_winner_count,
-        "stage_failed_count": stage_failed_count,
-
         "result_count": result_count,
-
         "prize": prize_info,
-
         "dead_numbers": dead_numbers,
-
         "next_stage": next_stage,
-
         "round_status": round_status,
     }
 
@@ -2377,7 +2160,8 @@ def get_user_by_telegram_id(
     if not snap.exists:
         return {
             "telegram_id": str(telegram_id),
-            "points": 0,
+            "quizbee_points": 0,
+            "wins": 0,
             "prize_balance_usd": 0,
         }
 
@@ -2624,10 +2408,19 @@ def competition_enter(user, game_id):
 
         user_data = user_snap.to_dict() or {}
 
-        points = to_int(
-            user_data.get("points"),
-            0,
-        )
+        # quizbee_points is the canonical spendable balance.
+        # Fall back to the legacy points field only for older accounts
+        # that have not yet been migrated. This never resets a balance.
+        if "quizbee_points" in user_data:
+            points = to_int(
+                user_data.get("quizbee_points"),
+                0,
+            )
+        else:
+            points = to_int(
+                user_data.get("points"),
+                0,
+            )
 
         if points < fee:
             raise ValueError(
@@ -2640,7 +2433,7 @@ def competition_enter(user, game_id):
         transaction.update(
             user_ref,
             {
-                "points": new_points,
+                "quizbee_points": new_points,
                 "total_spent_points": (
                     to_int(
                         user_data.get(
@@ -2668,6 +2461,7 @@ def competition_enter(user, game_id):
                 "answer": None,
                 "passed": None,
                 "eliminated": False,
+                "wins_awarded": False,
                 "created_at": (
                     firestore.SERVER_TIMESTAMP
                 ),
@@ -2712,7 +2506,7 @@ def competition_enter(user, game_id):
             "already_entered": False,
             "user": {
                 **user_data,
-                "points": new_points,
+                "quizbee_points": new_points,
             },
             "entry": {
                 "round_id": round_id,
@@ -4925,4 +4719,3 @@ def admin_advance_compat(
         admin,
         round_id,
               )
- 
