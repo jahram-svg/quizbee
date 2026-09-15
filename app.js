@@ -926,12 +926,23 @@ async function openGame(gameId) {
     }
 
 
-    if (!game.active) {
+    if (
+    game.maintenance_mode
+) {
 
-        lockedGame();
+    maintenanceGame();
 
-        return;
-    }
+    return;
+
+}
+
+if (!game.active) {
+
+    lockedGame();
+
+    return;
+
+}
 
 
     currentGame =
