@@ -1093,6 +1093,20 @@ def distribute_prize(
     round_data: Dict[str, Any],
     winner_entries: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
+    """
+    Credit the final competition prize exactly once per winner.
+
+    The old implementation used a read -> calculate -> batch write flow.
+    That meant a second settlement could read the already-paid balance and
+    add the prize again.  It also made the prize path weaker than the
+    transaction-protected leaderboard win path.
+
+    Each winner now has a permanent payout transaction document.  The user
+    balance, payout marker and result are written in one Firestore
+    transaction.  Re-running settlement therefore becomes a safe repair
+    operation instead of another payment.
+    """
+
     prize = to_number(
         round_data.get("prize_pool_usd"),
         0,
@@ -1100,17 +1114,17 @@ def distribute_prize(
 
     if prize <= 0 or not winner_entries:
         return {
-            "winner_count": len(winner_entries),
+            "winner_count": 0 if not winner_entries else len(winner_entries),
             "amount_each": 0,
             "total_distributed": 0,
         }
 
-    unique_ids = []
+    unique_ids: List[str] = []
 
     for entry in winner_entries:
         telegram_id = str(
             entry.get("telegram_id", "")
-        )
+        ).strip()
 
         if telegram_id and telegram_id not in unique_ids:
             unique_ids.append(telegram_id)
@@ -1127,82 +1141,86 @@ def distribute_prize(
         6,
     )
 
-    distributed = 0
-
-    batch = db.batch()
+    paid_count = 0
 
     for telegram_id in unique_ids:
         user_ref = users_col().document(
             telegram_id
         )
 
-        user_snap = user_ref.get()
-
-        if not user_snap.exists:
-            continue
-
-        user = user_snap.to_dict() or {}
-
-        current_balance = to_number(
-            user.get("prize_balance_usd"),
-            0,
-        )
-
-        new_balance = round(
-            current_balance + amount_each,
-            6,
-        )
-
-        batch.update(
-            user_ref,
-            {
-                "prize_balance_usd": new_balance,
-                "updated_at": firestore.SERVER_TIMESTAMP,
-            },
-        )
-
         result_ref = results_col().document(
             f"{round_data['id']}_{telegram_id}"
         )
 
-        batch.set(
-            result_ref,
-            {
-                "amount_usd": amount_each,
-                "winner": True,
-                "outcome": "winner",
-                "updated_at": firestore.SERVER_TIMESTAMP,
-            },
-            merge=True,
-        )
-
-        transaction_ref = transactions_col().document(
+        payout_ref = transactions_col().document(
             f"competition_prize_{round_data['id']}_{telegram_id}"
         )
 
-        batch.set(
-            transaction_ref,
-            {
-                "telegram_id": telegram_id,
-                "type": "competition_prize",
-                "direction": "credit",
-                "amount_usd": amount_each,
-                "round_id": round_data["id"],
-                "game_id": round_data.get("game_id"),
-                "status": "completed",
-                "created_at": firestore.SERVER_TIMESTAMP,
-            },
-            merge=True,
-        )
+        transaction = db.transaction()
 
-        distributed += amount_each
+        @firestore.transactional
+        def credit_prize(transaction):
+            payout_snap = payout_ref.get(
+                transaction=transaction
+            )
 
-    batch.commit()
+            # A completed payout is the permanent idempotency marker.
+            if payout_snap.exists:
+                return True
+
+            user_snap = user_ref.get(
+                transaction=transaction
+            )
+
+            if not user_snap.exists:
+                return False
+
+            transaction.update(
+                user_ref,
+                {
+                    "prize_balance_usd": firestore.Increment(amount_each),
+                    "updated_at": firestore.SERVER_TIMESTAMP,
+                },
+            )
+
+            transaction.set(
+                result_ref,
+                {
+                    "amount_usd": amount_each,
+                    "winner": True,
+                    "outcome": "winner",
+                    "updated_at": firestore.SERVER_TIMESTAMP,
+                },
+                merge=True,
+            )
+
+            transaction.set(
+                payout_ref,
+                {
+                    "telegram_id": telegram_id,
+                    "type": "competition_prize",
+                    "direction": "credit",
+                    "amount_usd": amount_each,
+                    "round_id": round_data["id"],
+                    "game_id": round_data.get("game_id"),
+                    "status": "completed",
+                    "created_at": firestore.SERVER_TIMESTAMP,
+                },
+                merge=True,
+            )
+
+            return True
+
+        if credit_prize(transaction):
+            paid_count += 1
 
     return {
         "winner_count": len(unique_ids),
         "amount_each": amount_each,
-        "total_distributed": round(distributed, 6),
+        "total_distributed": round(
+            amount_each * paid_count,
+            6,
+        ),
     }
 
 
@@ -1340,27 +1358,11 @@ def settle_stage(
         1,
     )
 
-    # Settlement is intentionally idempotent. This protects both wins and
-    # prize distribution when an expired-stage request races with Admin.
-    if stage.get("status") in {"closed", "settled"}:
-        return {
-            "winner_count": to_int(stage.get("winner_count"), 0),
-            "advanced_count": to_int(stage.get("advanced_count"), 0),
-            "result_count": len(round_entries(round_id, stage_no)),
-            "prize": {
-                "winner_count": to_int(round_data.get("winner_count"), 0)
-                if stage_no == total_stages else 0,
-                "amount_each": 0,
-                "total_distributed": 0,
-            },
-            "dead_numbers": stage.get("dead_numbers", []),
-            "next_stage": (
-                stage_no + 1
-                if stage_no < total_stages else None
-            ),
-            "round_status": round_data.get("status", "closed"),
-            "already_settled": True,
-        }
+    # Settlement is intentionally safe to repeat.  This is important because
+    # Admin, an expired user request, or another concurrent request may all
+    # reach this function.  Win awarding and prize crediting each have their
+    # own Firestore idempotency protection, so a repeat can also repair a
+    # previously closed stage whose accounting was incomplete.
 
     entries = round_entries(
         round_id,
@@ -2363,7 +2365,7 @@ def competition_enter(user, game_id):
     transaction_id = (
         f"competition_entry_"
         f"{round_id}_{stage_no}_{telegram_id}"
-    )
+        )
 
     transaction_ref = transactions_col().document(
         transaction_id
@@ -4206,12 +4208,18 @@ def admin_end_stage(
         }), 404
 
     if stage.get("status") == "closed":
+        result = settle_stage(
+            round_data,
+            stage,
+        )
+
         return jsonify({
-            "success": False,
-            "error": (
-                "This stage has already been concluded."
+            "success": True,
+            "message": (
+                "Stage was already concluded; settlement was safely rechecked."
             ),
-        }), 400
+            **result,
+        })
 
     if stage.get("status") != "live":
         return jsonify({
@@ -4424,11 +4432,17 @@ def admin_force_settle_stage(
         }), 404
 
     if stage.get("status") == "closed":
+        result = settle_stage(
+            round_data,
+            stage,
+        )
+
         return jsonify({
             "success": True,
             "message": (
-                "Stage was already settled."
+                "Stage was already closed; settlement was safely rechecked."
             ),
+            **result,
         })
 
     result = settle_stage(
@@ -4718,4 +4732,4 @@ def admin_advance_compat(
     return admin_next_stage(
         admin,
         round_id,
-              )
+ 
