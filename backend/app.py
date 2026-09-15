@@ -83,14 +83,14 @@ def maintenance_gate():
         return None
 
     # --------------------------------------------------------
-# CORS PREFLIGHT
-# --------------------------------------------------------
+    # CORS PREFLIGHT
+    # --------------------------------------------------------
 
-# Never block browser preflight requests.
-# The real GET/POST request will still be checked.
-if request.method == "OPTIONS":
-    return None
-    
+    # Never block browser preflight requests.
+    # The real GET/POST request will still be checked.
+    if request.method == "OPTIONS":
+        return None
+
     # Non-API requests are irrelevant here.
     if not path.startswith(
         "/api/"
@@ -145,18 +145,18 @@ if request.method == "OPTIONS":
         )
 
         print(
-    "MAINTENANCE CHECK:",
-    {
-        "telegram_id": telegram_id,
-        "bypass": is_maintenance_bypass(
-            telegram_id
-        ),
-        "settings_exceptions":
-            settings.get(
-                "maintenance_exceptions",
-                []
-            )
-    }
+            "MAINTENANCE CHECK:",
+            {
+                "telegram_id": telegram_id,
+                "bypass": is_maintenance_bypass(
+                    telegram_id
+                ),
+                "settings_exceptions":
+                    settings.get(
+                        "maintenance_exceptions",
+                        []
+                    )
+            }
         )
 
         # ----------------------------------------------------
