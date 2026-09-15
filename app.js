@@ -15,6 +15,7 @@ let currentChallenge = null;
 let currentPage = "home";
 let adsWatched = 0;
 let selectedChoice = null;
+let maintenanceActive = false;
 
 
 // ============================================================
@@ -83,11 +84,25 @@ async function api(path, options = {}) {
     }
 
     if (!response.ok) {
-        throw new Error(
+
+    const error =
+        new Error(
             data.error ||
             data.message ||
             `HTTP ${response.status}`
         );
+
+    error.code =
+        data.code ||
+        "";
+
+    error.status =
+        response.status;
+
+    error.maintenance =
+        data.maintenance === true;
+
+    throw error;
     }
 
     return data;
@@ -146,6 +161,142 @@ function escapeJs(value) {
 
 
 // ============================================================
+// MAINTENANCE UI
+// ============================================================
+
+function showMaintenanceScreen(
+    message,
+    gameMaintenance = false
+) {
+
+    maintenanceActive = true;
+
+    const app =
+        document.getElementById(
+            "app"
+        );
+
+    if (!app) {
+        return;
+    }
+
+    app.innerHTML = `
+
+        <div
+            id="maintenanceScreen"
+            style="
+                min-height:100vh;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                padding:30px 20px;
+                box-sizing:border-box;
+                text-align:center;
+            "
+        >
+
+            <div
+                style="
+                    width:100%;
+                    max-width:420px;
+                    padding:30px 22px;
+                    border-radius:22px;
+                    background:rgba(255,255,255,.05);
+                    border:1px solid rgba(255,255,255,.10);
+                    box-sizing:border-box;
+                "
+            >
+
+                <div
+                    style="
+                        font-size:64px;
+                        margin-bottom:18px;
+                    "
+                >
+                    🚧
+                </div>
+
+                <h1
+                    style="
+                        margin:0 0 12px;
+                    "
+                >
+                    ${
+                        gameMaintenance
+                        ? "Game Under Maintenance"
+                        : "QuizBee Under Maintenance"
+                    }
+                </h1>
+
+                <p
+                    style="
+                        opacity:.75;
+                        line-height:1.6;
+                        margin:0 0 24px;
+                    "
+                >
+                    ${escapeHtml(
+                        message ||
+                        "QuizBee is currently under maintenance. Please check back soon."
+                    )}
+                </p>
+
+                <div
+                    style="
+                        padding:12px;
+                        border-radius:12px;
+                        background:rgba(255,255,255,.04);
+                        font-size:13px;
+                        opacity:.7;
+                    "
+                >
+                    🐝 We’ll be back soon.
+                </div>
+
+            </div>
+
+        </div>
+
+    `;
+}
+
+
+function handleMaintenanceError(
+    error
+) {
+
+    if (
+        error &&
+        error.code ===
+            "MAINTENANCE"
+    ) {
+
+        showMaintenanceScreen(
+            error.message
+        );
+
+        return true;
+    }
+
+    if (
+        error &&
+        error.code ===
+            "GAME_MAINTENANCE"
+    ) {
+
+        showMaintenanceScreen(
+            error.message,
+            true
+        );
+
+        return true;
+    }
+
+    return false;
+}
+
+
+// ============================================================
 // GAME NORMALIZATION
 // ============================================================
 
@@ -173,12 +324,19 @@ function normalizeGames(serverGames) {
                 "🎮",
 
             active:
-                game.active === true,
+    game.active === true,
 
-            status:
-                game.active === true
-                    ? "active"
-                    : "locked",
+maintenance_mode:
+    game.maintenance_mode === true,
+
+status:
+    game.maintenance_mode === true
+        ? "maintenance"
+        : (
+            game.active === true
+            ? "active"
+            : "locked"
+        ),
 
             entry_points:
                 Number(
@@ -446,16 +604,25 @@ async function bootstrap() {
 
     } catch (error) {
 
-        console.error(
-            "Bootstrap error:",
+    console.error(
+        "Bootstrap error:",
+        error
+    );
+
+    if (
+        handleMaintenanceError(
             error
-        );
+        )
+    ) {
 
+        return;
 
-        showToast(
-            error.message ||
-            "Unable to connect to QuizBee."
-        );
+    }
+
+    showToast(
+        error.message ||
+        "Unable to connect to QuizBee."
+    );
 
     }
 }
@@ -542,8 +709,12 @@ function renderGames() {
 
 function gameCard(game) {
 
-    const locked =
-        !game.active;
+    const maintenance =
+    game.maintenance_mode === true;
+
+const locked =
+    !game.active ||
+    maintenance;
 
 
     return `
@@ -554,10 +725,14 @@ function gameCard(game) {
                     : ""
             }"
             onclick="${
-                locked
-                    ? "lockedGame()"
-                    : `openGame('${escapeJs(game.id)}')`
-            }"
+    maintenance
+        ? "maintenanceGame()"
+        : (
+            locked
+            ? "lockedGame()"
+            : `openGame('${escapeJs(game.id)}')`
+        )
+}"
         >
 
             <span
@@ -568,9 +743,13 @@ function gameCard(game) {
                 }"
             >
                 ${
-                    locked
-                        ? "🔒 LOCKED"
-                        : "● LIVE"
+    maintenance
+        ? "🚧 MAINTENANCE"
+        : (
+            locked
+            ? "🔒 LOCKED"
+            : "● LIVE"
+        )
                 }
             </span>
 
@@ -612,8 +791,12 @@ function gameCard(game) {
 
 function gameListCard(game) {
 
-    const locked =
-        !game.active;
+    const maintenance =
+    game.maintenance_mode === true;
+
+const locked =
+    !game.active ||
+    maintenance;
 
 
     return `
@@ -624,10 +807,14 @@ function gameListCard(game) {
                     : ""
             }"
             onclick="${
-                locked
-                    ? "lockedGame()"
-                    : `openGame('${escapeJs(game.id)}')`
-            }"
+    maintenance
+        ? "maintenanceGame()"
+        : (
+            locked
+            ? "lockedGame()"
+            : `openGame('${escapeJs(game.id)}')`
+        )
+}"
         >
 
             <div class="game-icon">
@@ -662,9 +849,13 @@ function gameListCard(game) {
                 <div class="entry">
 
                     ${
-                        locked
-                            ? "🔒 Coming Soon"
-                            : `Entry: ${game.entry_points} Points`
+    maintenance
+        ? "🚧 Under Maintenance"
+        : (
+            locked
+            ? "🔒 Coming Soon"
+            : `Entry: ${game.entry_points} Points`
+        )
                     }
 
                 </div>
@@ -675,9 +866,13 @@ function gameListCard(game) {
             <div>
 
                 ${
-                    locked
-                        ? "🔒"
-                        : "›"
+    maintenance
+        ? "🚧"
+        : (
+            locked
+            ? "🔒"
+            : "›"
+        )
                 }
 
             </div>
@@ -695,6 +890,14 @@ function lockedGame() {
 
     showToast(
         "🔒 Coming Soon — this game is currently locked."
+    );
+
+}
+
+function maintenanceGame() {
+
+    showToast(
+        "🚧 This game is currently under maintenance."
     );
 
 }
@@ -951,6 +1154,15 @@ async function enterGame() {
             error
         );
 
+        if (
+    handleMaintenanceError(
+        error
+    )
+) {
+
+    return;
+
+        }
 
         if (container) {
 
@@ -1064,6 +1276,16 @@ async function loadChallenge(
             "Challenge error:",
             error
         );
+
+        if (
+    handleMaintenanceError(
+        error
+    )
+) {
+
+    return;
+
+        }
 
 
         if (container) {
