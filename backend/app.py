@@ -1302,53 +1302,55 @@ def answer(game_id):
             )
         )
 
+        update_data = {
+            "updated_at": now()
+        }
+
         if reward > 0:
 
-            user_ref(
-                telegram_id
-            ).update({
+            update_data["quizbee_points"] = (
+                firestore.Increment(reward)
+            )
 
-                "quizbee_points":
-                    firestore.Increment(
-                        reward
-                    ),
+            update_data["total_earned"] = (
+                firestore.Increment(reward)
+            )
 
-                "total_earned":
-                    firestore.Increment(
-                        reward
-                    ),
+        # Record leaderboard win (first correct answer only)
+        update_data["wins"] = (
+            firestore.Increment(1)
+        )
 
-                "updated_at":
-                    now()
+        user_ref(
+            telegram_id
+        ).update(update_data)
 
-            })
+        db.collection(
+            "transactions"
+        ).document().set({
 
-            db.collection(
-                "transactions"
-            ).document().set({
+            "telegram_id":
+                telegram_id,
 
-                "telegram_id":
-                    telegram_id,
+            "type":
+                "game_reward",
 
-                "type":
-                    "game_reward",
+            "game_id":
+                game_id,
 
-                "game_id":
-                    game_id,
+            "challenge_id":
+                challenge_id,
 
-                "challenge_id":
-                    challenge_id,
+            "amount":
+                reward,
 
-                "amount":
-                    reward,
+            "currency":
+                "quizbee_points",
 
-                "currency":
-                    "quizbee_points",
+            "created_at":
+                now()
 
-                "created_at":
-                    now()
-
-            })
+        })
 
         updated_user = (
             user_ref(
@@ -1527,41 +1529,28 @@ def leaderboard():
                 )
             }), 401
 
-        docs = (
+        users = db.collection(
+            "users"
+        ).stream()
 
-            db.collection(
-                "users"
+        leaderboard_data = []
+
+        for snap in users:
+
+            data = snap.to_dict() or {}
+
+            wins = int(
+                data.get("wins", 0) or 0
             )
 
-            .order_by(
-                "total_earned",
-                direction=
-                    firestore.Query.DESCENDING
-            )
+            leaderboard_data.append({
 
-            .limit(50)
-
-            .stream()
-
-        )
-
-        results = []
-
-        rank = 1
-
-        for doc in docs:
-
-            data = doc.to_dict()
-
-            results.append({
-
-                "rank":
-                    rank,
-
-                "telegram_id":
+                "telegram_id": str(
                     data.get(
-                        "telegram_id"
-                    ),
+                        "telegram_id",
+                        snap.id
+                    )
+                ),
 
                 "username":
                     data.get(
@@ -1575,22 +1564,31 @@ def leaderboard():
                         ""
                     ),
 
-                "total_earned":
-                    data.get(
-                        "total_earned",
-                        0
-                    )
+                "wins": wins
 
             })
 
-            rank += 1
+        leaderboard_data.sort(
+            key=lambda x: x["wins"],
+            reverse=True,
+        )
+
+        leaderboard_data = (
+            leaderboard_data[:50]
+        )
+
+        for index, player in enumerate(
+            leaderboard_data,
+            start=1
+        ):
+            player["rank"] = index
 
         return jsonify({
 
             "success": True,
 
             "leaderboard":
-                results
+                leaderboard_data
 
         })
 
