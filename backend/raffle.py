@@ -953,3 +953,694 @@ def buy_tickets(raffle_id):
                 "RAFFLE_PURCHASE_ERROR"
 
         }), 500
+
+# ============================================================
+# ADMIN AUTH
+# ============================================================
+
+def get_admin_user():
+    init_data = request.headers.get(
+        "X-Telegram-Init-Data",
+        ""
+    )
+
+    if not init_data:
+        return None, "UNAUTHORIZED"
+
+    admin_bot_token = os.getenv(
+        "ADMIN_BOT_TOKEN",
+        ""
+    ).strip()
+
+    if not admin_bot_token:
+        return None, "ADMIN_BOT_TOKEN_MISSING"
+
+    user = validate_telegram_init_data(
+        init_data,
+        bot_token=admin_bot_token
+    )
+
+    if not user:
+        return None, "UNAUTHORIZED"
+
+    telegram_id = str(user.get("id"))
+
+    admin_ids = os.getenv(
+        "ADMIN_TELEGRAM_IDS",
+        ""
+    ).strip()
+
+    if not admin_ids:
+        admin_ids = os.getenv(
+            "ADMIN_TELEGRAM_ID",
+            ""
+        ).strip()
+
+    allowed_ids = {
+        item.strip()
+        for item in admin_ids.split(",")
+        if item.strip()
+    }
+
+    if telegram_id not in allowed_ids:
+        return None, "FORBIDDEN"
+
+    return user, None
+
+
+def require_admin():
+    admin, error = get_admin_user()
+
+    if error:
+        if error == "FORBIDDEN":
+            return None, (
+                jsonify({
+                    "success": False,
+                    "error": "Admin access required."
+                }),
+                403
+            )
+
+        return None, (
+            jsonify({
+                "success": False,
+                "error": "Unauthorized admin session."
+            }),
+            401
+        )
+
+    return admin, None
+
+
+# ============================================================
+# ADMIN — CREATE RAFFLE
+# ============================================================
+
+@raffle_bp.post("/admin/create")
+def admin_create_raffle():
+
+    admin, error = require_admin()
+
+    if error:
+        return error
+
+    try:
+        body = (
+            request.get_json(
+                silent=True
+            )
+            or {}
+        )
+
+        raffle_id = str(
+            body.get(
+                "raffle_id",
+                ""
+            )
+        ).strip()
+
+        prize_name = str(
+            body.get(
+                "prize_name",
+                ""
+            )
+        ).strip()
+
+        prize_image = str(
+            body.get(
+                "prize_image",
+                ""
+            )
+        ).strip()
+
+        start_at = str(
+            body.get(
+                "start_at",
+                ""
+            )
+        ).strip()
+
+        end_at = str(
+            body.get(
+                "end_at",
+                ""
+            )
+        ).strip()
+
+        if not raffle_id:
+            raffle_id = (
+                datetime.now(
+                    timezone.utc
+                ).strftime(
+                    "raffle-%Y%m%d-%H%M%S"
+                )
+            )
+
+        if not prize_name:
+            return jsonify({
+                "success": False,
+                "error":
+                    "Prize name is required."
+            }), 400
+
+        if not start_at:
+            return jsonify({
+                "success": False,
+                "error":
+                    "Start date/time is required."
+            }), 400
+
+        if not end_at:
+            return jsonify({
+                "success": False,
+                "error":
+                    "End date/time is required."
+            }), 400
+
+        try:
+            start_datetime = datetime.fromisoformat(
+                start_at.replace(
+                    "Z",
+                    "+00:00"
+                )
+            )
+
+            end_datetime = datetime.fromisoformat(
+                end_at.replace(
+                    "Z",
+                    "+00:00"
+                )
+            )
+
+        except ValueError:
+            return jsonify({
+                "success": False,
+                "error":
+                    "Invalid date/time format."
+            }), 400
+
+        if start_datetime.tzinfo is None:
+            start_datetime = start_datetime.replace(
+                tzinfo=timezone.utc
+            )
+
+        if end_datetime.tzinfo is None:
+            end_datetime = end_datetime.replace(
+                tzinfo=timezone.utc
+            )
+
+        if end_datetime <= start_datetime:
+            return jsonify({
+                "success": False,
+                "error":
+                    "End date/time must be after start date/time."
+            }), 400
+
+        ref = raffle_ref(
+            raffle_id
+        )
+
+        if ref.get().exists:
+            return jsonify({
+                "success": False,
+                "error":
+                    "A raffle with this ID already exists."
+            }), 409
+
+        raffle_data = {
+            "raffle_id":
+                raffle_id,
+
+            "prize_name":
+                prize_name,
+
+            "prize_image":
+                prize_image,
+
+            "ticket_price":
+                TICKET_PRICE,
+
+            "start_at":
+                start_datetime,
+
+            "end_at":
+                end_datetime,
+
+            "ticket_counter":
+                0,
+
+            "created_at":
+                now(),
+
+            "created_by":
+                str(admin.get("id")),
+
+            "created_by_username":
+                admin.get(
+                    "username",
+                    ""
+                ),
+
+            "enabled":
+                True
+        }
+
+        ref.set(
+            raffle_data
+        )
+
+        return jsonify({
+            "success": True,
+            "message":
+                "Raffle created successfully.",
+            "raffle":
+                public_raffle_data(
+                    raffle_data
+                )
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+# ============================================================
+# ADMIN — GET RAFFLE
+# ============================================================
+
+@raffle_bp.get("/admin/<raffle_id>")
+def admin_get_raffle(raffle_id):
+
+    admin, error = require_admin()
+
+    if error:
+        return error
+
+    try:
+        snap = raffle_ref(
+            raffle_id
+        ).get()
+
+        if not snap.exists:
+            return jsonify({
+                "success": False,
+                "error":
+                    "Raffle not found."
+            }), 404
+
+        data = snap.to_dict() or {}
+
+        return jsonify({
+            "success": True,
+            "raffle":
+                serialize_value(
+                    data
+                ),
+            "status":
+                get_raffle_status(
+                    data
+                )
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+# ============================================================
+# ADMIN — LIST RAFFLES
+# ============================================================
+
+@raffle_bp.get("/admin")
+def admin_list_raffles():
+
+    admin, error = require_admin()
+
+    if error:
+        return error
+
+    try:
+
+        docs = list(
+            db.collection(
+                RAFFLE_COLLECTION
+            )
+            .order_by(
+                "start_at",
+                direction=firestore.Query.DESCENDING
+            )
+            .limit(50)
+            .stream()
+        )
+
+        raffles = []
+
+        for doc in docs:
+
+            data = doc.to_dict() or {}
+
+            raffles.append({
+                "id":
+                    doc.id,
+
+                "raffle":
+                    serialize_value(
+                        data
+                    ),
+
+                "status":
+                    get_raffle_status(
+                        data
+                    )
+            })
+
+        return jsonify({
+            "success": True,
+            "raffles":
+                raffles
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+# ============================================================
+# ADMIN — LIST TICKETS
+# ============================================================
+
+@raffle_bp.get(
+    "/admin/<raffle_id>/tickets"
+)
+def admin_list_tickets(raffle_id):
+
+    admin, error = require_admin()
+
+    if error:
+        return error
+
+    try:
+
+        raffle_snap = raffle_ref(
+            raffle_id
+        ).get()
+
+        if not raffle_snap.exists:
+            return jsonify({
+                "success": False,
+                "error":
+                    "Raffle not found."
+            }), 404
+
+        docs = list(
+            raffle_ref(
+                raffle_id
+            )
+            .collection(
+                "tickets"
+            )
+            .order_by(
+                "ticket_number",
+                direction=firestore.Query.ASCENDING
+            )
+            .stream()
+        )
+
+        tickets = []
+
+        for doc in docs:
+
+            data = doc.to_dict() or {}
+
+            data["id"] = doc.id
+
+            tickets.append(
+                serialize_value(
+                    data
+                )
+            )
+
+        return jsonify({
+            "success": True,
+
+            "raffle_id":
+                raffle_id,
+
+            "count":
+                len(tickets),
+
+            "tickets":
+                tickets,
+
+            "ticket_ids":
+                [
+                    ticket.get(
+                        "ticket_id"
+                    )
+                    for ticket in tickets
+                    if ticket.get(
+                        "ticket_id"
+                    )
+                ]
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+# ============================================================
+# ADMIN — SEARCH TICKET
+# ============================================================
+
+@raffle_bp.get(
+    "/admin/<raffle_id>/tickets/search"
+)
+def admin_search_ticket(raffle_id):
+
+    admin, error = require_admin()
+
+    if error:
+        return error
+
+    try:
+
+        ticket_id = str(
+            request.args.get(
+                "ticket_id",
+                ""
+            )
+        ).strip()
+
+        if not ticket_id:
+            return jsonify({
+                "success": False,
+                "error":
+                    "Ticket ID is required."
+            }), 400
+
+        snap = (
+            raffle_ref(
+                raffle_id
+            )
+            .collection(
+                "tickets"
+            )
+            .document(
+                ticket_id
+            )
+            .get()
+        )
+
+        if not snap.exists:
+            return jsonify({
+                "success": False,
+                "error":
+                    "Ticket not found."
+            }), 404
+
+        ticket = (
+            snap.to_dict()
+            or {}
+        )
+
+        ticket["id"] = snap.id
+
+        return jsonify({
+            "success": True,
+            "ticket":
+                serialize_value(
+                    ticket
+                )
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+# ============================================================
+# ADMIN — END RAFFLE
+# ============================================================
+
+@raffle_bp.post(
+    "/admin/<raffle_id>/end"
+)
+def admin_end_raffle(raffle_id):
+
+    admin, error = require_admin()
+
+    if error:
+        return error
+
+    try:
+
+        ref = raffle_ref(
+            raffle_id
+        )
+
+        snap = ref.get()
+
+        if not snap.exists:
+            return jsonify({
+                "success": False,
+                "error":
+                    "Raffle not found."
+            }), 404
+
+        data = snap.to_dict() or {}
+
+        end_time = now()
+
+        ref.update({
+            "end_at":
+                end_time,
+
+            "ended_by":
+                str(
+                    admin.get(
+                        "id"
+                    )
+                ),
+
+            "ended_at":
+                end_time,
+
+            "enabled":
+                False
+        })
+
+        return jsonify({
+            "success": True,
+            "message":
+                "Raffle ended successfully.",
+            "raffle_id":
+                raffle_id
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+# ============================================================
+# ADMIN — DELETE RAFFLE
+# ============================================================
+
+@raffle_bp.delete(
+    "/admin/<raffle_id>"
+)
+def admin_delete_raffle(raffle_id):
+
+    admin, error = require_admin()
+
+    if error:
+        return error
+
+    try:
+
+        ref = raffle_ref(
+            raffle_id
+        )
+
+        snap = ref.get()
+
+        if not snap.exists:
+            return jsonify({
+                "success": False,
+                "error":
+                    "Raffle not found."
+            }), 404
+
+        # ----------------------------------------------------
+        # DELETE TICKETS
+        # ----------------------------------------------------
+
+        ticket_docs = list(
+            ref.collection(
+                "tickets"
+            ).stream()
+        )
+
+        for ticket_doc in ticket_docs:
+            ticket_doc.reference.delete()
+
+        # ----------------------------------------------------
+        # DELETE PURCHASE RECORDS
+        # ----------------------------------------------------
+
+        purchase_docs = list(
+            ref.collection(
+                "purchases"
+            ).stream()
+        )
+
+        for purchase_doc in purchase_docs:
+            purchase_doc.reference.delete()
+
+        # ----------------------------------------------------
+        # DELETE RAFFLE
+        # ----------------------------------------------------
+
+        ref.delete()
+
+        return jsonify({
+            "success": True,
+
+            "message":
+                "Raffle and all associated tickets deleted.",
+
+            "raffle_id":
+                raffle_id,
+
+            "deleted_tickets":
+                len(ticket_docs),
+
+            "deleted_purchases":
+                len(purchase_docs)
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
