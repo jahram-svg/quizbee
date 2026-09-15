@@ -82,6 +82,15 @@ def maintenance_gate():
     if path == "/api/health":
         return None
 
+    # --------------------------------------------------------
+# CORS PREFLIGHT
+# --------------------------------------------------------
+
+# Never block browser preflight requests.
+# The real GET/POST request will still be checked.
+if request.method == "OPTIONS":
+    return None
+    
     # Non-API requests are irrelevant here.
     if not path.startswith(
         "/api/"
