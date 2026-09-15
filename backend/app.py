@@ -13,7 +13,11 @@ from backend.firebase import db
 from backend.telegram_auth import validate_telegram_init_data
 from backend.wallet import wallet_bp
 from backend.daily_earning import daily_earning_bp
-from backend.admin import admin_bp
+from backend.admin import (
+    admin_bp,
+    get_app_settings,
+    is_maintenance_bypass
+)
 from backend.competition import competition_bp
 
 
@@ -47,6 +51,136 @@ DEV_MODE = os.getenv(
     "DEV_MODE",
     "false"
 ).lower() == "true"
+
+
+# ============================================================
+# GLOBAL MAINTENANCE GATE
+# ============================================================
+
+@app.before_request
+def maintenance_gate():
+
+    path = request.path or ""
+
+    # --------------------------------------------------------
+    # NEVER BLOCK THESE
+    # --------------------------------------------------------
+
+    # Admin must always be able to manage the platform.
+    if path.startswith(
+        "/api/admin"
+    ):
+        return None
+
+    # Competition Admin routes must remain available.
+    if path.startswith(
+        "/api/competition/admin"
+    ):
+        return None
+
+    # Health check must remain available.
+    if path == "/api/health":
+        return None
+
+    # Non-API requests are irrelevant here.
+    if not path.startswith(
+        "/api/"
+    ):
+        return None
+
+    try:
+
+        settings = (
+            get_app_settings()
+        )
+
+        maintenance_mode = bool(
+            settings.get(
+                "maintenance_mode",
+                False
+            )
+        )
+
+        if not maintenance_mode:
+            return None
+
+        # ----------------------------------------------------
+        # AUTHENTICATE USER
+        # ----------------------------------------------------
+
+        user = (
+            get_authenticated_telegram_user()
+        )
+
+        if not user:
+
+            return jsonify({
+                "success": False,
+
+                "error":
+                    settings.get(
+                        "maintenance_message",
+                        "QuizBee is currently under maintenance."
+                    ),
+
+                "code":
+                    "MAINTENANCE",
+
+                "maintenance":
+                    True
+
+            }), 503
+
+        telegram_id = str(
+            user["telegram_id"]
+        )
+
+        # ----------------------------------------------------
+        # TEST USER BYPASS
+        # ----------------------------------------------------
+
+        if is_maintenance_bypass(
+            telegram_id
+        ):
+
+            return None
+
+        # ----------------------------------------------------
+        # NORMAL USER
+        # ----------------------------------------------------
+
+        return jsonify({
+            "success": False,
+
+            "error":
+                settings.get(
+                    "maintenance_message",
+                    "QuizBee is currently under maintenance."
+                ),
+
+            "code":
+                "MAINTENANCE",
+
+            "maintenance":
+                True
+
+        }), 503
+
+    except Exception as e:
+
+        print(
+            "Maintenance gate error:",
+            repr(e)
+        )
+
+        # Fail closed.
+        return jsonify({
+            "success": False,
+            "error":
+                "QuizBee is temporarily unavailable.",
+            "code":
+                "MAINTENANCE_CHECK_FAILED"
+        }), 503
 
 
 # ============================================================
