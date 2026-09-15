@@ -1937,6 +1937,133 @@ def transactions():
 # SETTINGS
 # ============================================================
 
+DEFAULT_APP_SETTINGS = {
+    "participant_visibility":
+        "hidden",
+
+    "maintenance_mode":
+        False,
+
+    "maintenance_message":
+        "QuizBee is currently under maintenance. Please check back soon.",
+
+    "maintenance_exceptions":
+        [],
+
+    "daily_earning_enabled":
+        True
+}
+
+
+def get_app_settings():
+
+    ref = (
+        db.collection(
+            "settings"
+        )
+        .document("app")
+    )
+
+    snap = ref.get()
+
+    if not snap.exists:
+
+        ref.set({
+            **DEFAULT_APP_SETTINGS,
+            "updated_at": now()
+        })
+
+        return dict(
+            DEFAULT_APP_SETTINGS
+        )
+
+    settings = snap.to_dict() or {}
+
+    merged = dict(
+        DEFAULT_APP_SETTINGS
+    )
+
+    merged.update(
+        settings
+    )
+
+    return merged
+
+
+def normalize_maintenance_ids(
+    values
+):
+
+    if values is None:
+        return []
+
+    if isinstance(
+        values,
+        str
+    ):
+
+        values = (
+            values
+            .replace(",", "\n")
+            .splitlines()
+        )
+
+    if not isinstance(
+        values,
+        list
+    ):
+        return []
+
+    result = []
+
+    for value in values:
+
+        value = str(
+            value
+        ).strip()
+
+        if not value:
+            continue
+
+        # Telegram user IDs are numeric.
+        if not value.isdigit():
+            continue
+
+        if value not in result:
+            result.append(value)
+
+    return result
+
+
+def is_maintenance_bypass(
+    telegram_id
+):
+
+    settings = get_app_settings()
+
+    exceptions = (
+        settings.get(
+            "maintenance_exceptions",
+            []
+        )
+    )
+
+    exceptions = (
+        normalize_maintenance_ids(
+            exceptions
+        )
+    )
+
+    return (
+        str(telegram_id)
+        in exceptions
+    )
+
+
+# ------------------------------------------------------------
+# GET SETTINGS
+# ------------------------------------------------------------
+
 @admin_bp.get("/settings")
 def get_settings():
 
@@ -1947,45 +2074,252 @@ def get_settings():
 
     try:
 
-        ref = (
-            db.collection("settings")
-            .document("app")
+        settings = (
+            get_app_settings()
         )
-
-        snap = ref.get()
-
-        if not snap.exists:
-
-            settings = {
-                "participant_visibility":
-                    "hidden",
-
-                "maintenance_mode":
-                    False,
-
-                "daily_earning_enabled":
-                    True
-            }
-
-            ref.set({
-                **settings,
-                "updated_at": now()
-            })
-
-        else:
-            settings = snap.to_dict() or {}
 
         return jsonify({
             "success": True,
+
             "settings":
-                serialize_value(settings)
+                serialize_value(
+                    settings
+                )
         })
 
     except Exception as e:
 
         return jsonify({
             "success": False,
-            "error": str(e)
+            "error":
+                str(e)
+        }), 500
+
+
+# ------------------------------------------------------------
+# UPDATE SETTINGS
+# ------------------------------------------------------------
+
+@admin_bp.post("/settings")
+def update_settings():
+
+    admin, error = require_admin()
+
+    if error:
+        return admin_error(error)
+
+    try:
+
+        body = (
+            request.get_json(
+                silent=True
+            )
+            or {}
+        )
+
+        updates = {}
+
+        # ----------------------------------------------------
+        # PARTICIPANT VISIBILITY
+        # ----------------------------------------------------
+
+        if (
+            "participant_visibility"
+            in body
+        ):
+
+            visibility = str(
+                body.get(
+                    "participant_visibility",
+                    ""
+                )
+            ).strip()
+
+            if visibility not in (
+                "hidden",
+                "total",
+                "per_game"
+            ):
+
+                return jsonify({
+                    "success": False,
+                    "error":
+                        "Invalid participant visibility."
+                }), 400
+
+            updates[
+                "participant_visibility"
+            ] = visibility
+
+        # ----------------------------------------------------
+        # GLOBAL MAINTENANCE
+        # ----------------------------------------------------
+
+        if (
+            "maintenance_mode"
+            in body
+        ):
+
+            updates[
+                "maintenance_mode"
+            ] = bool(
+                body.get(
+                    "maintenance_mode"
+                )
+            )
+
+        # ----------------------------------------------------
+        # MAINTENANCE MESSAGE
+        # ----------------------------------------------------
+
+        if (
+            "maintenance_message"
+            in body
+        ):
+
+            message = str(
+                body.get(
+                    "maintenance_message",
+                    ""
+                )
+            ).strip()
+
+            if not message:
+
+                message = (
+                    "QuizBee is currently "
+                    "under maintenance. "
+                    "Please check back soon."
+                )
+
+            if len(message) > 500:
+
+                return jsonify({
+                    "success": False,
+                    "error":
+                        "Maintenance message is too long."
+                }), 400
+
+            updates[
+                "maintenance_message"
+            ] = message
+
+        # ----------------------------------------------------
+        # MAINTENANCE EXCEPTIONS
+        # ----------------------------------------------------
+
+        if (
+            "maintenance_exceptions"
+            in body
+        ):
+
+            exceptions = (
+                normalize_maintenance_ids(
+                    body.get(
+                        "maintenance_exceptions"
+                    )
+                )
+            )
+
+            if len(exceptions) > 100:
+
+                return jsonify({
+                    "success": False,
+                    "error":
+                        "Maximum of 100 maintenance test users allowed."
+                }), 400
+
+            updates[
+                "maintenance_exceptions"
+            ] = exceptions
+
+        # ----------------------------------------------------
+        # DAILY EARNING
+        # ----------------------------------------------------
+
+        if (
+            "daily_earning_enabled"
+            in body
+        ):
+
+            updates[
+                "daily_earning_enabled"
+            ] = bool(
+                body.get(
+                    "daily_earning_enabled"
+                )
+            )
+
+        # ----------------------------------------------------
+        # AUDIT
+        # ----------------------------------------------------
+
+        updates[
+            "updated_at"
+        ] = now()
+
+        updates[
+            "updated_by"
+        ] = admin[
+            "telegram_id"
+        ]
+
+        ref = (
+            db.collection(
+                "settings"
+            )
+            .document("app")
+        )
+
+        ref.set(
+            updates,
+            merge=True
+        )
+
+        # ----------------------------------------------------
+        # ADMIN AUDIT LOG
+        # ----------------------------------------------------
+
+        create_admin_action(
+            admin=admin,
+
+            action=
+                "update_app_settings",
+
+            target_telegram_id=
+                "SYSTEM",
+
+            reason=
+                "Admin settings updated.",
+
+            details={
+                key:
+                    serialize_value(
+                        value
+                    )
+                for key, value
+                in updates.items()
+                if key not in (
+                    "updated_at"
+                )
+            }
+        )
+
+        return jsonify({
+            "success": True,
+
+            "settings":
+                serialize_value(
+                    updates
+                )
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "success": False,
+            "error":
+                str(e)
         }), 500
 
 
