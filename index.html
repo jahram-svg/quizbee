@@ -60,9 +60,9 @@
                     <span>Watch Ads</span>
                 </button>
 
-                <button onclick="showPage('leaderboard')">
-                    🏆
-                    <span>Leaderboard</span>
+                <button onclick="showPage('raffle')">
+                    🎟️
+                    <span>Raffle Draw</span>
                 </button>
 
                 <button onclick="showPage('profile')">
@@ -180,48 +180,57 @@
 
 
         <!-- DAILY EARNING -->
-<section id="earningPage" class="page">
-
-    <div class="page-heading">
-        <button class="back-btn" onclick="goHome()">‹</button>
-        <h1>💰 Daily Earning</h1>
-    </div>
-
-    <div class="earning-hint">
-        💡 Low on points? Watch 10 ads, gain 10 points, enter Daily Earning.
-    </div>
-
-    <div id="dailyEarningContent">
-
-        <div class="info-box">
-            Loading Daily Earning...
-        </div>
-
-    </div>
-
-</section>
-        
-        
-        <!-- LEADERBOARD -->
-        <section id="leaderboardPage" class="page">
+        <section id="earningPage" class="page">
 
             <div class="page-heading">
                 <button class="back-btn" onclick="goHome()">‹</button>
-                <h1>🏆 Leaderboard</h1>
+                <h1>💰 Daily Earning</h1>
             </div>
 
-            <div class="tabs">
-                <button class="active" onclick="loadLeaderboard('weekly', this)">
-                    Weekly
-                </button>
-
-                <button onclick="loadLeaderboard('alltime', this)">
-                    All Time
-                </button>
+            <div class="earning-hint">
+                💡 Low on points? Watch 10 ads, gain 10 points, enter Daily Earning.
             </div>
 
-            <div id="leaderboardList" class="leaderboard-list">
-                Loading...
+            <div id="dailyEarningContent">
+
+                <div class="info-box">
+                    Loading Daily Earning...
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- RAFFLE DRAW -->
+        <section id="rafflePage" class="page">
+
+            <div class="page-heading">
+                <button class="back-btn" onclick="goHome()">‹</button>
+                <h1>🎟️ Raffle Draw</h1>
+            </div>
+
+            <div class="info-box" style="text-align: center; padding: 30px 20px;">
+
+                <div style="font-size: 55px; margin-bottom: 15px;">
+                    🔒
+                </div>
+
+                <h2>Raffle Draw Coming Soon</h2>
+
+                <p>
+                    Weekly QuizBee raffles are coming soon.
+                </p>
+
+                <p>
+                    Buy tickets with your QuizBee Points
+                    and stand a chance to win exciting prizes.
+                </p>
+
+                <div style="margin-top: 20px; font-weight: 600;">
+                    🐝 Stay tuned!
+                </div>
+
             </div>
 
         </section>
@@ -293,6 +302,7 @@
     </main>
 
 
+    <!-- BOTTOM NAVIGATION -->
     <nav class="bottom-nav">
 
         <button class="nav-item active" onclick="showPage('home')">
@@ -306,13 +316,13 @@
         </button>
 
         <button class="nav-item" onclick="showPage('earning')">
-    <span>💰</span>
-    Earn
+            <span>💰</span>
+            Earn
         </button>
 
-        <button class="nav-item" onclick="showPage('leaderboard')">
-            <span>🏆</span>
-            Rank
+        <button class="nav-item" onclick="showPage('raffle')">
+            <span>🎟️</span>
+            Raffle
         </button>
 
         <button class="nav-item" onclick="showPage('profile')">
@@ -332,4 +342,4 @@
 <script src="daily_earning.js"></script>
 
 </body>
-    </html>
+            </html> 
