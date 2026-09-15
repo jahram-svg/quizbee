@@ -1529,18 +1529,24 @@ function renderGameCard(game) {
                 </div>
 
                 <span class="badge ${
-                    game.active
-                    ? "active"
-                    : ""
-                }">
-
-                    ${
-                        game.active
-                        ? "ACTIVE"
-                        : "LOCKED"
-                    }
-
-                </span>
+    game.maintenance_mode
+    ? "danger"
+    : (
+        game.active
+        ? "active"
+        : ""
+    )
+}">
+    ${
+        game.maintenance_mode
+        ? "🚧 MAINTENANCE"
+        : (
+            game.active
+            ? "ACTIVE"
+            : "LOCKED"
+        )
+    }
+</span>
 
             </div>
 
@@ -1555,22 +1561,40 @@ function renderGameCard(game) {
             </p>
 
             <button
-                class="${
-                    game.active
-                    ? "danger-btn"
-                    : "primary-btn"
-                } full"
-                onclick="toggleGame(
-                    '${game.id}',
-                    ${!game.active}
-                )"
-            >
-                ${
-                    game.active
-                    ? "Lock Game"
-                    : "Unlock Game"
-                }
-            </button>
+    class="${
+        game.active
+        ? "danger-btn"
+        : "primary-btn"
+    } full"
+    onclick="toggleGame(
+        '${game.id}',
+        ${!game.active}
+    )"
+>
+    ${
+        game.active
+        ? "Lock Game"
+        : "Unlock Game"
+    }
+</button>
+
+<button
+    class="${
+        game.maintenance_mode
+        ? "primary-btn"
+        : "secondary-btn"
+    } full"
+    onclick="toggleGameMaintenance(
+        '${game.id}',
+        ${!game.maintenance_mode}
+    )"
+>
+    ${
+        game.maintenance_mode
+        ? "✅ End Maintenance"
+        : "🚧 Put Under Maintenance"
+    }
+</button>
 
         </div>
     `;
@@ -1600,6 +1624,44 @@ async function toggleGame(
             active
             ? "Game unlocked."
             : "Game locked."
+        );
+
+        loadGames();
+
+    } catch (error) {
+
+        showToast(
+            error.message
+        );
+    }
+}
+
+async function toggleGameMaintenance(
+    gameId,
+    maintenance
+) {
+
+    try {
+
+        await api(
+            `/api/admin/games/${encodeURIComponent(
+                gameId
+            )}/update`,
+            {
+                method: "POST",
+
+                body:
+                    JSON.stringify({
+                        maintenance_mode:
+                            maintenance
+                    })
+            }
+        );
+
+        showToast(
+            maintenance
+            ? "🚧 Game placed under maintenance."
+            : "✅ Game maintenance ended."
         );
 
         loadGames();
