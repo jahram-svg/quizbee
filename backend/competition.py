@@ -1601,11 +1601,78 @@ def settle_stage(
             message = result_message(
                 game_id,
                 stage_no,
-                passed=True,
-                winner=winner,
-                final=(next_stage is None),
-                next_stage=next_stage,
-                correct_answer=correct_answer,
+                Passed=True,
+                Winner=winner,
+                Final=(next_stage is None),
+                Next_stage=next_stage,
+                Correct_answer=correct_answer,
+            )
+
+            # ------------------------------------------------
+            # PHASE 6 — AWARD +1 WIN
+            #
+            # Every valid first correct competition answer
+            # earns exactly 1 win.
+            #
+            # The entry is marked "wins_awarded" so that
+            # settling the same stage again cannot award
+            # another win.
+            # ------------------------------------------------
+
+            entry_ref = Entries_col().document(
+                entry["id"]
+            )
+
+            user_ref = Users_col().document(
+                telegram_id
+            )
+
+            transaction = firestore.client().transaction()
+
+            @firestore.transactional
+            def award_competition_win(
+                transaction
+            ):
+                entry_snapshot = transaction.get(
+                    entry_ref
+                )
+
+                if not entry_snapshot.exists:
+                    return False
+
+                entry_data = (
+                    entry_snapshot.to_dict()
+                    or {}
+                )
+
+                # Already received the win for this stage.
+                if entry_data.get("wins_awarded") is True:
+                    return False
+
+                # Award exactly +1 win.
+                transaction.update(
+                    user_ref,
+                    {
+                        "wins": firestore.Increment(1),
+                        "updated_at": firestore.SERVER_TIMESTAMP,
+                    },
+                )
+
+                # Mark this stage entry so it cannot
+                # award another win if settlement runs again.
+                transaction.update(
+                    entry_ref,
+                    {
+                        "wins_awarded": True,
+                        "win_awarded_at": firestore.SERVER_TIMESTAMP,
+                        "updated_at": firestore.SERVER_TIMESTAMP,
+                    },
+                )
+
+                return True
+
+            award_competition_win(
+                transaction
             )
 
         # ----------------------------------------------------
@@ -1649,11 +1716,11 @@ def settle_stage(
                 message = result_message(
                     game_id,
                     stage_no,
-                    passed=False,
-                    winner=False,
-                    final=(next_stage is None),
-                    next_stage=None,
-                    correct_answer=correct_answer,
+                    Passed=False,
+                    Winner=False,
+                    Final=(next_stage is None),
+                    Next_stage=None,
+                    Correct_answer=correct_answer,
                 )
 
         # ----------------------------------------------------
@@ -1661,19 +1728,19 @@ def settle_stage(
         # ----------------------------------------------------
 
         create_or_update_player_result(
-            round_data=round_data,
-            stage=stage,
-            telegram_id=telegram_id,
-            outcome=outcome,
-            passed=passed,
-            advanced=advanced,
-            winner=winner,
-            eliminated=eliminated,
-            final=(next_stage is None),
-            message=message,
-            submitted_answer=entry.get("answer"),
-            correct_answer=correct_answer,
-            extra={
+            Round_data=round_data,
+            Stage=stage,
+            Telegram_id=telegram_id,
+            Outcome=outcome,
+            Passed=passed,
+            Advanced=advanced,
+            Winner=winner,
+            Eliminated=eliminated,
+            Final=(next_stage is None),
+            Message=message,
+            Submitted_answer=entry.get("answer"),
+            Correct_answer=correct_answer,
+            Extra={
                 "dead_numbers": dead_numbers,
 
                 # Aggregate stage statistics
@@ -1691,7 +1758,7 @@ def settle_stage(
         # KEEP ENTRY SYNCHRONIZED
         # ----------------------------------------------------
 
-        entries_col().document(
+        Entries_col().document(
             entry["id"]
         ).set(
             {
@@ -1734,7 +1801,7 @@ def settle_stage(
     # This MUST happen for BOTH final and non-final stages.
     # --------------------------------------------------------
 
-    stages_col().document(
+    Stages_col().document(
         stage["id"]
     ).set(
         {
@@ -1784,7 +1851,7 @@ def settle_stage(
         round_update["current_stage"] = total_stages
         round_update["ended_at"] = firestore.SERVER_TIMESTAMP
 
-    rounds_col().document(
+    Rounds_col().document(
         round_id
     ).set(
         round_update,
@@ -1819,7 +1886,7 @@ def settle_stage(
         "next_stage": next_stage,
 
         "round_status": round_status,
-        }
+    }
 
 
 # ============================================================
