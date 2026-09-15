@@ -741,6 +741,35 @@ def enter_game(game_id):
                 "error": "Game not found."
             }), 404
 
+        if (
+    game.get(
+        "maintenance_mode",
+        False
+    )
+    and not is_maintenance_bypass(
+        telegram_user[
+            "telegram_id"
+        ]
+    )
+):
+
+    return jsonify({
+        "success": False,
+
+        "error":
+            "This game is currently under maintenance.",
+
+        "code":
+            "GAME_MAINTENANCE",
+
+        "maintenance":
+            True,
+
+        "game_id":
+            game_id
+
+    }), 503
+    
         if not game.get(
             "active",
             False
@@ -952,6 +981,35 @@ def challenge(game_id):
                 "error": "Game not found."
             }), 404
 
+        if (
+    game.get(
+        "maintenance_mode",
+        False
+    )
+    and not is_maintenance_bypass(
+        telegram_user[
+            "telegram_id"
+        ]
+    )
+):
+
+    return jsonify({
+        "success": False,
+
+        "error":
+            "This game is currently under maintenance.",
+
+        "code":
+            "GAME_MAINTENANCE",
+
+        "maintenance":
+            True,
+
+        "game_id":
+            game_id
+
+    }), 503
+    
         if not game.get(
             "active",
             False
