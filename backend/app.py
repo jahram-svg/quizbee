@@ -19,6 +19,7 @@ from backend.admin import (
     is_maintenance_bypass
 )
 from backend.competition import competition_bp
+from backend.raffle import raffle_bp
 
 
 app = Flask(__name__)
@@ -26,6 +27,7 @@ app.register_blueprint(wallet_bp)
 app.register_blueprint(daily_earning_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(competition_bp)
+app.register_blueprint(raffle_bp)
 
 
 CORS(
