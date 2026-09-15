@@ -1254,11 +1254,12 @@ def update_game(game_id):
         updates = {}
 
         allowed_fields = [
-            "name",
-            "description",
-            "active",
-            "entry_fee",
-            "sort_order"
+    "name",
+    "description",
+    "active",
+    "maintenance_mode",
+    "entry_fee",
+    "sort_order"
         ]
 
         for field in allowed_fields:
@@ -1275,6 +1276,16 @@ def update_game(game_id):
             updates["sort_order"] = int(
                 updates["sort_order"]
             )
+
+        if "maintenance_mode" in updates:
+
+    updates[
+        "maintenance_mode"
+    ] = bool(
+        updates[
+            "maintenance_mode"
+        ]
+    )
 
         updates["updated_at"] = now()
 
