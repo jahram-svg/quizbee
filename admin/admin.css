@@ -519,7 +519,7 @@ select:focus {
     display: grid;
 
     grid-template-columns:
-        repeat(5, 1fr);
+        repeat(6, 1fr);
 
     padding:
         7px 4px
@@ -610,3 +610,38 @@ select:focus {
     }
 
   }
+
+/* RAFFLE */
+
+.raffle-image-preview {
+    margin-top: 12px;
+    min-height: 80px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 10px;
+
+    border:
+        1px dashed
+        var(--border);
+
+    border-radius: 14px;
+
+    background: #fafafa;
+
+    color: var(--muted);
+
+    font-size: 13px;
+
+    text-align: center;
+}
+
+.raffle-image-preview img {
+    display: block;
+    max-width: 100%;
+    max-height: 220px;
+    object-fit: contain;
+    border-radius: 14px;
+}
