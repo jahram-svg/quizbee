@@ -1278,14 +1278,9 @@ def update_game(game_id):
             )
 
         if "maintenance_mode" in updates:
-
-    updates[
-        "maintenance_mode"
-    ] = bool(
-        updates[
-            "maintenance_mode"
-        ]
-    )
+            updates["maintenance_mode"] = bool(
+                updates["maintenance_mode"]
+            )
 
         updates["updated_at"] = now()
 
