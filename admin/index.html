@@ -650,6 +650,186 @@
         </section>
 
 
+<!-- RAFFLE DRAW -->
+
+<section
+    id="rafflePage"
+    class="page"
+>
+
+    <div class="page-title">
+
+        <div>
+            <h1>🎟️ Raffle Draw</h1>
+            <p>Manage weekly raffle draws</p>
+        </div>
+
+    </div>
+
+
+    <!-- CREATE RAFFLE -->
+
+    <div class="panel">
+
+        <div class="panel-header">
+
+            <h2>Create Raffle</h2>
+
+        </div>
+
+
+        <label>
+            Prize Name
+        </label>
+
+        <input
+            id="rafflePrizeName"
+            type="text"
+            placeholder="e.g. ₦50,000 Cash Prize"
+        >
+
+
+        <label>
+            Prize Image URL
+        </label>
+
+        <input
+            id="rafflePrizeImage"
+            type="url"
+            placeholder="https://..."
+        >
+
+        <div
+            id="raffleImagePreview"
+            class="raffle-image-preview"
+        >
+            No image selected.
+        </div>
+
+
+        <label>
+            Start Date & Time
+        </label>
+
+        <input
+            id="raffleStart"
+            type="datetime-local"
+        >
+
+
+        <label>
+            End Date & Time
+        </label>
+
+        <input
+            id="raffleEnd"
+            type="datetime-local"
+        >
+
+
+        <div class="info-box">
+
+            <strong>🎟️ Ticket Price</strong>
+
+            <p>
+                Each raffle ticket costs
+                <strong>100 QuizBee Points.</strong>
+            </p>
+
+            <p>
+                Users can purchase multiple tickets.
+            </p>
+
+        </div>
+
+
+        <button
+            class="primary-btn full"
+            onclick="createRaffle()"
+        >
+            🎟️ Create Raffle
+        </button>
+
+    </div>
+
+
+    <!-- RAFFLE ENABLE/DISABLE -->
+
+    <div class="panel">
+
+        <div class="panel-header">
+
+            <h2>Raffle System</h2>
+
+            <span
+                id="raffleSystemStatus"
+                class="badge"
+            >
+                Locked
+            </span>
+
+        </div>
+
+        <p>
+            The raffle system can be enabled or
+            disabled globally.
+        </p>
+
+
+        <label class="switch-row">
+
+            <span>
+                🎟️ Raffle Enabled
+            </span>
+
+            <input
+                id="raffleEnabled"
+                type="checkbox"
+                onchange="toggleRaffleEnabled()"
+            >
+
+        </label>
+
+    </div>
+
+
+    <!-- RAFFLES -->
+
+    <div class="panel">
+
+        <div class="panel-header">
+
+            <h2>Raffles</h2>
+
+            <button
+                class="secondary-btn"
+                onclick="loadRaffles()"
+            >
+                Refresh
+            </button>
+
+        </div>
+
+
+        <div
+            id="rafflesList"
+            class="list"
+        >
+            Loading raffles...
+        </div>
+
+    </div>
+
+
+    <!-- RAFFLE DETAILS -->
+
+    <div
+        id="raffleDetails"
+        class="hidden"
+    ></div>
+
+</section>
+        
         <!-- SETTINGS -->
 
         <section
@@ -823,6 +1003,14 @@
             <span>💳</span>
             Wallet
         </button>
+
+        <button
+    class="nav-item"
+    onclick="showPage('raffle')"
+>
+    <span>🎟️</span>
+    Raffle
+        </button> 
 
         <button
     class="nav-item"
