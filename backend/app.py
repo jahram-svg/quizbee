@@ -144,20 +144,6 @@ def maintenance_gate():
             user["telegram_id"]
         )
 
-        print(
-            "MAINTENANCE CHECK:",
-            {
-                "telegram_id": telegram_id,
-                "bypass": is_maintenance_bypass(
-                    telegram_id
-                ),
-                "settings_exceptions":
-                    settings.get(
-                        "maintenance_exceptions",
-                        []
-                    )
-            }
-        )
 
         # ----------------------------------------------------
         # TEST USER BYPASS
