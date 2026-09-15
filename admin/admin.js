@@ -3047,6 +3047,31 @@ async function loadSettings() {
             );
 
         document
+    .getElementById(
+        "maintenanceMessage"
+    )
+    .value =
+    settings.maintenance_message
+    ||
+    "QuizBee is currently under maintenance. Please check back soon.";
+
+const exceptionIds =
+    Array.isArray(
+        settings.maintenance_exceptions
+    )
+    ? settings.maintenance_exceptions
+    : [];
+
+document
+    .getElementById(
+        "maintenanceExceptions"
+    )
+    .value =
+    exceptionIds.join(
+        "\n"
+    );
+        
+        document
             .getElementById(
                 "dailyEnabled"
             )
@@ -3071,32 +3096,60 @@ async function saveSettings() {
                 method: "POST",
 
                 body:
-                    JSON.stringify({
+    JSON.stringify({
 
-                        participant_visibility:
-                            document
-                            .getElementById(
-                                "participantVisibility"
-                            ).value,
+        participant_visibility:
+            document
+            .getElementById(
+                "participantVisibility"
+            ).value,
 
-                        maintenance_mode:
-                            document
-                            .getElementById(
-                                "maintenanceMode"
-                            ).checked,
+        maintenance_mode:
+            document
+            .getElementById(
+                "maintenanceMode"
+            ).checked,
 
-                        daily_earning_enabled:
-                            document
-                            .getElementById(
-                                "dailyEnabled"
-                            ).checked
-                    })
+        maintenance_message:
+            document
+            .getElementById(
+                "maintenanceMessage"
+            ).value
+            .trim(),
+
+        maintenance_exceptions:
+            document
+            .getElementById(
+                "maintenanceExceptions"
+            ).value
+            .split(/\r?\n|,/)
+            .map(
+                id =>
+                    id.trim()
+            )
+            .filter(Boolean),
+
+        daily_earning_enabled:
+            document
+            .getElementById(
+                "dailyEnabled"
+            ).checked
+
+    })
             }
         );
 
-        showToast(
-            "Settings saved."
-        );
+        const maintenanceEnabled =
+    document
+    .getElementById(
+        "maintenanceMode"
+    ).checked;
+
+showToast(
+    maintenanceEnabled
+    ? "🚧 Maintenance mode enabled."
+    : "✅ Settings saved."
+); 
 
     } catch (error) {
 
