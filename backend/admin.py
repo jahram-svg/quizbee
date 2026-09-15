@@ -301,6 +301,21 @@ def bootstrap():
                 )
                 if active_round
                 else None
+
+            "raffle_enabled":
+    bool(
+        (
+            db.collection("settings")
+            .document("general")
+            .get()
+            .to_dict()
+            or {}
+        ).get(
+            "raffle_enabled",
+            False
+        )
+        )
+            
         })
 
     except Exception as e:
@@ -2326,4 +2341,77 @@ def update_settings():
             "success": False,
             "error":
                 str(e)
+        }), 500
+
+# ============================================================
+# RAFFLE SETTINGS
+# ============================================================
+
+@admin_bp.post("/raffle/settings")
+def update_raffle_settings():
+
+    admin, error = require_admin()
+
+    if error:
+        return admin_error(error)
+
+    try:
+
+        body = (
+            request.get_json(
+                silent=True
+            )
+            or {}
+        )
+
+        enabled = body.get(
+            "raffle_enabled"
+        )
+
+        if not isinstance(
+            enabled,
+            bool
+        ):
+            return jsonify({
+                "success": False,
+                "error":
+                    "raffle_enabled must be true or false."
+            }), 400
+
+        ref = (
+            db.collection(
+                "settings"
+            )
+            .document(
+                "general"
+            )
+        )
+
+        ref.set({
+            "raffle_enabled":
+                enabled,
+
+            "updated_at":
+                now(),
+
+            "updated_by":
+                str(
+                    admin[
+                        "telegram_id"
+                    ]
+                )
+        }, merge=True)
+
+        return jsonify({
+            "success": True,
+
+            "raffle_enabled":
+                enabled
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
         }), 500
