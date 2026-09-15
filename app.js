@@ -2944,17 +2944,17 @@ function showPage(
 
     const navMap = {
 
-        home: 0,
+    home: 0,
 
-        games: 1,
+    games: 1,
 
-        ads: 2,
+    earning: 2,
 
-        leaderboard: 3,
+    raffle: 3,
 
-        profile: 4
+    profile: 4
 
-    };
+};
 
 
     const navIndex =
@@ -2997,20 +2997,15 @@ function showPage(
     }
 
 
-    if (
-        page ===
-        "leaderboard"
-    ) {
-
-        loadLeaderboard(
-            "weekly"
-        );
-
-    }
-
-
     if (page === "earning") {
     loadDailyEarning();
+    }
+
+    if (page === "raffle") {
+
+    // Raffle Draw is currently locked.
+    // The real raffle system will be connected later.
+
     }
 
 
