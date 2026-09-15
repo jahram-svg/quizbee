@@ -422,7 +422,7 @@ def get_or_create_user(
             ""
         ),
 
-        "quizbee_points": 100,
+        "quizbee_points": 0,
 
         "prize_balance": 0,
 
