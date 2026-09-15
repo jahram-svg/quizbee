@@ -169,8 +169,9 @@ function showPage(page) {
     games: 2,
     daily: 3,
     wallet: 4,
-    settings: 5
-}; 
+    raffle: 5,
+    settings: 6
+};
 
     if (
         navButtons[
@@ -204,6 +205,10 @@ function showPage(page) {
 
     if (page === "wallet") {
         loadWithdrawals();
+    }
+
+    if (page === "raffle") {
+    loadRafflePage();
     }
 
     if (page === "settings") {
@@ -3270,3 +3275,1072 @@ document.addEventListener(
     "DOMContentLoaded",
     openRequestedAdminSection
 );
+
+/* ============================================================
+   RAFFLE DRAW
+============================================================ */
+
+let currentRaffle = null;
+
+
+async function loadRafflePage() {
+
+    await loadRaffleSettings();
+    await loadRaffles();
+
+}
+
+
+async function loadRaffleSettings() {
+
+    try {
+
+        const data =
+            await api(
+                "/api/admin/bootstrap"
+            );
+
+        const enabled =
+            Boolean(
+                data.raffle_enabled
+            );
+
+        const checkbox =
+            document.getElementById(
+                "raffleEnabled"
+            );
+
+        const status =
+            document.getElementById(
+                "raffleSystemStatus"
+            );
+
+        if (checkbox) {
+            checkbox.checked =
+                enabled;
+        }
+
+        if (status) {
+
+            status.textContent =
+                enabled
+                ? "Enabled"
+                : "Locked";
+
+            status.className =
+                enabled
+                ? "badge active"
+                : "badge";
+        }
+
+    } catch (error) {
+
+        showToast(
+            error.message
+        );
+
+    }
+
+}
+
+
+async function toggleRaffleEnabled() {
+
+    const checkbox =
+        document.getElementById(
+            "raffleEnabled"
+        );
+
+    const enabled =
+        checkbox.checked;
+
+    try {
+
+        await api(
+            "/api/admin/raffle/settings",
+            {
+                method: "POST",
+
+                body:
+                    JSON.stringify({
+                        raffle_enabled:
+                            enabled
+                    })
+            }
+        );
+
+        const status =
+            document.getElementById(
+                "raffleSystemStatus"
+            );
+
+        if (status) {
+
+            status.textContent =
+                enabled
+                ? "Enabled"
+                : "Locked";
+
+            status.className =
+                enabled
+                ? "badge active"
+                : "badge";
+        }
+
+        showToast(
+            enabled
+            ? "Raffle system enabled."
+            : "Raffle system locked."
+        );
+
+    } catch (error) {
+
+        checkbox.checked =
+            !enabled;
+
+        showToast(
+            error.message
+        );
+
+    }
+
+}
+
+
+async function createRaffle() {
+
+    const prizeName =
+        document
+        .getElementById(
+            "rafflePrizeName"
+        )
+        .value
+        .trim();
+
+    const prizeImage =
+        document
+        .getElementById(
+            "rafflePrizeImage"
+        )
+        .value
+        .trim();
+
+    const start =
+        document
+        .getElementById(
+            "raffleStart"
+        )
+        .value;
+
+    const end =
+        document
+        .getElementById(
+            "raffleEnd"
+        )
+        .value;
+
+
+    if (!prizeName) {
+
+        showToast(
+            "Enter the prize name."
+        );
+
+        return;
+    }
+
+
+    if (!start) {
+
+        showToast(
+            "Select the raffle start date and time."
+        );
+
+        return;
+    }
+
+
+    if (!end) {
+
+        showToast(
+            "Select the raffle end date and time."
+        );
+
+        return;
+    }
+
+
+    const startDate =
+        new Date(start);
+
+    const endDate =
+        new Date(end);
+
+
+    if (
+        Number.isNaN(
+            startDate.getTime()
+        )
+        ||
+        Number.isNaN(
+            endDate.getTime()
+        )
+    ) {
+
+        showToast(
+            "Invalid raffle date/time."
+        );
+
+        return;
+    }
+
+
+    if (
+        endDate <= startDate
+    ) {
+
+        showToast(
+            "End time must be after start time."
+        );
+
+        return;
+    }
+
+
+    try {
+
+        await api(
+            "/api/raffles/admin/create",
+            {
+                method: "POST",
+
+                body:
+                    JSON.stringify({
+
+                        prize_name:
+                            prizeName,
+
+                        prize_image:
+                            prizeImage,
+
+                        start_at:
+                            startDate.toISOString(),
+
+                        end_at:
+                            endDate.toISOString()
+
+                    })
+            }
+        );
+
+
+        showToast(
+            "Raffle created successfully."
+        );
+
+
+        document
+        .getElementById(
+            "rafflePrizeName"
+        )
+        .value = "";
+
+
+        document
+        .getElementById(
+            "rafflePrizeImage"
+        )
+        .value = "";
+
+
+        document
+        .getElementById(
+            "raffleStart"
+        )
+        .value = "";
+
+
+        document
+        .getElementById(
+            "raffleEnd"
+        )
+        .value = "";
+
+
+        document
+        .getElementById(
+            "raffleImagePreview"
+        )
+        .innerHTML =
+            "No image selected.";
+
+
+        await loadRaffles();
+
+
+    } catch (error) {
+
+        showToast(
+            error.message
+        );
+
+    }
+
+}
+
+
+async function loadRaffles() {
+
+    const list =
+        document.getElementById(
+            "rafflesList"
+        );
+
+    if (!list) {
+        return;
+    }
+
+
+    list.innerHTML =
+        "Loading raffles...";
+
+
+    try {
+
+        const data =
+            await api(
+                "/api/raffles/admin"
+            );
+
+        const raffles =
+            data.raffles || [];
+
+
+        if (!raffles.length) {
+
+            list.innerHTML =
+                `<div class="list-card">
+                    No raffles created yet.
+                </div>`;
+
+            return;
+        }
+
+
+        list.innerHTML =
+            raffles
+            .map(
+                renderRaffleCard
+            )
+            .join("");
+
+
+    } catch (error) {
+
+        list.innerHTML =
+            `<div class="list-card">
+                ${escapeHtml(
+                    error.message
+                )}
+            </div>`;
+
+    }
+
+}
+
+
+function renderRaffleCard(item) {
+
+    const raffle =
+        item.raffle || {};
+
+    const status =
+        item.status || "unknown";
+
+    const raffleId =
+        item.id ||
+        raffle.raffle_id ||
+        "";
+
+
+    return `
+
+        <div class="list-card">
+
+            <div class="row">
+
+                <div>
+
+                    <h3>
+                        🎟️
+                        ${escapeHtml(
+                            raffle.prize_name ||
+                            "Raffle"
+                        )}
+                    </h3>
+
+                    <p>
+                        ID:
+                        ${escapeHtml(
+                            raffleId
+                        )}
+                    </p>
+
+                </div>
+
+
+                <span
+                    class="badge ${escapeHtml(
+                        status
+                    )}"
+                >
+                    ${escapeHtml(
+                        status
+                    )}
+                </span>
+
+            </div>
+
+
+            <p>
+                Ticket Price:
+                <strong>
+                    100 Points
+                </strong>
+            </p>
+
+
+            <p>
+                Tickets Sold:
+                <strong>
+                    ${Number(
+                        raffle.ticket_counter ||
+                        0
+                    ).toLocaleString()}
+                </strong>
+            </p>
+
+
+            <p>
+                Start:
+                ${formatRaffleDate(
+                    raffle.start_at
+                )}
+            </p>
+
+
+            <p>
+                End:
+                ${formatRaffleDate(
+                    raffle.end_at
+                )}
+            </p>
+
+
+            <div class="form-actions">
+
+                <button
+                    class="secondary-btn"
+                    onclick="viewRaffleTickets('${escapeHtml(
+                        raffleId
+                    )}')"
+                >
+                    🎟️ Tickets
+                </button>
+
+                ${
+                    status !== "ended"
+                    ? `
+                        <button
+                            class="danger-btn"
+                            onclick="endRaffle('${escapeHtml(
+                                raffleId
+                            )}')"
+                        >
+                            End
+                        </button>
+                    `
+                    : ""
+                }
+
+            </div>
+
+
+            <button
+                class="danger-btn full"
+                onclick="deleteRaffle('${escapeHtml(
+                    raffleId
+                )}')"
+            >
+                🗑️ Delete Raffle
+            </button>
+
+        </div>
+
+    `;
+
+}
+
+
+function formatRaffleDate(value) {
+
+    if (!value) {
+        return "—";
+    }
+
+    const date =
+        new Date(value);
+
+    if (
+        Number.isNaN(
+            date.getTime()
+        )
+    ) {
+        return "Invalid date";
+    }
+
+    return date.toLocaleString();
+
+}
+
+
+async function viewRaffleTickets(
+    raffleId
+) {
+
+    const box =
+        document.getElementById(
+            "raffleDetails"
+        );
+
+    box.classList.remove(
+        "hidden"
+    );
+
+    box.innerHTML =
+        `<div class="panel">
+            Loading tickets...
+        </div>`;
+
+
+    try {
+
+        const data =
+            await api(
+                `/api/raffles/admin/${encodeURIComponent(
+                    raffleId
+                )}/tickets`
+            );
+
+        const tickets =
+            data.tickets || [];
+
+        const ticketIds =
+            data.ticket_ids || [];
+
+
+        box.innerHTML = `
+
+            <div class="panel">
+
+                <div class="panel-header">
+
+                    <h2>
+                        🎟️ Tickets
+                    </h2>
+
+                    <button
+                        class="secondary-btn"
+                        onclick="closeRaffleDetails()"
+                    >
+                        Close
+                    </button>
+
+                </div>
+
+
+                <p>
+                    Total Tickets:
+                    <strong>
+                        ${tickets.length}
+                    </strong>
+                </p>
+
+
+                <button
+                    class="primary-btn full"
+                    onclick='copyAllRaffleTickets(${JSON.stringify(
+                        ticketIds
+                    )})'
+                >
+                    📋 Copy All Tickets
+                </button>
+
+
+                <div class="info-box">
+
+                    <strong>
+                        Ticket IDs
+                    </strong>
+
+                    <p
+                        id="raffleTicketLine"
+                        style="
+                            word-break: break-all;
+                        "
+                    >
+                        ${
+                            ticketIds.length
+                            ? escapeHtml(
+                                ticketIds.join(
+                                    ", "
+                                )
+                            )
+                            : "No tickets yet."
+                        }
+                    </p>
+
+                </div>
+
+
+                <label>
+                    Search Ticket
+                </label>
+
+                <div class="search-box">
+
+                    <input
+                        id="raffleTicketSearch"
+                        placeholder="QB-RF-000001"
+                    >
+
+                    <button
+                        onclick="searchRaffleTicket('${escapeHtml(
+                            raffleId
+                        )}')"
+                    >
+                        Search
+                    </button>
+
+                </div>
+
+
+                <div
+                    id="raffleTicketSearchResult"
+                ></div>
+
+
+                <div class="list">
+
+                    ${
+                        tickets.length
+                        ? tickets
+                            .map(
+                                renderRaffleTicket
+                            )
+                            .join("")
+                        : `
+                            <div class="list-card">
+                                No tickets purchased yet.
+                            </div>
+                        `
+                    }
+
+                </div>
+
+            </div>
+
+        `;
+
+    } catch (error) {
+
+        box.innerHTML =
+            `<div class="panel">
+                ${escapeHtml(
+                    error.message
+                )}
+            </div>`;
+
+    }
+
+}
+
+
+function renderRaffleTicket(
+    ticket
+) {
+
+    const name =
+        [
+            ticket.first_name,
+            ticket.username
+                ? `@${ticket.username}`
+                : ""
+        ]
+        .filter(Boolean)
+        .join(" ");
+
+
+    return `
+
+        <div class="list-card">
+
+            <div class="row">
+
+                <strong>
+                    ${escapeHtml(
+                        ticket.ticket_id ||
+                        ticket.id ||
+                        ""
+                    )}
+                </strong>
+
+                <span class="badge active">
+                    Active
+                </span>
+
+            </div>
+
+
+            <p>
+                User:
+                ${escapeHtml(
+                    name ||
+                    "Unknown"
+                )}
+            </p>
+
+
+            <p>
+                Telegram ID:
+                ${escapeHtml(
+                    ticket.telegram_id ||
+                    ""
+                )}
+            </p>
+
+
+            <p>
+                Purchased:
+                ${formatRaffleDate(
+                    ticket.created_at
+                )}
+            </p>
+
+        </div>
+
+    `;
+
+}
+
+
+async function searchRaffleTicket(
+    raffleId
+) {
+
+    const input =
+        document.getElementById(
+            "raffleTicketSearch"
+        );
+
+    const result =
+        document.getElementById(
+            "raffleTicketSearchResult"
+        );
+
+
+    const ticketId =
+        input.value.trim();
+
+
+    if (!ticketId) {
+
+        showToast(
+            "Enter a ticket ID."
+        );
+
+        return;
+    }
+
+
+    result.innerHTML =
+        "Searching...";
+
+
+    try {
+
+        const data =
+            await api(
+                `/api/raffles/admin/${encodeURIComponent(
+                    raffleId
+                )}/tickets/search?ticket_id=${encodeURIComponent(
+                    ticketId
+                )}`
+            );
+
+
+        const ticket =
+            data.ticket || {};
+
+
+        result.innerHTML = `
+
+            <div class="info-box">
+
+                <strong>
+                    🎟️ ${escapeHtml(
+                        ticket.ticket_id ||
+                        ticketId
+                    )}
+                </strong>
+
+                <p>
+                    Username:
+                    @${escapeHtml(
+                        ticket.username ||
+                        "none"
+                    )}
+                </p>
+
+                <p>
+                    Name:
+                    ${escapeHtml(
+                        ticket.first_name ||
+                        "Unknown"
+                    )}
+                </p>
+
+                <p>
+                    Telegram ID:
+                    ${escapeHtml(
+                        ticket.telegram_id ||
+                        ""
+                    )}
+                </p>
+
+                <p>
+                    Purchase ID:
+                    ${escapeHtml(
+                        ticket.purchase_id ||
+                        ""
+                    )}
+                </p>
+
+            </div>
+
+        `;
+
+    } catch (error) {
+
+        result.innerHTML =
+            `<div class="info-box">
+                ${escapeHtml(
+                    error.message
+                )}
+            </div>`;
+
+    }
+
+}
+
+
+async function copyAllRaffleTickets(
+    ticketIds
+) {
+
+    if (!ticketIds.length) {
+
+        showToast(
+            "There are no tickets to copy."
+        );
+
+        return;
+    }
+
+
+    const text =
+        ticketIds.join(
+            ", "
+        );
+
+
+    try {
+
+        await navigator.clipboard.writeText(
+            text
+        );
+
+        showToast(
+            "All ticket IDs copied."
+        );
+
+    } catch (error) {
+
+        showToast(
+            "Unable to copy tickets."
+        );
+
+    }
+
+}
+
+
+async function endRaffle(
+    raffleId
+) {
+
+    if (
+        !confirm(
+            "End this raffle now?"
+        )
+    ) {
+        return;
+    }
+
+
+    try {
+
+        await api(
+            `/api/raffles/admin/${encodeURIComponent(
+                raffleId
+            )}/end`,
+            {
+                method: "POST"
+            }
+        );
+
+
+        showToast(
+            "Raffle ended."
+        );
+
+
+        await loadRaffles();
+
+
+    } catch (error) {
+
+        showToast(
+            error.message
+        );
+
+    }
+
+}
+
+
+async function deleteRaffle(
+    raffleId
+) {
+
+    if (
+        !confirm(
+            "Delete this raffle and ALL of its tickets? This cannot be undone."
+        )
+    ) {
+        return;
+    }
+
+
+    try {
+
+        await api(
+            `/api/raffles/admin/${encodeURIComponent(
+                raffleId
+            )}`,
+            {
+                method: "DELETE"
+            }
+        );
+
+
+        showToast(
+            "Raffle deleted."
+        );
+
+
+        closeRaffleDetails();
+
+        await loadRaffles();
+
+
+    } catch (error) {
+
+        showToast(
+            error.message
+        );
+
+    }
+
+}
+
+
+function closeRaffleDetails() {
+
+    const box =
+        document.getElementById(
+            "raffleDetails"
+        );
+
+    if (box) {
+
+        box.classList.add(
+            "hidden"
+        );
+
+        box.innerHTML = "";
+
+    }
+
+}
+
+
+/* ============================================================
+   RAFFLE IMAGE PREVIEW
+============================================================ */
+
+document.addEventListener(
+    "input",
+    event => {
+
+        if (
+            event.target.id !==
+            "rafflePrizeImage"
+        ) {
+            return;
+        }
+
+        const url =
+            event.target.value.trim();
+
+        const preview =
+            document.getElementById(
+                "raffleImagePreview"
+            );
+
+        if (!preview) {
+            return;
+        }
+
+        if (!url) {
+
+            preview.innerHTML =
+                "No image selected.";
+
+            return;
+        }
+
+        preview.innerHTML = `
+            <img
+                src="${escapeHtml(url)}"
+                alt="Prize preview"
+                style="
+                    max-width: 100%;
+                    max-height: 220px;
+                    border-radius: 14px;
+                "
+            >
+        `;
+
+    }
+); 
