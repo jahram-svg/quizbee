@@ -423,6 +423,8 @@ def get_or_create_user(
         ),
 
         "quizbee_points": 0,
+        
+        "wins": 0,
 
         "prize_balance": 0,
 
@@ -2231,7 +2233,9 @@ def reset_demo():
             "QuizBee",
 
         "quizbee_points":
-            100,
+            0,
+        
+        "wins": 0,
 
         "prize_balance":
             0,
