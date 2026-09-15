@@ -102,6 +102,21 @@ async function api(path, options = {}) {
     error.maintenance =
         data.maintenance === true;
 
+    // ----------------------------------------------------
+    // GLOBAL MAINTENANCE
+    // ----------------------------------------------------
+
+    if (
+        error.code === "MAINTENANCE" ||
+        error.maintenance === true
+    ) {
+
+        showMaintenanceScreen(
+            error.message
+        );
+
+    }
+
     throw error;
     }
 
