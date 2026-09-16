@@ -1119,7 +1119,23 @@ async function buyRaffleTickets() {
 
     try {
 
-        // KEEP YOUR EXISTING API PURCHASE CODE HERE
+        const data =
+            await api(
+                `/api/raffles/${encodeURIComponent(
+                    raffleCurrent.raffle_id
+                )}/tickets`,
+                {
+                    method: "POST",
+
+                    body:
+                        JSON.stringify({
+
+                            quantity,
+
+                            purchase_id:
+                                rafflePurchaseId()
+
+                        }) 
 
     } catch (error) {
 
