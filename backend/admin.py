@@ -296,26 +296,23 @@ def bootstrap():
             },
 
             "active_daily_round":
-                serialize_value(
-                    active_round
-                )
+                serialize_value(active_round)
                 if active_round
-                else None
+                else None,
 
             "raffle_enabled":
-    bool(
-        (
-            db.collection("settings")
-            .document("general")
-            .get()
-            .to_dict()
-            or {}
-        ).get(
-            "raffle_enabled",
-            False
-        )
-        )
-            
+                bool(
+                    (
+                        db.collection("settings")
+                        .document("general")
+                        .get()
+                        .to_dict()
+                        or {}
+                    ).get(
+                        "raffle_enabled",
+                        False
+                    )
+                )
         })
 
     except Exception as e:
