@@ -3813,15 +3813,35 @@ async function viewRaffleTickets(
             "raffleDetails"
         );
 
+    if (!box) {
+
+        showToast(
+            "Raffle details panel not found."
+        );
+
+        return;
+    }
+
     box.classList.remove(
         "hidden"
     );
 
     box.innerHTML =
         `<div class="panel">
-            Loading tickets...
-        </div>`;
+            <div class="panel-header">
+                <h2>🎟️ Tickets</h2>
+                <button
+                    class="secondary-btn"
+                    onclick="closeRaffleDetails()"
+                >
+                    Close
+                </button>
+            </div>
 
+            <p>
+                Loading tickets...
+            </p>
+        </div>`;
 
     try {
 
@@ -3837,7 +3857,6 @@ async function viewRaffleTickets(
 
         const ticketIds =
             data.ticket_ids || [];
-
 
         box.innerHTML = `
 
@@ -3858,14 +3877,12 @@ async function viewRaffleTickets(
 
                 </div>
 
-
                 <p>
                     Total Tickets:
                     <strong>
                         ${tickets.length}
                     </strong>
                 </p>
-
 
                 <button
                     class="primary-btn full"
@@ -3875,7 +3892,6 @@ async function viewRaffleTickets(
                 >
                     📋 Copy All Tickets
                 </button>
-
 
                 <div class="info-box">
 
@@ -3902,7 +3918,6 @@ async function viewRaffleTickets(
 
                 </div>
 
-
                 <label>
                     Search Ticket
                 </label>
@@ -3924,11 +3939,9 @@ async function viewRaffleTickets(
 
                 </div>
 
-
                 <div
                     id="raffleTicketSearchResult"
                 ></div>
-
 
                 <div class="list">
 
@@ -3954,12 +3967,51 @@ async function viewRaffleTickets(
 
     } catch (error) {
 
-        box.innerHTML =
-            `<div class="panel">
-                ${escapeHtml(
-                    error.message
-                )}
-            </div>`;
+        box.innerHTML = `
+
+            <div class="panel">
+
+                <div class="panel-header">
+
+                    <h2>
+                        🎟️ Tickets
+                    </h2>
+
+                    <button
+                        class="secondary-btn"
+                        onclick="closeRaffleDetails()"
+                    >
+                        Close
+                    </button>
+
+                </div>
+
+                <div class="info-box">
+
+                    <strong>
+                        ⚠️ Unable to load tickets
+                    </strong>
+
+                    <p>
+                        ${escapeHtml(
+                            error.message
+                        )}
+                    </p>
+
+                    <button
+                        class="primary-btn full"
+                        onclick="viewRaffleTickets('${escapeHtml(
+                            raffleId
+                        )}')"
+                    >
+                        🔄 Try Again
+                    </button>
+
+                </div>
+
+            </div>
+
+        `;
 
     }
 
