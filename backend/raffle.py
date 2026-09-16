@@ -214,12 +214,19 @@ def get_raffle_status(data):
     if not start_at or not end_at:
         return "invalid"
 
-    if current < start_at:
-        return "scheduled"
+    # Invalid schedule
+    if end_at <= start_at:
+        return "invalid"
 
+    # Raffle has finished
     if current >= end_at:
         return "ended"
 
+    # Raffle has not started
+    if current < start_at:
+        return "scheduled"
+
+    # Current time is between start and end
     return "live"
 
 
