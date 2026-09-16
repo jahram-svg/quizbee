@@ -1598,6 +1598,114 @@ def admin_search_ticket(raffle_id):
 
 
 # ============================================================
+# ADMIN — DELETE SINGLE TICKET
+# ============================================================
+
+@raffle_bp.delete(
+    "/admin/<raffle_id>/tickets/<ticket_id>"
+)
+def admin_delete_ticket(
+    raffle_id,
+    ticket_id
+):
+
+    admin, error = require_admin()
+
+    if error:
+        return error
+
+    try:
+
+        raffle_reference = raffle_ref(
+            raffle_id
+        )
+
+        raffle_snapshot = (
+            raffle_reference.get()
+        )
+
+        if not raffle_snapshot.exists:
+
+            return jsonify({
+                "success": False,
+                "error":
+                    "Raffle not found."
+            }), 404
+
+        ticket_reference = (
+            raffle_reference
+            .collection("tickets")
+            .document(ticket_id)
+        )
+
+        ticket_snapshot = (
+            ticket_reference.get()
+        )
+
+        if not ticket_snapshot.exists:
+
+            return jsonify({
+                "success": False,
+                "error":
+                    "Ticket not found."
+            }), 404
+
+        ticket_data = (
+            ticket_snapshot.to_dict()
+            or {}
+        )
+
+        # ----------------------------------------------------
+        # DELETE ONLY THE TICKET
+        #
+        # IMPORTANT:
+        # No points are refunded.
+        # The original purchase record remains intact.
+        # ----------------------------------------------------
+
+        ticket_reference.delete()
+
+        return jsonify({
+
+            "success": True,
+
+            "message":
+                "Ticket deleted successfully.",
+
+            "raffle_id":
+                raffle_id,
+
+            "ticket_id":
+                ticket_id,
+
+            "telegram_id":
+                str(
+                    ticket_data.get(
+                        "telegram_id",
+                        ""
+                    )
+                )
+
+        })
+
+    except Exception as e:
+
+        print(
+            "Raffle ticket deletion error:",
+            repr(e)
+        )
+
+        return jsonify({
+
+            "success": False,
+
+            "error":
+                str(e)
+
+        }), 500
+
+
+# ============================================================
 # ADMIN — END RAFFLE
 # ============================================================
 
