@@ -282,13 +282,14 @@ def current_raffle():
             )
             .order_by(
                 "start_at",
-                direction=firestore.Query.DESCENDING
+                direction=firestore.Query.ASCENDING
             )
-            .limit(10)
+            .limit(50)
             .stream()
         )
 
-        current = None
+        live_raffle = None
+        scheduled_raffle = None
 
         for doc in docs:
 
@@ -298,17 +299,41 @@ def current_raffle():
                 data
             )
 
-            if status in (
-                "live",
-                "scheduled"
-            ):
+            # ------------------------------------------
+            # LIVE ALWAYS TAKES PRIORITY
+            # ------------------------------------------
 
-                current = (
+            if status == "live":
+
+                live_raffle = (
                     doc.id,
                     data
                 )
 
                 break
+
+            # ------------------------------------------
+            # KEEP THE NEAREST UPCOMING RAFFLE
+            # ------------------------------------------
+
+            if (
+                status == "scheduled"
+                and scheduled_raffle is None
+            ):
+
+                scheduled_raffle = (
+                    doc.id,
+                    data
+                )
+
+        # ----------------------------------------------
+        # LIVE RAFFLE
+        # ----------------------------------------------
+
+        current = (
+            live_raffle
+            or scheduled_raffle
+        )
 
         if not current:
 
@@ -336,9 +361,15 @@ def current_raffle():
 
     except Exception as e:
 
+        print(
+            "Current raffle error:",
+            repr(e)
+        )
+
         return jsonify({
             "success": False,
-            "error": str(e)
+            "error":
+                "Unable to load current raffle."
         }), 500
 
 
