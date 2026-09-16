@@ -4032,6 +4032,14 @@ function renderRaffleTicket(
         .filter(Boolean)
         .join(" ");
 
+    const ticketId =
+        ticket.ticket_id ||
+        ticket.id ||
+        "";
+
+    const raffleId =
+        ticket.raffle_id ||
+        "";
 
     return `
 
@@ -4041,9 +4049,7 @@ function renderRaffleTicket(
 
                 <strong>
                     ${escapeHtml(
-                        ticket.ticket_id ||
-                        ticket.id ||
-                        ""
+                        ticketId
                     )}
                 </strong>
 
@@ -4053,7 +4059,6 @@ function renderRaffleTicket(
 
             </div>
 
-
             <p>
                 User:
                 ${escapeHtml(
@@ -4061,7 +4066,6 @@ function renderRaffleTicket(
                     "Unknown"
                 )}
             </p>
-
 
             <p>
                 Telegram ID:
@@ -4071,13 +4075,27 @@ function renderRaffleTicket(
                 )}
             </p>
 
-
             <p>
                 Purchased:
                 ${formatRaffleDate(
                     ticket.created_at
                 )}
             </p>
+
+            <button
+                class="danger-btn full"
+                style="margin-top: 10px;"
+                onclick="deleteRaffleTicket(
+                    '${encodeURIComponent(
+                        raffleId
+                    )}',
+                    '${encodeURIComponent(
+                        ticketId
+                    )}'
+                )"
+            >
+                🗑️ Delete Ticket
+            </button>
 
         </div>
 
@@ -4190,6 +4208,73 @@ async function searchRaffleTicket(
                     error.message
                 )}
             </div>`;
+
+    }
+
+}
+
+
+async function deleteRaffleTicket(
+    encodedRaffleId,
+    encodedTicketId
+) {
+
+    const raffleId =
+        decodeURIComponent(
+            encodedRaffleId
+        );
+
+    const ticketId =
+        decodeURIComponent(
+            encodedTicketId
+        );
+
+    if (!ticketId) {
+
+        showToast(
+            "Invalid ticket ID."
+        );
+
+        return;
+    }
+
+    const confirmed =
+        confirm(
+            `Delete ticket ${ticketId}?\n\n` +
+            `This cannot be undone.\n\n` +
+            `The user's 100 QuizBee Points will NOT be refunded.`
+        );
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+
+        await api(
+            `/api/raffles/admin/${encodeURIComponent(
+                raffleId
+            )}/tickets/${encodeURIComponent(
+                ticketId
+            )}`,
+            {
+                method: "DELETE"
+            }
+        );
+
+        showToast(
+            "Ticket deleted successfully."
+        );
+
+        await viewRaffleTickets(
+            raffleId
+        );
+
+    } catch (error) {
+
+        showToast(
+            error.message
+        );
 
     }
 
