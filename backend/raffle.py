@@ -369,20 +369,16 @@ def my_tickets(raffle_id):
             }), 404
 
         docs = (
-            raffle_ref(
-                raffle_id
-            )
-            .collection("tickets")
-            .where(
-                "telegram_id",
-                "==",
-                user["telegram_id"]
-            )
-            .order_by(
-                "created_at",
-                direction=firestore.Query.ASCENDING
-            )
-            .stream()
+    raffle_ref(
+        raffle_id
+    )
+    .collection("tickets")
+    .where(
+        "telegram_id",
+        "==",
+        user["telegram_id"]
+    )
+    .stream()
         )
 
         tickets = []
