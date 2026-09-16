@@ -713,6 +713,9 @@ def buy_tickets(raffle_id):
                     "ticket_id":
                         ticket_id,
 
+                    "ticket_number":
+                        number,
+
                     "raffle_id":
                         raffle_id,
 
@@ -802,6 +805,7 @@ def buy_tickets(raffle_id):
 
             return {
                 "duplicate": False,
+
                 "purchase":
                     purchase_data,
 
@@ -954,11 +958,13 @@ def buy_tickets(raffle_id):
 
         }), 500
 
+
 # ============================================================
 # ADMIN AUTH
 # ============================================================
 
 def get_admin_user():
+
     init_data = request.headers.get(
         "X-Telegram-Init-Data",
         ""
@@ -983,7 +989,9 @@ def get_admin_user():
     if not user:
         return None, "UNAUTHORIZED"
 
-    telegram_id = str(user.get("id"))
+    telegram_id = str(
+        user.get("id")
+    )
 
     admin_ids = os.getenv(
         "ADMIN_TELEGRAM_IDS",
@@ -991,6 +999,7 @@ def get_admin_user():
     ).strip()
 
     if not admin_ids:
+
         admin_ids = os.getenv(
             "ADMIN_TELEGRAM_ID",
             ""
@@ -1009,14 +1018,18 @@ def get_admin_user():
 
 
 def require_admin():
+
     admin, error = get_admin_user()
 
     if error:
+
         if error == "FORBIDDEN":
+
             return None, (
                 jsonify({
                     "success": False,
-                    "error": "Admin access required."
+                    "error":
+                        "Admin access required."
                 }),
                 403
             )
@@ -1024,7 +1037,8 @@ def require_admin():
         return None, (
             jsonify({
                 "success": False,
-                "error": "Unauthorized admin session."
+                "error":
+                    "Unauthorized admin session."
             }),
             401
         )
@@ -1036,7 +1050,9 @@ def require_admin():
 # ADMIN — CREATE RAFFLE
 # ============================================================
 
-@raffle_bp.post("/admin/create")
+@raffle_bp.post(
+    "/admin/create"
+)
 def admin_create_raffle():
 
     admin, error = require_admin()
@@ -1045,6 +1061,7 @@ def admin_create_raffle():
         return error
 
     try:
+
         body = (
             request.get_json(
                 silent=True
@@ -1088,6 +1105,7 @@ def admin_create_raffle():
         ).strip()
 
         if not raffle_id:
+
             raffle_id = (
                 datetime.now(
                     timezone.utc
@@ -1097,6 +1115,7 @@ def admin_create_raffle():
             )
 
         if not prize_name:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1104,6 +1123,7 @@ def admin_create_raffle():
             }), 400
 
         if not start_at:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1111,6 +1131,7 @@ def admin_create_raffle():
             }), 400
 
         if not end_at:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1118,21 +1139,27 @@ def admin_create_raffle():
             }), 400
 
         try:
-            start_datetime = datetime.fromisoformat(
-                start_at.replace(
-                    "Z",
-                    "+00:00"
+
+            start_datetime = (
+                datetime.fromisoformat(
+                    start_at.replace(
+                        "Z",
+                        "+00:00"
+                    )
                 )
             )
 
-            end_datetime = datetime.fromisoformat(
-                end_at.replace(
-                    "Z",
-                    "+00:00"
+            end_datetime = (
+                datetime.fromisoformat(
+                    end_at.replace(
+                        "Z",
+                        "+00:00"
+                    )
                 )
             )
 
         except ValueError:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1140,16 +1167,23 @@ def admin_create_raffle():
             }), 400
 
         if start_datetime.tzinfo is None:
-            start_datetime = start_datetime.replace(
-                tzinfo=timezone.utc
+
+            start_datetime = (
+                start_datetime.replace(
+                    tzinfo=timezone.utc
+                )
             )
 
         if end_datetime.tzinfo is None:
-            end_datetime = end_datetime.replace(
-                tzinfo=timezone.utc
+
+            end_datetime = (
+                end_datetime.replace(
+                    tzinfo=timezone.utc
+                )
             )
 
         if end_datetime <= start_datetime:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1161,6 +1195,7 @@ def admin_create_raffle():
         )
 
         if ref.get().exists:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1168,6 +1203,7 @@ def admin_create_raffle():
             }), 409
 
         raffle_data = {
+
             "raffle_id":
                 raffle_id,
 
@@ -1193,7 +1229,9 @@ def admin_create_raffle():
                 now(),
 
             "created_by":
-                str(admin.get("id")),
+                str(
+                    admin.get("id")
+                ),
 
             "created_by_username":
                 admin.get(
@@ -1203,6 +1241,7 @@ def admin_create_raffle():
 
             "enabled":
                 True
+
         }
 
         ref.set(
@@ -1210,20 +1249,34 @@ def admin_create_raffle():
         )
 
         return jsonify({
+
             "success": True,
+
             "message":
                 "Raffle created successfully.",
+
             "raffle":
                 public_raffle_data(
+                    raffle_id,
                     raffle_data
                 )
+
         })
 
     except Exception as e:
 
+        print(
+            "Raffle creation error:",
+            repr(e)
+        )
+
         return jsonify({
+
             "success": False,
-            "error": str(e)
+
+            "error":
+                str(e)
+
         }), 500
 
 
@@ -1231,7 +1284,9 @@ def admin_create_raffle():
 # ADMIN — GET RAFFLE
 # ============================================================
 
-@raffle_bp.get("/admin/<raffle_id>")
+@raffle_bp.get(
+    "/admin/<raffle_id>"
+)
 def admin_get_raffle(raffle_id):
 
     admin, error = require_admin()
@@ -1240,36 +1295,49 @@ def admin_get_raffle(raffle_id):
         return error
 
     try:
+
         snap = raffle_ref(
             raffle_id
         ).get()
 
         if not snap.exists:
+
             return jsonify({
                 "success": False,
                 "error":
                     "Raffle not found."
             }), 404
 
-        data = snap.to_dict() or {}
+        data = (
+            snap.to_dict()
+            or {}
+        )
 
         return jsonify({
+
             "success": True,
+
             "raffle":
                 serialize_value(
                     data
                 ),
+
             "status":
                 get_raffle_status(
                     data
                 )
+
         })
 
     except Exception as e:
 
         return jsonify({
+
             "success": False,
-            "error": str(e)
+
+            "error":
+                str(e)
+
         }), 500
 
 
@@ -1277,7 +1345,9 @@ def admin_get_raffle(raffle_id):
 # ADMIN — LIST RAFFLES
 # ============================================================
 
-@raffle_bp.get("/admin")
+@raffle_bp.get(
+    "/admin"
+)
 def admin_list_raffles():
 
     admin, error = require_admin()
@@ -1303,9 +1373,13 @@ def admin_list_raffles():
 
         for doc in docs:
 
-            data = doc.to_dict() or {}
+            data = (
+                doc.to_dict()
+                or {}
+            )
 
             raffles.append({
+
                 "id":
                     doc.id,
 
@@ -1318,19 +1392,27 @@ def admin_list_raffles():
                     get_raffle_status(
                         data
                     )
+
             })
 
         return jsonify({
+
             "success": True,
+
             "raffles":
                 raffles
+
         })
 
     except Exception as e:
 
         return jsonify({
+
             "success": False,
-            "error": str(e)
+
+            "error":
+                str(e)
+
         }), 500
 
 
@@ -1355,6 +1437,7 @@ def admin_list_tickets(raffle_id):
         ).get()
 
         if not raffle_snap.exists:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1379,7 +1462,10 @@ def admin_list_tickets(raffle_id):
 
         for doc in docs:
 
-            data = doc.to_dict() or {}
+            data = (
+                doc.to_dict()
+                or {}
+            )
 
             data["id"] = doc.id
 
@@ -1390,6 +1476,7 @@ def admin_list_tickets(raffle_id):
             )
 
         return jsonify({
+
             "success": True,
 
             "raffle_id":
@@ -1406,18 +1493,25 @@ def admin_list_tickets(raffle_id):
                     ticket.get(
                         "ticket_id"
                     )
+
                     for ticket in tickets
+
                     if ticket.get(
                         "ticket_id"
                     )
                 ]
+
         })
 
     except Exception as e:
 
         return jsonify({
+
             "success": False,
-            "error": str(e)
+
+            "error":
+                str(e)
+
         }), 500
 
 
@@ -1445,6 +1539,7 @@ def admin_search_ticket(raffle_id):
         ).strip()
 
         if not ticket_id:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1465,6 +1560,7 @@ def admin_search_ticket(raffle_id):
         )
 
         if not snap.exists:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1479,18 +1575,25 @@ def admin_search_ticket(raffle_id):
         ticket["id"] = snap.id
 
         return jsonify({
+
             "success": True,
+
             "ticket":
                 serialize_value(
                     ticket
                 )
+
         })
 
     except Exception as e:
 
         return jsonify({
+
             "success": False,
-            "error": str(e)
+
+            "error":
+                str(e)
+
         }), 500
 
 
@@ -1517,17 +1620,17 @@ def admin_end_raffle(raffle_id):
         snap = ref.get()
 
         if not snap.exists:
+
             return jsonify({
                 "success": False,
                 "error":
                     "Raffle not found."
             }), 404
 
-        data = snap.to_dict() or {}
-
         end_time = now()
 
         ref.update({
+
             "end_at":
                 end_time,
 
@@ -1543,21 +1646,30 @@ def admin_end_raffle(raffle_id):
 
             "enabled":
                 False
+
         })
 
         return jsonify({
+
             "success": True,
+
             "message":
                 "Raffle ended successfully.",
+
             "raffle_id":
                 raffle_id
+
         })
 
     except Exception as e:
 
         return jsonify({
+
             "success": False,
-            "error": str(e)
+
+            "error":
+                str(e)
+
         }), 500
 
 
@@ -1584,6 +1696,7 @@ def admin_delete_raffle(raffle_id):
         snap = ref.get()
 
         if not snap.exists:
+
             return jsonify({
                 "success": False,
                 "error":
@@ -1601,6 +1714,7 @@ def admin_delete_raffle(raffle_id):
         )
 
         for ticket_doc in ticket_docs:
+
             ticket_doc.reference.delete()
 
         # ----------------------------------------------------
@@ -1614,6 +1728,7 @@ def admin_delete_raffle(raffle_id):
         )
 
         for purchase_doc in purchase_docs:
+
             purchase_doc.reference.delete()
 
         # ----------------------------------------------------
@@ -1623,6 +1738,7 @@ def admin_delete_raffle(raffle_id):
         ref.delete()
 
         return jsonify({
+
             "success": True,
 
             "message":
@@ -1636,11 +1752,16 @@ def admin_delete_raffle(raffle_id):
 
             "deleted_purchases":
                 len(purchase_docs)
+
         })
 
     except Exception as e:
 
         return jsonify({
+
             "success": False,
-            "error": str(e)
+
+            "error":
+                str(e)
+
         }), 500
