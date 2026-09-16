@@ -1050,7 +1050,13 @@ async function loadMyRaffleTickets(
 
 async function buyRaffleTickets() {
 
-    if (
+    if (raffleLoading) {
+    return;
+}
+
+raffleLoading = true;
+   
+   if (
         !raffleCurrent ||
         raffleCurrent.status !==
             "live"
