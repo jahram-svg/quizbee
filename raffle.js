@@ -1065,13 +1065,19 @@ async function buyRaffleTickets() {
     }
 
     const input =
-        document.getElementById("raffleQuantity");
+        document.getElementById(
+            "raffleQuantity"
+        );
 
     const button =
-        document.getElementById("buyRaffleButton");
+        document.getElementById(
+            "buyRaffleButton"
+        );
 
     let quantity =
-        Number(input?.value || 1);
+        Number(
+            input?.value || 1
+        );
 
     if (!Number.isFinite(quantity)) {
         showToast(
@@ -1129,13 +1135,61 @@ async function buyRaffleTickets() {
 
                     body:
                         JSON.stringify({
-
-                            quantity,
+                            quantity:
+                                quantity,
 
                             purchase_id:
                                 rafflePurchaseId()
+                        })
+                }
+            );
 
-                        }) 
+        if (!data || data.success !== true) {
+
+            throw new Error(
+                data?.error ||
+                "Unable to purchase raffle tickets."
+            );
+        }
+
+        /*
+         * Update the local user points immediately
+         * using the balance returned by the backend.
+         */
+        if (
+            typeof data.remaining_points !==
+            "undefined"
+        ) {
+
+            if (currentUser) {
+
+                currentUser.quizbee_points =
+                    Number(
+                        data.remaining_points
+                    );
+
+                if (
+                    typeof updateUserState ===
+                    "function"
+                ) {
+                    updateUserState(
+                        currentUser
+                    );
+                }
+            }
+        }
+
+        /*
+         * Refresh the raffle so the UI stays
+         * synchronized with Firestore.
+         */
+        await loadUserRaffle(true);
+
+        showToast(
+            `${quantity} raffle ticket${
+                quantity === 1 ? "" : "s"
+            } purchased successfully! 🎟️`
+        );
 
     } catch (error) {
 
@@ -1154,7 +1208,9 @@ async function buyRaffleTickets() {
         raffleLoading = false;
 
         if (button) {
+
             button.disabled = false;
+
             button.textContent =
                 "🎟️ BUY TICKETS";
         }
