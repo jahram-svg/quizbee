@@ -290,73 +290,105 @@
     }
 
     function addUI() {
-        if (document.getElementById("competitionPage")) return;
+    if (document.getElementById("competitionPage")) return;
 
-        const main = document.querySelector("main");
-        const nav = document.querySelector(".bottom-nav");
+    const main = document.querySelector("main");
+    const nav = document.querySelector(".bottom-nav");
 
-        if (!main || !nav) return;
+    if (!main || !nav) return;
 
-        addStyles();
+    addStyles();
 
-        const page = document.createElement("section");
-        page.id = "competitionPage";
-        page.className = "page";
+    const page = document.createElement("section");
+    page.id = "competitionPage";
+    page.className = "page";
 
-        page.innerHTML = `
-            <div class="page-title">
-                <div>
-                    <h1> Competitions</h1>
-                    <p>Manage games, rounds, stages, players and winners</p>
-                </div>
+    page.innerHTML = `
+        <div class="page-title">
+            <div>
+                <h1>🏆 Competitions</h1>
+                <p>Manage games, rounds, stages, players and winners</p>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="competition-tabs" id="competitionGameTabs"></div>
+        </div>
+
+        <div class="panel">
+            <div id="competitionGameHeader"></div>
+        </div>
+
+        <!--
+            CURRENT ROUND MANAGEMENT
+            This intentionally comes BEFORE the old rounds list.
+            Admin controls such as:
+            - Approve Secret
+            - Start Stage
+            - End / Settle Stage
+            - Stage management
+            - Competition settings
+            stay at the top.
+        -->
+        <div class="panel hidden" id="competitionRoundDetailPanel">
+
+            <div class="panel-header">
+                <h2>Manage Round</h2>
+
+                <button
+                    class="secondary-btn"
+                    onclick="competitionLoadRound(currentRoundId)"
+                >
+                    REFRESH
+                </button>
             </div>
 
-            <div class="panel">
-                <div class="competition-tabs" id="competitionGameTabs"></div>
+            <div id="competitionRoundDetail">
+                loading…
             </div>
 
-            <div class="panel">
-                <div id="competitionGameHeader"></div>
+        </div>
+
+        <!--
+            PREVIOUS / EXISTING ROUNDS
+            This stays BELOW the management system so old rounds
+            cannot push the current controls down the page.
+        -->
+        <div class="panel">
+
+            <div class="panel-header">
+                <h2>Rounds</h2>
+
+                <button
+                    class="secondary-btn"
+                    onclick="competitionLoadRounds()"
+                >
+                    REFRESH
+                </button>
             </div>
 
-            <div class="panel">
-                <div class="panel-header">
-                    <h2>Rounds</h2>
-                    <button class="secondary-btn" onclick="competitionLoadRounds()">REFRESH</button>
-                </div>
-
-                <div id="competitionRoundsList">
-                    loading…
-                </div>
+            <div id="competitionRoundsList">
+                loading…
             </div>
 
-            <div class="panel hidden" id="competitionRoundDetailPanel">
-                <div class="panel-header">
-                    <h2>Manage Round</h2>
-                    <button class="secondary-btn" onclick="competitionLoadRound(currentRoundId)">REFRESH</button>
-                </div>
+        </div>
+    `;
 
-                <div id="competitionRoundDetail">
-                    loading…
-                </div>
-            </div>
-        `;
+    main.appendChild(page);
 
-        main.appendChild(page);
+    const navButton = document.createElement("button");
+    navButton.className = "nav-item";
+    navButton.innerHTML = `<span>🏆</span>Competitions`;
+    navButton.onclick = window.showCompetitionAdmin;
 
-        const navButton = document.createElement("button");
-        navButton.className = "nav-item";
-        navButton.innerHTML = `<span></span>Competitions`;
-        navButton.onclick = window.showCompetitionAdmin;
+    if (nav.lastElementChild) {
+        nav.insertBefore(navButton, nav.lastElementChild);
+    } else {
+        nav.appendChild(navButton);
+    }
 
-        if (nav.lastElementChild) {
-            nav.insertBefore(navButton, nav.lastElementChild);
-        } else {
-            nav.appendChild(navButton);
-        }
-
-        renderGameTabs();
-        renderGameHeader();
+    renderGameTabs();
+    renderGameHeader();
     }
 
     function renderGameTabs() {
