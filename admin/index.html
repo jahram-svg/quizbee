@@ -281,143 +281,166 @@
         <!-- GAMES -->
 
         <section
-            id="gamesPage"
-            class="page"
+    id="gamesPage"
+    class="page"
+>
+
+    <div class="page-title">
+
+        <div>
+            <h1>Games</h1>
+            <p>Manage QuizBee games</p>
+        </div>
+
+    </div>
+
+
+    <!-- CHALLENGE CREATION / MANAGEMENT -->
+
+    <div class="panel">
+
+        <h2>Challenges</h2>
+
+        <select
+            id="challengeGameFilter"
+            onchange="loadChallenges()"
         >
 
-            <div class="page-title">
+            <option value="">
+                All Games
+            </option>
 
-                <div>
-                    <h1>Games</h1>
-                    <p>Manage QuizBee games</p>
-                </div>
+        </select>
 
-            </div>
+        <button
+            class="primary-btn full"
+            onclick="showChallengeForm()"
+        >
+            + Create Challenge
+        </button>
 
-            <div
-                id="gamesList"
-                class="list"
+
+        <div
+            id="challengeForm"
+            class="form-panel hidden"
+        >
+
+            <h3>New Challenge</h3>
+
+            <label>Game</label>
+
+            <select id="challengeGame"></select>
+
+            <label>Title</label>
+
+            <input
+                id="challengeTitle"
+                placeholder="Challenge title"
             >
-                Loading games...
-            </div>
 
+            <label>Question</label>
 
-            <div class="panel">
+            <textarea
+                id="challengeQuestion"
+                placeholder="Enter the question"
+            ></textarea>
 
-                <h2>Challenges</h2>
+            <label>Correct Answer</label>
 
-                <select
-                    id="challengeGameFilter"
-                    onchange="loadChallenges()"
-                >
+            <input
+                id="challengeCorrect"
+                placeholder="Admin answer"
+            >
 
-                    <option value="">
-                        All Games
-                    </option>
+            <label>Accepted Answers</label>
 
-                </select>
+            <input
+                id="challengeAccepted"
+                placeholder="Answer 1, Answer 2, Answer 3"
+            >
+
+            <label>Reward Points</label>
+
+            <input
+                id="challengeReward"
+                type="number"
+                value="10"
+            >
+
+            <label>Type</label>
+
+            <select id="challengeType">
+
+                <option value="text">
+                    Text
+                </option>
+
+                <option value="choice">
+                    Choice
+                </option>
+
+                <option value="image">
+                    Image
+                </option>
+
+            </select>
+
+            <div class="form-actions">
 
                 <button
-                    class="primary-btn full"
-                    onclick="showChallengeForm()"
+                    class="secondary-btn"
+                    onclick="hideChallengeForm()"
                 >
-                    + Create Challenge
+                    Cancel
                 </button>
 
-                <div
-                    id="challengeForm"
-                    class="form-panel hidden"
+                <button
+                    class="primary-btn"
+                    onclick="createChallenge()"
                 >
-
-                    <h3>New Challenge</h3>
-
-                    <label>Game</label>
-
-                    <select id="challengeGame"></select>
-
-                    <label>Title</label>
-
-                    <input
-                        id="challengeTitle"
-                        placeholder="Challenge title"
-                    >
-
-                    <label>Question</label>
-
-                    <textarea
-                        id="challengeQuestion"
-                        placeholder="Enter the question"
-                    ></textarea>
-
-                    <label>Correct Answer</label>
-
-                    <input
-                        id="challengeCorrect"
-                        placeholder="Admin answer"
-                    >
-
-                    <label>Accepted Answers</label>
-
-                    <input
-                        id="challengeAccepted"
-                        placeholder="Answer 1, Answer 2, Answer 3"
-                    >
-
-                    <label>Reward Points</label>
-
-                    <input
-                        id="challengeReward"
-                        type="number"
-                        value="10"
-                    >
-
-                    <label>Type</label>
-
-                    <select id="challengeType">
-
-                        <option value="text">
-                            Text
-                        </option>
-
-                        <option value="choice">
-                            Choice
-                        </option>
-
-                        <option value="image">
-                            Image
-                        </option>
-
-                    </select>
-
-                    <div class="form-actions">
-
-                        <button
-                            class="secondary-btn"
-                            onclick="hideChallengeForm()"
-                        >
-                            Cancel
-                        </button>
-
-                        <button
-                            class="primary-btn"
-                            onclick="createChallenge()"
-                        >
-                            Create
-                        </button>
-
-                    </div>
-
-                </div>
-
-
-                <div
-                    id="challengesList"
-                    class="list"
-                >
-                    Loading challenges...
-                </div>
+                    Create
+                </button>
 
             </div>
+
+        </div>
+
+
+        <div
+            id="challengesList"
+            class="list"
+        >
+            Loading challenges...
+        </div>
+
+    </div>
+
+
+    <!-- GAME MANAGEMENT -->
+
+    <div class="panel">
+
+        <div class="panel-header">
+
+            <h2>🎮 Game Management</h2>
+
+            <button
+                class="secondary-btn"
+                onclick="loadGames()"
+            >
+                Refresh
+            </button>
+
+        </div>
+
+        <div
+            id="gamesList"
+            class="list"
+        >
+            Loading games...
+        </div>
+
+    </div>
 
         </section>
 
