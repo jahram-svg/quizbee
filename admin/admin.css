@@ -645,3 +645,33 @@ select:focus {
     object-fit: contain;
     border-radius: 14px;
 }
+
+/* ============================================================
+   ADMIN NOTIFICATIONS
+============================================================ */
+
+.checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin: 15px 0;
+    font-size: 14px;
+}
+
+.checkbox-row input {
+    width: auto;
+    margin: 0;
+}
+
+#adminNotificationsPage textarea {
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
+    min-height: 120px;
+}
+
+#adminNotificationsPage select,
+#adminNotificationsPage input,
+#adminNotificationsPage textarea {
+    margin-bottom: 12px;
+}
