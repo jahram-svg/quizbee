@@ -1078,3 +1078,159 @@ button {
     opacity: 0.85;
     background: rgba(255, 255, 255, 0.06);
     } 
+
+/* ============================================================
+   NOTIFICATIONS
+============================================================ */
+
+.notification-bell {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(255,255,255,.08);
+    color: inherit;
+    font-size: 21px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.notification-bell-icon {
+    line-height: 1;
+}
+
+.notification-badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: #ff3b30;
+    color: white;
+    font-size: 10px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+}
+
+.notification-badge.hidden {
+    display: none;
+}
+
+.notification-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 12px;
+}
+
+.notifications-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.notification-card {
+    display: flex;
+    gap: 12px;
+    padding: 15px;
+    border-radius: 16px;
+    background: rgba(255,255,255,.05);
+    border: 1px solid rgba(255,255,255,.08);
+    cursor: pointer;
+    transition: .2s ease;
+}
+
+.notification-card.unread {
+    background: rgba(255,255,255,.08);
+    border-color: rgba(255,255,255,.15);
+}
+
+.notification-card:active {
+    transform: scale(.985);
+}
+
+.notification-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 13px;
+    background: rgba(255,255,255,.08);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 21px;
+    flex-shrink: 0;
+}
+
+.notification-content {
+    min-width: 0;
+    flex: 1;
+}
+
+.notification-title-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.notification-title-row strong {
+    font-size: 15px;
+}
+
+.notification-content p {
+    margin: 6px 0;
+    font-size: 13px;
+    line-height: 1.5;
+    opacity: .8;
+}
+
+.notification-content small {
+    font-size: 11px;
+    opacity: .5;
+}
+
+.notification-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #ff3b30;
+    flex-shrink: 0;
+}
+
+.notification-action-btn {
+    margin-top: 9px;
+    padding: 8px 12px;
+    border: 0;
+    border-radius: 9px;
+    background: rgba(255,255,255,.1);
+    color: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.notification-empty {
+    text-align: center;
+    padding: 60px 20px;
+    opacity: .7;
+}
+
+.notification-empty-icon {
+    font-size: 55px;
+    margin-bottom: 15px;
+}
+
+.notification-empty h2 {
+    margin: 0 0 8px;
+}
+
+.notification-empty p {
+    margin: 0;
+    opacity: .7;
+    }
