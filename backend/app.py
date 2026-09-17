@@ -20,6 +20,7 @@ from backend.admin import (
 )
 from backend.competition import competition_bp
 from backend.raffle import raffle_bp
+from backend.notifications import notifications_bp
 
 
 app = Flask(__name__)
@@ -28,6 +29,7 @@ app.register_blueprint(daily_earning_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(competition_bp)
 app.register_blueprint(raffle_bp)
+app.register_blueprint(notifications_bp)
 
 
 CORS(
