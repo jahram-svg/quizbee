@@ -42,9 +42,10 @@ CORS(
         "X-Telegram-Init-Data"
     ],
     methods=[
-        "GET",
-        "POST",
-        "OPTIONS"
+    "GET",
+    "POST",
+    "DELETE",
+    "OPTIONS"
     ]
 )
 
