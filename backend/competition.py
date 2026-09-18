@@ -1664,7 +1664,7 @@ def settle_stage(
         "total_distributed": 0,
     }
 
-        if stage_no == total_stages:
+    if stage_no == total_stages:
         prize_info = distribute_prize(
             round_data,
             winners,
