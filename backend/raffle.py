@@ -7,6 +7,7 @@ from firebase_admin import firestore
 
 from backend.firebase import db
 from backend.telegram_auth import validate_telegram_init_data
+from backend.notifications import create_notification
 
 
 raffle_bp = Blueprint(
@@ -876,6 +877,32 @@ def buy_tickets(raffle_id):
                     "This purchase was already processed."
 
             })
+
+        purchase = result["purchase"]
+
+create_notification(
+    user_id=telegram_id,
+    title="🎟️ Raffle Tickets Purchased",
+    message=(
+        f"You successfully purchased "
+        f"{quantity} raffle ticket"
+        f"{'s' if quantity != 1 else ''} "
+        f"for this raffle."
+        f"\n\n"
+        f"Ticket range: "
+        f"{result['tickets'][0]} - "
+        f"{result['tickets'][-1]}"
+    ),
+    notification_type="raffle",
+    action_url="",
+    button_text="",
+    dedupe_key=(
+        f"raffle-purchase:"
+        f"{raffle_id}:"
+        f"{purchase_id}"
+    ),
+    send_telegram=True,
+)
 
         return jsonify({
 
