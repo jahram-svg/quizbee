@@ -2659,47 +2659,31 @@ def competition_enter(user, game_id):
         }), 500
 
     # --------------------------------------------------------
-# Phase 8:
-# Only a genuinely NEW competition entry counts as
-# game participation.
-# --------------------------------------------------------
+    # PHASE 8:
+    # Only a genuinely NEW competition entry counts as
+    # game participation.
+    #
+    # Re-entering the same stage must NOT increase the streak
+    # or games_played_count.
+    # --------------------------------------------------------
 
-if not result[
-    "already_entered"
-]:
-
-    participation = (
-        record_game_participation(
+    if not result["already_entered"]:
+        participation = record_game_participation(
             telegram_id
         )
-    )
 
-    result[
-        "user"
-    ].update(
-        participation
-    )
+        result["user"].update(
+            participation
+        )
 
-return jsonify({
-    "success": True,
-
-    "already_entered":
-        result[
-            "already_entered"
-        ],
-
-    "entry":
-        result[
-            "entry"
-        ],
-
-    "user":
-        public_user(
-            result[
-                "user"
-            ]
+    return jsonify({
+        "success": True,
+        "already_entered": result["already_entered"],
+        "entry": result["entry"],
+        "user": public_user(
+            result["user"]
         ),
-})
+    })
 
 
 # ============================================================
