@@ -1229,31 +1229,31 @@ def mark_withdrawal_paid(
         })
 
     telegram_id = str(
-    data.get(
-        "telegram_id",
-        ""
+        data.get(
+            "telegram_id",
+            ""
+        )
     )
-)
 
-create_notification(
-    user_id=telegram_id,
-    title="🎉 Withdrawal Paid!",
-    message=(
-        f"Your withdrawal of "
-        f"${float(data.get('amount', 0)):.2f} "
-        f"has been paid successfully."
-        f"\n\nPayment reference: "
-        f"{payment_reference}"
-    ),
-    notification_type="prize",
-    action_url="",
-    button_text="",
-    dedupe_key=(
-        f"withdrawal-paid:"
-        f"{withdrawal_id}"
-    ),
-    send_telegram=True,
-)
+    create_notification(
+        user_id=telegram_id,
+        title="🎉 Withdrawal Paid!",
+        message=(
+            f"Your withdrawal of "
+            f"${float(data.get('amount', 0)):.2f} "
+            f"has been paid successfully."
+            f"\n\nPayment reference: "
+            f"{payment_reference}"
+        ),
+        notification_type="prize",
+        action_url="",
+        button_text="",
+        dedupe_key=(
+            f"withdrawal-paid:"
+            f"{withdrawal_id}"
+        ),
+        send_telegram=True,
+    )
 
     return jsonify({
         "success": True,
