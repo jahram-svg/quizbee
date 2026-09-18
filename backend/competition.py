@@ -35,6 +35,7 @@ from firebase_admin import firestore
 
 from backend.firebase import db
 from backend.telegram_auth import validate_telegram_init_data
+from backend.notifications import create_notification
 
 
 competition_bp = Blueprint(
@@ -129,6 +130,63 @@ VALID_STATUSES = {
 
 def now_utc() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def notify_competition_result(
+    telegram_id: str,
+    round_data: Dict[str, Any],
+    stage_no: int,
+    outcome: str,
+    message: str,
+    next_stage: Optional[int] = None,
+):
+    """
+    Create a persistent QuizBee notification and send the
+    same important competition result through Telegram.
+
+    The dedupe key makes this safe if stage settlement is
+    accidentally triggered more than once.
+    """
+
+    round_id = str(
+        round_data.get("id", "")
+    )
+
+    game_id = str(
+        round_data.get("game_id", "")
+    )
+
+    title = "Competition Update"
+    notification_type = "competition"
+
+    if outcome == "advanced":
+        title = "🎉 You Advanced!"
+        notification_type = "advancement"
+
+    elif outcome == "winner":
+        title = "🏆 You're a Winner!"
+        notification_type = "winner"
+
+    elif outcome == "failed":
+        title = "❌ Competition Result"
+        notification_type = "elimination"
+
+    create_notification(
+        user_id=str(telegram_id),
+        title=title,
+        message=message,
+        notification_type=notification_type,
+        action_url="",
+        button_text="",
+        dedupe_key=(
+            f"competition-result:"
+            f"{round_id}:"
+            f"{stage_no}:"
+            f"{telegram_id}:"
+            f"{outcome}"
+        ),
+        send_telegram=True,
+    )
 
 
 def iso(dt: Any) -> Optional[str]:
@@ -1571,6 +1629,15 @@ def settle_stage(
             },
         )
 
+        notify_competition_result(
+            telegram_id=telegram_id,
+            round_data=round_data,
+            stage_no=stage_no,
+            outcome=outcome,
+            message=message,
+            next_stage=next_stage,
+                )
+
         result_count += 1
 
         # Keep the entry itself synchronized.
@@ -1597,11 +1664,57 @@ def settle_stage(
         "total_distributed": 0,
     }
 
-    if stage_no == total_stages:
+        if stage_no == total_stages:
         prize_info = distribute_prize(
             round_data,
             winners,
         )
+
+        # ----------------------------------------------------
+        # FINAL WINNER PRIZE NOTIFICATIONS
+        # ----------------------------------------------------
+
+        amount_each = to_number(
+            prize_info.get(
+                "amount_each",
+                0
+            ),
+            0,
+        )
+
+        if amount_each > 0:
+
+            for winner_entry in winners:
+
+                winner_telegram_id = str(
+                    winner_entry.get(
+                        "telegram_id",
+                        ""
+                    )
+                ).strip()
+
+                if not winner_telegram_id:
+                    continue
+
+                create_notification(
+                    user_id=winner_telegram_id,
+                    title="💰 Prize Credited!",
+                    message=(
+                        f"Congratulations! Your "
+                        f"competition prize of "
+                        f"${amount_each:.2f} has been "
+                        f"credited to your Prize Balance."
+                    ),
+                    notification_type="prize",
+                    action_url="",
+                    button_text="",
+                    dedupe_key=(
+                        f"competition-prize:"
+                        f"{round_id}:"
+                        f"{winner_telegram_id}"
+                    ),
+                    send_telegram=True,
+                )
 
         round_status = "settled"
 
