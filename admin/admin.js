@@ -170,7 +170,8 @@ function showPage(page) {
     daily: 3,
     wallet: 4,
     raffle: 5,
-    settings: 6
+    referralStreak: 6,
+    settings: 7
 };
 
     if (
@@ -209,6 +210,10 @@ function showPage(page) {
 
     if (page === "raffle") {
     loadRafflePage();
+    }
+
+    if (page === "referralStreak") {
+    loadReferralStreakPage();
     }
 
     if (page === "settings") {
