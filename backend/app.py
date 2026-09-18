@@ -378,45 +378,30 @@ def get_or_create_user(
 
     snap = ref.get()
 
-        if snap.exists:
+    if snap.exists:
 
-        data = snap.to_dict() or {}
+    data = snap.to_dict()
 
-        updates = {}
+    updates = {
+        "telegram_id": telegram_id,
 
-        # ----------------------------------------------------
-        # PHASE 8 — REFERRAL / STREAK DEFAULTS
-        # ----------------------------------------------------
+        "username": telegram_user.get(
+            "username",
+            ""
+        ),
 
-        if "referral_processed" not in data:
-            updates["referral_processed"] = True
+        "first_name": telegram_user.get(
+            "first_name",
+            ""
+        ),
 
-        if "referrals_count" not in data:
-            updates["referrals_count"] = 0
+        "last_name": telegram_user.get(
+            "last_name",
+            ""
+        ),
 
-        if "games_played_count" not in data:
-            updates["games_played_count"] = 0
-
-        # Legacy accounts must start with a clean streak.
-        # We do not assume their previous activity was a game.
-        if "last_game_date" not in data:
-            updates["streak_days"] = 0
-            updates["last_game_date"] = None
-            updates["last_game_at"] = None
-            updates["streak_month"] = None
-            updates["streak_month_best"] = 0
-
-        if updates:
-
-            ref.update(
-                updates
-            )
-
-            data.update(
-                updates
-            )
-
-        return data
+        "updated_at": now()
+    }
 
     if telegram_user.get(
         "photo_url"
@@ -483,6 +468,12 @@ def get_or_create_user(
     )
 
     return data
+
+        ref.update(updates)
+
+        data.update(updates)
+
+        return data
 
     referral_code = generate_referral_code()
 
@@ -1048,38 +1039,45 @@ def enter_game(game_id):
     "quizbee_points"
 ] = new_balance
 
-    # --------------------------------------------------------
-    # PHASE 8 — GAME PARTICIPATION / STREAK
-    #
-    # Only a genuinely NEW game entry counts.
-    # Re-entering the same game does not increase the streak.
-    # --------------------------------------------------------
+# --------------------------------------------------------
+# Phase 8:
+# A successful NEW game entry counts as participation.
+# This is where the daily streak is updated.
+# --------------------------------------------------------
 
-    if not result["already_entered"]:
+participation = (
+    record_game_participation(
+        telegram_id
+    )
+)
 
-        participation = (
-            record_game_participation(
-                telegram_id
-            )
-        )
+user.update(
+    participation
+)
 
-        user.update(
-            participation
-        )
+return jsonify({
 
-    return jsonify({
-        "success": True,
+    "success": True, 
 
-        "already_entered":
-            result[
-                "already_entered"
-            ],
+            "already_entered": False,
 
-        "user":
-            public_user(
+            "challenge":
+                get_public_challenge(
+                    challenge
+                ),
+
+            "user":
                 user
-            ),
-    })
+
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
 
 # ============================================================
 # GET CHALLENGE
@@ -2478,4 +2476,4 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=port,
         debug=False
-    )
+)
