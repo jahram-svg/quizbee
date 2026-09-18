@@ -3030,6 +3030,8 @@ function showPage(
 
         loadProfile();
 
+        loadReferralInfo();
+
     }
 
 
