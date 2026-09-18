@@ -21,6 +21,11 @@ from backend.admin import (
 from backend.competition import competition_bp
 from backend.raffle import raffle_bp
 from backend.notifications import notifications_bp
+from backend.referral_streak import (
+    referral_streak_bp,
+    process_referral,
+    record_game_participation,
+)
 
 
 app = Flask(__name__)
@@ -30,6 +35,9 @@ app.register_blueprint(admin_bp)
 app.register_blueprint(competition_bp)
 app.register_blueprint(raffle_bp)
 app.register_blueprint(notifications_bp)
+app.register_blueprint(
+    referral_streak_bp
+)
 
 
 CORS(
@@ -372,29 +380,94 @@ def get_or_create_user(
 
     if snap.exists:
 
-        data = snap.to_dict()
+    data = snap.to_dict()
 
-        updates = {
-            "telegram_id": telegram_id,
-            "username": telegram_user.get(
-                "username",
-                ""
-            ),
-            "first_name": telegram_user.get(
-                "first_name",
-                ""
-            ),
-            "last_name": telegram_user.get(
-                "last_name",
-                ""
-            ),
-            "updated_at": now()
-        }
+    updates = {
+        "telegram_id": telegram_id,
 
-        if telegram_user.get("photo_url"):
-            updates["photo_url"] = (
-                telegram_user["photo_url"]
-            )
+        "username": telegram_user.get(
+            "username",
+            ""
+        ),
+
+        "first_name": telegram_user.get(
+            "first_name",
+            ""
+        ),
+
+        "last_name": telegram_user.get(
+            "last_name",
+            ""
+        ),
+
+        "updated_at": now()
+    }
+
+    if telegram_user.get(
+        "photo_url"
+    ):
+        updates["photo_url"] = (
+            telegram_user[
+                "photo_url"
+            ]
+        )
+
+    # --------------------------------------------------------
+    # Phase 8 migration for older accounts.
+    #
+    # Old QuizBee accounts previously had streak_days=1
+    # from account creation/login. That was NOT a real
+    # game streak, so reset it when no real game date exists.
+    # --------------------------------------------------------
+
+    if (
+        "last_game_date"
+        not in data
+    ):
+
+        updates[
+            "streak_days"
+        ] = 0
+
+        updates[
+            "last_game_date"
+        ] = None
+
+        updates[
+            "streak_month_best"
+        ] = 0
+
+    # Existing accounts created before Phase 8 are treated
+    # as already having completed referral processing.
+    # This prevents an old user from becoming someone else's
+    # referral months later simply by opening a referral link.
+    if (
+        "referral_processed"
+        not in data
+    ):
+
+        updates[
+            "referral_processed"
+        ] = True
+
+    if (
+        "games_played_count"
+        not in data
+    ):
+
+        updates[
+            "games_played_count"
+        ] = 0
+
+    ref.update(
+        updates
+    )
+
+    data.update(
+        updates
+    )
+
+    return data
 
         ref.update(updates)
 
@@ -443,7 +516,21 @@ def get_or_create_user(
 
         "referrals_count": 0,
 
-        "streak_days": 1,
+        "referral_processed": False,
+
+        "referral_joined_at": None,
+
+        "streak_days": 0,
+
+        "last_game_date": None,
+
+        "last_game_at": None,
+
+        "streak_month": None,
+
+        "streak_month_best": 0,
+
+        "games_played_count": 0,
 
         "last_login": now(),
 
@@ -644,10 +731,30 @@ def bootstrap():
             }), 401
 
         user = get_or_create_user(
-            telegram_user
-        )
+    telegram_user
+)
 
-        games = get_all_games()
+# --------------------------------------------------------
+# Phase 8 referral attribution.
+#
+# start_param was extracted from VALIDATED Telegram
+# initData by telegram_auth.py.
+# --------------------------------------------------------
+
+process_referral(
+    user["telegram_id"],
+    telegram_user.get(
+        "_start_param",
+        ""
+    )
+)
+
+# Refresh the user after referral processing.
+user = get_or_create_user(
+    telegram_user
+)
+
+games = get_all_games() 
 
         challenge = get_active_challenge(
             "impossible_question"
@@ -929,12 +1036,28 @@ def enter_game(game_id):
         })
 
         user[
-            "quizbee_points"
-        ] = new_balance
+    "quizbee_points"
+] = new_balance
 
-        return jsonify({
+# --------------------------------------------------------
+# Phase 8:
+# A successful NEW game entry counts as participation.
+# This is where the daily streak is updated.
+# --------------------------------------------------------
 
-            "success": True,
+participation = (
+    record_game_participation(
+        telegram_id
+    )
+)
+
+user.update(
+    participation
+)
+
+return jsonify({
+
+    "success": True, 
 
             "already_entered": False,
 
