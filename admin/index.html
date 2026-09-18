@@ -853,6 +853,153 @@
 
 </section>
         
+
+<!-- ========================================================
+     REFERRAL / STREAK
+========================================================= -->
+
+<section
+    id="referralStreakPage"
+    class="page"
+>
+
+    <div class="page-title">
+
+        <div>
+
+            <h1>
+                👥 Referral / Streak
+            </h1>
+
+            <p>
+                Referral campaigns and monthly streak tracking
+            </p>
+
+        </div>
+
+    </div>
+
+
+    <!-- REFERRALS -->
+
+    <div class="panel">
+
+        <div class="panel-header">
+
+            <h2>
+                👥 Referral Leaderboard
+            </h2>
+
+            <button
+                class="secondary-btn"
+                onclick="copyReferralTop10()"
+            >
+                📋 Copy Top 10
+            </button>
+
+        </div>
+
+
+        <div class="tabs">
+
+            <button
+                id="referralWeeklyTab"
+                class="tab active"
+                onclick="
+                    loadReferralLeaderboard('weekly')
+                "
+            >
+                Weekly
+            </button>
+
+            <button
+                id="referralMonthlyTab"
+                class="tab"
+                onclick="
+                    loadReferralLeaderboard('monthly')
+                "
+            >
+                Monthly
+            </button>
+
+        </div>
+
+
+        <div
+            id="referralLeaderboard"
+            class="list"
+        >
+
+            Loading...
+
+        </div>
+
+    </div>
+
+
+    <!-- REFERRAL DETAILS -->
+
+    <div
+        id="referralDetailsPanel"
+        class="panel"
+        style="display:none;"
+    >
+
+        <div class="panel-header">
+
+            <h2 id="referralDetailsTitle">
+                Referred Users
+            </h2>
+
+            <button
+                class="secondary-btn"
+                onclick="closeReferralDetails()"
+            >
+                ← Back
+            </button>
+
+        </div>
+
+
+        <div
+            id="referralDetailsList"
+            class="list"
+        >
+
+            Loading...
+
+        </div>
+
+    </div>
+
+
+    <!-- STREAK -->
+
+    <div class="panel">
+
+        <div class="panel-header">
+
+            <h2>
+                🔥 Highest Streak This Month
+            </h2>
+
+        </div>
+
+
+        <div
+            id="streakLeaderboard"
+            class="list"
+        >
+
+            Loading...
+
+        </div>
+
+    </div>
+
+</section> 
+        
+        
         <!-- SETTINGS -->
 
         <section
@@ -1035,6 +1182,14 @@
     Raffle
         </button> 
 
+        <button
+    class="nav-item"
+    onclick="showPage('referralStreak')"
+>
+    <span>👥</span>
+    Referral
+        </button>
+        
         <button
     class="nav-item"
     onclick="showPage('settings')"
