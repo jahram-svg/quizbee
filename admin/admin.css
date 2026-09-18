@@ -519,7 +519,7 @@ select:focus {
     display: grid;
 
     grid-template-columns:
-        repeat(6, 1fr);
+        repeat(8, 1fr);
 
     padding:
         7px 4px
