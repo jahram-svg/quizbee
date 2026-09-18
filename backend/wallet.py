@@ -6,6 +6,7 @@ from firebase_admin import firestore
 
 from backend.firebase import db
 from backend.telegram_auth import validate_telegram_init_data
+from backend.notifications import create_notification
 
 
 wallet_bp = Blueprint(
@@ -685,6 +686,24 @@ def create_withdrawal():
         }
     )
 
+    create_notification(
+    user_id=telegram_id,
+    title="💸 Withdrawal Submitted",
+    message=(
+        f"Your withdrawal request for "
+        f"${float(amount):.2f} has been submitted "
+        f"and is pending review."
+    ),
+    notification_type="general",
+    action_url="",
+    button_text="",
+    dedupe_key=(
+        f"withdrawal-submitted:"
+        f"{withdrawal_ref.id}"
+    ),
+    send_telegram=True,
+    )
+
     return jsonify({
         "success": True,
         "withdrawal": {
@@ -904,6 +923,30 @@ def approve_withdrawal(
         "updated_at": now()
     })
 
+    create_notification(
+    user_id=str(
+        data.get(
+            "telegram_id",
+            ""
+        )
+    ),
+    title="✅ Withdrawal Approved",
+    message=(
+        f"Your withdrawal of "
+        f"${float(data.get('amount', 0)):.2f} "
+        f"has been approved and is now ready "
+        f"for payment."
+    ),
+    notification_type="general",
+    action_url="",
+    button_text="",
+    dedupe_key=(
+        f"withdrawal-approved:"
+        f"{withdrawal_id}"
+    ),
+    send_telegram=True,
+        )
+
     return jsonify({
         "success": True,
         "message": "Withdrawal approved."
@@ -1026,6 +1069,30 @@ def reject_withdrawal(
             "withdrawal_id":
                 withdrawal_id
         }
+    )
+
+    create_notification(
+    user_id=telegram_id,
+    title="❌ Withdrawal Rejected",
+    message=(
+        f"Your withdrawal of "
+        f"${amount:.2f} was rejected. "
+        f"The amount has been returned to "
+        f"your Prize Balance."
+        + (
+            f"\n\nAdmin note: {note}"
+            if note
+            else ""
+        )
+    ),
+    notification_type="warning",
+    action_url="",
+    button_text="",
+    dedupe_key=(
+        f"withdrawal-rejected:"
+        f"{withdrawal_id}"
+    ),
+    send_telegram=True,
     )
 
     return jsonify({
@@ -1160,6 +1227,33 @@ def mark_withdrawal_paid(
             "status": "paid",
             "updated_at": now()
         })
+
+    telegram_id = str(
+    data.get(
+        "telegram_id",
+        ""
+    )
+)
+
+create_notification(
+    user_id=telegram_id,
+    title="🎉 Withdrawal Paid!",
+    message=(
+        f"Your withdrawal of "
+        f"${float(data.get('amount', 0)):.2f} "
+        f"has been paid successfully."
+        f"\n\nPayment reference: "
+        f"{payment_reference}"
+    ),
+    notification_type="prize",
+    action_url="",
+    button_text="",
+    dedupe_key=(
+        f"withdrawal-paid:"
+        f"{withdrawal_id}"
+    ),
+    send_telegram=True,
+)
 
     return jsonify({
         "success": True,
