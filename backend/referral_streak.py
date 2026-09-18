@@ -685,9 +685,10 @@ def get_referral():
 
 def admin_auth():
 
-    admin = require_admin()
+    admin, error = require_admin()
 
-    if admin == "FORBIDDEN":
+    if error:
+
         return None, (
             jsonify({
                 "success": False,
@@ -698,6 +699,7 @@ def admin_auth():
         )
 
     if not admin:
+
         return None, (
             jsonify({
                 "success": False,
