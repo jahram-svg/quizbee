@@ -219,30 +219,60 @@ def get_notifications():
                 "==",
                 user["telegram_id"]
             )
-            .order_by(
-                "created_at",
-                direction=firestore.Query.DESCENDING
-            )
-            .limit(50)
             .stream()
         )
 
         notifications = []
-        unread_count = 0
 
         for doc in docs:
 
             data = doc.to_dict() or {}
 
-            item = serialize({
+            notifications.append({
                 "id": doc.id,
-                **data
+                "title": data.get("title", ""),
+                "message": data.get("message", ""),
+                "type": data.get(
+                    "type",
+                    "general"
+                ),
+                "action_url": data.get(
+                    "action_url",
+                    ""
+                ),
+                "button_text": data.get(
+                    "button_text",
+                    ""
+                ),
+                "read": bool(
+                    data.get("read", False)
+                ),
+                "created_at": data.get(
+                    "created_at"
+                ),
+                "updated_at": data.get(
+                    "updated_at"
+                )
             })
 
-            notifications.append(item)
+        # Sort newest first without relying on
+        # a Firestore composite index.
+        notifications.sort(
+            key=lambda item: (
+                item.get("created_at")
+                or ""
+            ),
+            reverse=True
+        )
 
-            if not data.get("read", False):
-                unread_count += 1
+        # Return only the newest 50 notifications.
+        notifications = notifications[:50]
+
+        unread_count = sum(
+            1
+            for item in notifications
+            if not item["read"]
+        )
 
         return jsonify({
             "success": True,
@@ -251,6 +281,11 @@ def get_notifications():
         })
 
     except Exception as exc:
+
+        print(
+            "Notification fetch error:",
+            repr(exc)
+        )
 
         return jsonify({
             "success": False,
