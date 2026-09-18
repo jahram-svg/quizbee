@@ -36,6 +36,9 @@ from firebase_admin import firestore
 from backend.firebase import db
 from backend.telegram_auth import validate_telegram_init_data
 from backend.notifications import create_notification
+from backend.referral_streak import (
+    record_game_participation,
+)
 
 
 competition_bp = Blueprint(
@@ -2655,16 +2658,48 @@ def competition_enter(user, game_id):
             "error": "Unable to process stage entry.",
         }), 500
 
-    return jsonify({
-        "success": True,
-        "already_entered": result[
+    # --------------------------------------------------------
+# Phase 8:
+# Only a genuinely NEW competition entry counts as
+# game participation.
+# --------------------------------------------------------
+
+if not result[
+    "already_entered"
+]:
+
+    participation = (
+        record_game_participation(
+            telegram_id
+        )
+    )
+
+    result[
+        "user"
+    ].update(
+        participation
+    )
+
+return jsonify({
+    "success": True,
+
+    "already_entered":
+        result[
             "already_entered"
         ],
-        "entry": result["entry"],
-        "user": public_user(
-            result["user"]
+
+    "entry":
+        result[
+            "entry"
+        ],
+
+    "user":
+        public_user(
+            result[
+                "user"
+            ]
         ),
-    })
+})
 
 
 # ============================================================
