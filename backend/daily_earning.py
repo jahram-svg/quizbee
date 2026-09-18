@@ -8,6 +8,7 @@ from firebase_admin import firestore
 
 from backend.firebase import db
 from backend.telegram_auth import validate_telegram_init_data
+from backend.notifications import create_notification
 
 
 daily_earning_bp = Blueprint(
@@ -2906,6 +2907,26 @@ def settle_round(
                             index + 1
                     }
                 )
+
+                create_notification(
+                    user_id=telegram_id,
+                    title="💰 Daily Earning Prize!",
+                    message=(
+                        f"Congratulations! You won "
+                        f"${amount:.2f} from Daily Earning. "
+                        f"The prize has been credited to "
+                        f"your Prize Balance."
+                    ),
+                    notification_type="prize",
+                    action_url="",
+                    button_text="",
+                    dedupe_key=(
+                        f"daily-earning-prize:"
+                        f"{round_id}:"
+                        f"{telegram_id}"
+                    ),
+                    send_telegram=True,
+                            )
 
             results.append({
                 "telegram_id":
