@@ -1234,3 +1234,76 @@ button {
     margin: 0;
     opacity: .7;
     }
+
+
+/* ============================================================
+   PROFILE REFERRALS
+============================================================ */
+
+.profile-referral-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 17px;
+    margin: 12px 0;
+}
+
+.profile-referral-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.profile-referral-header > div {
+    flex: 1;
+}
+
+.profile-referral-header h3 {
+    font-size: 15px;
+    margin-bottom: 5px;
+}
+
+.profile-referral-header p {
+    color: var(--muted);
+    font-size: 10px;
+    line-height: 1.4;
+}
+
+.profile-referral-header > strong {
+    color: var(--yellow);
+    font-size: 20px;
+}
+
+.profile-referral-link-box {
+    display: flex;
+    gap: 7px;
+    margin-top: 13px;
+}
+
+.profile-referral-link-box input {
+    flex: 1;
+    min-width: 0;
+
+    background: var(--card2);
+    border: 1px solid var(--border);
+    color: white;
+
+    border-radius: 11px;
+    padding: 11px;
+
+    font-size: 10px;
+    outline: none;
+}
+
+.profile-referral-link-box button {
+    flex-shrink: 0;
+
+    background: var(--yellow);
+    color: #111;
+
+    border-radius: 11px;
+    padding: 0 13px;
+
+    font-weight: 800;
+    font-size: 11px;
+}
