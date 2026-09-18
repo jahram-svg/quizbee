@@ -3086,6 +3086,149 @@ function withdrawPrize() {
 
 
 // ============================================================
+// REFERRALS
+// ============================================================
+
+let currentReferralData = null;
+
+
+async function loadReferralInfo() {
+
+    const linkInput =
+        document.getElementById(
+            "profileReferralLink"
+        );
+
+    const countElement =
+        document.getElementById(
+            "profileReferralCount"
+        );
+
+
+    try {
+
+        const data =
+            await api(
+                "/api/referral"
+            );
+
+
+        if (!data.success) {
+
+            throw new Error(
+                data.error ||
+                "Unable to load referral information."
+            );
+
+        }
+
+
+        currentReferralData =
+            data;
+
+
+        if (countElement) {
+
+            countElement.textContent =
+                Number(
+                    data.referrals_count ||
+                    0
+                ).toLocaleString();
+
+        }
+
+
+        if (linkInput) {
+
+            linkInput.value =
+                data.referral_link ||
+                "Referral link unavailable.";
+
+        }
+
+
+        if (currentUser) {
+
+            currentUser.referrals_count =
+                Number(
+                    data.referrals_count ||
+                    0
+                );
+
+            updateUserState(
+                currentUser
+            );
+
+        }
+
+
+    } catch (error) {
+
+        console.error(
+            "Referral info error:",
+            error
+        );
+
+
+        if (linkInput) {
+
+            linkInput.value =
+                "Referral link unavailable.";
+
+        }
+
+    }
+
+}
+
+
+async function copyReferralLink() {
+
+    const link =
+        currentReferralData?.referral_link ||
+        document.getElementById(
+            "profileReferralLink"
+        )?.value ||
+        "";
+
+
+    if (
+        !link ||
+        !link.startsWith(
+            "https://t.me/"
+        )
+    ) {
+
+        showToast(
+            "Referral link is not available yet."
+        );
+
+        return;
+    }
+
+
+    try {
+
+        await navigator.clipboard.writeText(
+            link
+        );
+
+        showToast(
+            "Referral link copied! 📋"
+        );
+
+    } catch (error) {
+
+        showToast(
+            "Unable to copy referral link."
+        );
+
+    }
+
+            }
+
+
+// ============================================================
 // START
 // ============================================================
 
