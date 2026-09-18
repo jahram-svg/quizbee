@@ -675,3 +675,115 @@ select:focus {
 #adminNotificationsPage textarea {
     margin-bottom: 12px;
 }
+
+/* ============================================================
+   REFERRAL / STREAK
+============================================================ */
+
+.referral-rank-row {
+    width: 100%;
+    border: 1px solid var(--border);
+    background: white;
+    border-radius: 14px;
+    padding: 13px;
+    margin-bottom: 8px;
+
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    text-align: left;
+    cursor: pointer;
+}
+
+.referral-rank-row:active {
+    transform: scale(.99);
+}
+
+.referral-rank-number {
+    width: 32px;
+    flex-shrink: 0;
+    text-align: center;
+    font-weight: 800;
+}
+
+.referral-rank-name {
+    flex: 1;
+    min-width: 0;
+}
+
+.referral-rank-name strong {
+    display: block;
+    font-size: 13px;
+}
+
+.referral-rank-name small {
+    display: block;
+    color: #888;
+    font-size: 10px;
+    margin-top: 4px;
+}
+
+.referral-rank-score {
+    color: var(--primary);
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.referral-user-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.referral-user-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.referral-user-main strong {
+    display: block;
+    font-size: 13px;
+}
+
+.referral-user-main small {
+    display: block;
+    color: #888;
+    font-size: 10px;
+    margin-top: 4px;
+}
+
+.referral-user-funding {
+    text-align: right;
+    min-width: 75px;
+}
+
+.referral-user-funding span {
+    display: block;
+    color: #888;
+    font-size: 9px;
+}
+
+.referral-user-funding strong {
+    display: block;
+    margin-top: 3px;
+    font-size: 12px;
+}
+
+.referral-funded {
+    border-left: 4px solid #2e7d32;
+}
+
+.referral-not-funded {
+    border-left: 4px solid #bbb;
+}
+
+.streak-rank-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.streak-rank-row .referral-rank-score {
+    color: #d89000;
+}
