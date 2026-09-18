@@ -29,15 +29,14 @@ from backend.referral_streak import (
 
 
 app = Flask(__name__)
+
 app.register_blueprint(wallet_bp)
 app.register_blueprint(daily_earning_bp)
 app.register_blueprint(admin_bp)
 app.register_blueprint(competition_bp)
 app.register_blueprint(raffle_bp)
 app.register_blueprint(notifications_bp)
-app.register_blueprint(
-    referral_streak_bp
-)
+app.register_blueprint(referral_streak_bp)
 
 
 CORS(
@@ -52,10 +51,10 @@ CORS(
         "X-Telegram-Init-Data"
     ],
     methods=[
-    "GET",
-    "POST",
-    "DELETE",
-    "OPTIONS"
+        "GET",
+        "POST",
+        "DELETE",
+        "OPTIONS"
     ]
 )
 
@@ -99,8 +98,6 @@ def maintenance_gate():
     # CORS PREFLIGHT
     # --------------------------------------------------------
 
-    # Never block browser preflight requests.
-    # The real GET/POST request will still be checked.
     if request.method == "OPTIONS":
         return None
 
@@ -112,9 +109,7 @@ def maintenance_gate():
 
     try:
 
-        settings = (
-            get_app_settings()
-        )
+        settings = get_app_settings()
 
         maintenance_mode = bool(
             settings.get(
@@ -130,33 +125,23 @@ def maintenance_gate():
         # AUTHENTICATE USER
         # ----------------------------------------------------
 
-        user = (
-            get_authenticated_telegram_user()
-        )
+        user = get_authenticated_telegram_user()
 
         if not user:
 
             return jsonify({
                 "success": False,
-
-                "error":
-                    settings.get(
-                        "maintenance_message",
-                        "QuizBee is currently under maintenance."
-                    ),
-
-                "code":
-                    "MAINTENANCE",
-
-                "maintenance":
-                    True
-
+                "error": settings.get(
+                    "maintenance_message",
+                    "QuizBee is currently under maintenance."
+                ),
+                "code": "MAINTENANCE",
+                "maintenance": True
             }), 503
 
         telegram_id = str(
             user["telegram_id"]
         )
-
 
         # ----------------------------------------------------
         # TEST USER BYPASS
@@ -165,7 +150,6 @@ def maintenance_gate():
         if is_maintenance_bypass(
             telegram_id
         ):
-
             return None
 
         # ----------------------------------------------------
@@ -174,19 +158,12 @@ def maintenance_gate():
 
         return jsonify({
             "success": False,
-
-            "error":
-                settings.get(
-                    "maintenance_message",
-                    "QuizBee is currently under maintenance."
-                ),
-
-            "code":
-                "MAINTENANCE",
-
-            "maintenance":
-                True
-
+            "error": settings.get(
+                "maintenance_message",
+                "QuizBee is currently under maintenance."
+            ),
+            "code": "MAINTENANCE",
+            "maintenance": True
         }), 503
 
     except Exception as e:
@@ -199,10 +176,8 @@ def maintenance_gate():
         # Fail closed.
         return jsonify({
             "success": False,
-            "error":
-                "QuizBee is temporarily unavailable.",
-            "code":
-                "MAINTENANCE_CHECK_FAILED"
+            "error": "QuizBee is temporarily unavailable.",
+            "code": "MAINTENANCE_CHECK_FAILED"
         }), 503
 
 
@@ -215,12 +190,17 @@ def now():
 
 
 def normalize_answer(value):
+
     if value is None:
         return ""
 
     value = str(value).strip().lower()
 
-    value = re.sub(r"\s+", " ", value)
+    value = re.sub(
+        r"\s+",
+        " ",
+        value
+    )
 
     value = re.sub(
         r"[^\w\s-]",
@@ -234,12 +214,16 @@ def normalize_answer(value):
 def generate_referral_code():
 
     letters = "".join(
-        random.choice(string.ascii_uppercase)
+        random.choice(
+            string.ascii_uppercase
+        )
         for _ in range(3)
     )
 
     digits = "".join(
-        random.choice(string.digits)
+        random.choice(
+            string.digits
+        )
         for _ in range(5)
     )
 
@@ -271,13 +255,36 @@ def get_authenticated_telegram_user():
     if not user:
         return None
 
-    return {
-        "telegram_id": str(user["id"]),
-        "username": user.get("username", ""),
-        "first_name": user.get("first_name", ""),
-        "last_name": user.get("last_name", ""),
-        "photo_url": user.get("photo_url", "")
+    result = {
+        "telegram_id": str(
+            user["id"]
+        ),
+        "username": user.get(
+            "username",
+            ""
+        ),
+        "first_name": user.get(
+            "first_name",
+            ""
+        ),
+        "last_name": user.get(
+            "last_name",
+            ""
+        ),
+        "photo_url": user.get(
+            "photo_url",
+            ""
+        )
     }
+
+    # Preserve validated referral/deep-link parameter
+    # supplied by telegram_auth.py.
+    if user.get("_start_param"):
+        result["_start_param"] = user[
+            "_start_param"
+        ]
+
+    return result
 
 
 def require_telegram_user():
@@ -307,11 +314,11 @@ def require_telegram_user():
 
     except Exception:
 
-        # Do not silently grant access
-        # if account-status verification fails.
+        # Do not silently grant access if
+        # account-status verification fails.
         return None
 
-    return user 
+    return user
 
 
 # ============================================================
@@ -324,12 +331,16 @@ def get_development_user():
         return None
 
     telegram_id = (
-        request.headers.get("X-Demo-Telegram-ID")
+        request.headers.get(
+            "X-Demo-Telegram-ID"
+        )
         or get_demo_telegram_id()
     )
 
     return {
-        "telegram_id": str(telegram_id),
+        "telegram_id": str(
+            telegram_id
+        ),
         "username": "QuizBeeUser",
         "first_name": "QuizBee",
         "last_name": ""
@@ -360,9 +371,14 @@ def get_or_create_user(
             get_authenticated_telegram_user()
         )
 
-    if telegram_user is None and allow_dev_fallback:
+    if (
+        telegram_user is None
+        and allow_dev_fallback
+    ):
 
-        telegram_user = get_development_user()
+        telegram_user = (
+            get_development_user()
+        )
 
     if telegram_user is None:
 
@@ -374,172 +390,233 @@ def get_or_create_user(
         telegram_user["telegram_id"]
     )
 
-    ref = user_ref(telegram_id)
+    ref = user_ref(
+        telegram_id
+    )
 
     snap = ref.get()
 
+    # --------------------------------------------------------
+    # EXISTING USER
+    # --------------------------------------------------------
+
     if snap.exists:
 
-    data = snap.to_dict()
+        data = snap.to_dict() or {}
 
-    updates = {
-        "telegram_id": telegram_id,
+        updates = {
+            "telegram_id": telegram_id,
 
-        "username": telegram_user.get(
-            "username",
-            ""
-        ),
+            "username": telegram_user.get(
+                "username",
+                ""
+            ),
 
-        "first_name": telegram_user.get(
-            "first_name",
-            ""
-        ),
+            "first_name": telegram_user.get(
+                "first_name",
+                ""
+            ),
 
-        "last_name": telegram_user.get(
-            "last_name",
-            ""
-        ),
+            "last_name": telegram_user.get(
+                "last_name",
+                ""
+            ),
 
-        "updated_at": now()
-    }
+            "updated_at": now()
+        }
 
-    if telegram_user.get(
-        "photo_url"
-    ):
-        updates["photo_url"] = (
-            telegram_user[
-                "photo_url"
-            ]
+        if telegram_user.get(
+            "photo_url"
+        ):
+
+            updates["photo_url"] = (
+                telegram_user[
+                    "photo_url"
+                ]
+            )
+
+        # ----------------------------------------------------
+        # PHASE 8 MIGRATION
+        #
+        # Older QuizBee accounts may have had a streak value
+        # from login/account creation. That was not a real
+        # game streak, so reset it when no real game date
+        # exists.
+        # ----------------------------------------------------
+
+        if (
+            "last_game_date"
+            not in data
+        ):
+
+            updates[
+                "streak_days"
+            ] = 0
+
+            updates[
+                "last_game_date"
+            ] = None
+
+            updates[
+                "last_game_at"
+            ] = None
+
+            updates[
+                "streak_month"
+            ] = None
+
+            updates[
+                "streak_month_best"
+            ] = 0
+
+        # ----------------------------------------------------
+        # EXISTING ACCOUNTS ARE CONSIDERED ALREADY PROCESSED
+        # FOR REFERRALS.
+        #
+        # This prevents an old account from becoming a referral
+        # simply by opening somebody else's referral link.
+        # ----------------------------------------------------
+
+        if (
+            "referral_processed"
+            not in data
+        ):
+
+            updates[
+                "referral_processed"
+            ] = True
+
+        # ----------------------------------------------------
+        # PHASE 8 GAME COUNT MIGRATION
+        # ----------------------------------------------------
+
+        if (
+            "games_played_count"
+            not in data
+        ):
+
+            updates[
+                "games_played_count"
+            ] = 0
+
+        ref.update(
+            updates
         )
 
-    # --------------------------------------------------------
-    # Phase 8 migration for older accounts.
-    #
-    # Old QuizBee accounts previously had streak_days=1
-    # from account creation/login. That was NOT a real
-    # game streak, so reset it when no real game date exists.
-    # --------------------------------------------------------
-
-    if (
-        "last_game_date"
-        not in data
-    ):
-
-        updates[
-            "streak_days"
-        ] = 0
-
-        updates[
-            "last_game_date"
-        ] = None
-
-        updates[
-            "streak_month_best"
-        ] = 0
-
-    # Existing accounts created before Phase 8 are treated
-    # as already having completed referral processing.
-    # This prevents an old user from becoming someone else's
-    # referral months later simply by opening a referral link.
-    if (
-        "referral_processed"
-        not in data
-    ):
-
-        updates[
-            "referral_processed"
-        ] = True
-
-    if (
-        "games_played_count"
-        not in data
-    ):
-
-        updates[
-            "games_played_count"
-        ] = 0
-
-    ref.update(
-        updates
-    )
-
-    data.update(
-        updates
-    )
-
-    return data
-
-        ref.update(updates)
-
-        data.update(updates)
+        data.update(
+            updates
+        )
 
         return data
+
+    # --------------------------------------------------------
+    # NEW USER
+    # --------------------------------------------------------
 
     referral_code = generate_referral_code()
 
     data = {
-        "telegram_id": telegram_id,
 
-        "username": telegram_user.get(
-            "username",
-            ""
-        ),
+        "telegram_id":
+            telegram_id,
 
-        "first_name": telegram_user.get(
-            "first_name",
-            ""
-        ),
+        "username":
+            telegram_user.get(
+                "username",
+                ""
+            ),
 
-        "last_name": telegram_user.get(
-            "last_name",
-            ""
-        ),
+        "first_name":
+            telegram_user.get(
+                "first_name",
+                ""
+            ),
 
-        "photo_url": telegram_user.get(
-            "photo_url",
-            ""
-        ),
+        "last_name":
+            telegram_user.get(
+                "last_name",
+                ""
+            ),
 
-        "quizbee_points": 0,
-        
-        "wins": 0,
+        "photo_url":
+            telegram_user.get(
+                "photo_url",
+                ""
+            ),
 
-        "prize_balance": 0,
+        "quizbee_points":
+            0,
 
-        "total_earned": 0,
+        "wins":
+            0,
 
-        "total_spent": 0,
+        "prize_balance":
+            0,
 
-        "referral_code": referral_code,
+        "total_earned":
+            0,
 
-        "referred_by": None,
+        "total_spent":
+            0,
 
-        "referrals_count": 0,
+        # ----------------------------------------------------
+        # REFERRAL
+        # ----------------------------------------------------
 
-        "referral_processed": False,
+        "referral_code":
+            referral_code,
 
-        "referral_joined_at": None,
+        "referred_by":
+            None,
 
-        "streak_days": 0,
+        "referrals_count":
+            0,
 
-        "last_game_date": None,
+        "referral_processed":
+            False,
 
-        "last_game_at": None,
+        "referral_joined_at":
+            None,
 
-        "streak_month": None,
+        # ----------------------------------------------------
+        # STREAK
+        # ----------------------------------------------------
 
-        "streak_month_best": 0,
+        "streak_days":
+            0,
 
-        "games_played_count": 0,
+        "last_game_date":
+            None,
 
-        "last_login": now(),
+        "last_game_at":
+            None,
 
-        "created_at": now(),
+        "streak_month":
+            None,
 
-        "updated_at": now()
+        "streak_month_best":
+            0,
+
+        "games_played_count":
+            0,
+
+        # ----------------------------------------------------
+        # ACCOUNT DATES
+        # ----------------------------------------------------
+
+        "last_login":
+            now(),
+
+        "created_at":
+            now(),
+
+        "updated_at":
+            now()
     }
 
-    ref.set(data)
+    ref.set(
+        data
+    )
 
     return data
 
@@ -552,7 +629,9 @@ def get_game(game_id):
 
     ref = db.collection(
         "games"
-    ).document(game_id)
+    ).document(
+        game_id
+    )
 
     snap = ref.get()
 
@@ -569,8 +648,12 @@ def get_game(game_id):
 def get_all_games():
 
     docs = (
-        db.collection("games")
-        .order_by("sort_order")
+        db.collection(
+            "games"
+        )
+        .order_by(
+            "sort_order"
+        )
         .stream()
     )
 
@@ -582,7 +665,9 @@ def get_all_games():
 
         data["id"] = doc.id
 
-        games.append(data)
+        games.append(
+            data
+        )
 
     return games
 
@@ -590,7 +675,9 @@ def get_all_games():
 def get_active_challenge(game_id):
 
     query = (
-        db.collection("challenges")
+        db.collection(
+            "challenges"
+        )
         .where(
             "game_id",
             "==",
@@ -627,7 +714,9 @@ def has_entered_challenge(
 ):
 
     query = (
-        db.collection("entries")
+        db.collection(
+            "entries"
+        )
         .where(
             "telegram_id",
             "==",
@@ -647,7 +736,9 @@ def has_entered_challenge(
     )
 
     return len(
-        list(query.stream())
+        list(
+            query.stream()
+        )
     ) > 0
 
 
@@ -655,7 +746,9 @@ def get_public_challenge(
     challenge
 ):
 
-    data = dict(challenge)
+    data = dict(
+        challenge
+    )
 
     data.pop(
         "correct_answer",
@@ -691,20 +784,34 @@ def health():
         )
 
         return jsonify({
-            "success": True,
-            "firebase": True,
-            "dev_mode": DEV_MODE,
-            "message": (
+
+            "success":
+                True,
+
+            "firebase":
+                True,
+
+            "dev_mode":
+                DEV_MODE,
+
+            "message":
                 "QuizBee backend is running."
-            )
+
         })
 
     except Exception as e:
 
         return jsonify({
-            "success": False,
-            "firebase": False,
-            "error": str(e)
+
+            "success":
+                False,
+
+            "firebase":
+                False,
+
+            "error":
+                str(e)
+
         }), 500
 
 
@@ -724,37 +831,47 @@ def bootstrap():
         if not telegram_user:
 
             return jsonify({
-                "success": False,
-                "error": (
+
+                "success":
+                    False,
+
+                "error":
                     "Unauthorized Telegram session."
-                )
+
             }), 401
 
+        # ----------------------------------------------------
+        # GET OR CREATE USER
+        # ----------------------------------------------------
+
         user = get_or_create_user(
-    telegram_user
-)
+            telegram_user
+        )
 
-# --------------------------------------------------------
-# Phase 8 referral attribution.
-#
-# start_param was extracted from VALIDATED Telegram
-# initData by telegram_auth.py.
-# --------------------------------------------------------
+        # ----------------------------------------------------
+        # PHASE 8 REFERRAL ATTRIBUTION
+        #
+        # start_param was extracted from VALIDATED Telegram
+        # initData by telegram_auth.py.
+        # ----------------------------------------------------
 
-process_referral(
-    user["telegram_id"],
-    telegram_user.get(
-        "_start_param",
-        ""
-    )
-)
+        process_referral(
+            user["telegram_id"],
+            telegram_user.get(
+                "_start_param",
+                ""
+            )
+        )
 
-# Refresh the user after referral processing.
-user = get_or_create_user(
-    telegram_user
-)
+        # ----------------------------------------------------
+        # REFRESH USER AFTER REFERRAL PROCESSING
+        # ----------------------------------------------------
 
-games = get_all_games() 
+        user = get_or_create_user(
+            telegram_user
+        )
+
+        games = get_all_games()
 
         challenge = get_active_challenge(
             "impossible_question"
@@ -762,33 +879,48 @@ games = get_all_games()
 
         return jsonify({
 
-            "success": True,
+            "success":
+                True,
 
-            "user": user,
+            "user":
+                user,
 
-            "games": games,
+            "games":
+                games,
 
-            "featured_challenge": (
-                get_public_challenge(
-                    challenge
+            "featured_challenge":
+                (
+                    get_public_challenge(
+                        challenge
+                    )
+                    if challenge
+                    else None
                 )
-                if challenge
-                else None
-            )
+
         })
 
     except PermissionError as e:
 
         return jsonify({
-            "success": False,
-            "error": str(e)
+
+            "success":
+                False,
+
+            "error":
+                str(e)
+
         }), 401
 
     except Exception as e:
 
         return jsonify({
-            "success": False,
-            "error": str(e)
+
+            "success":
+                False,
+
+            "error":
+                str(e)
+
         }), 500
 
 
@@ -808,25 +940,35 @@ def games():
         if not telegram_user:
 
             return jsonify({
-                "success": False,
-                "error": (
+
+                "success":
+                    False,
+
+                "error":
                     "Unauthorized Telegram session."
-                )
+
             }), 401
 
         return jsonify({
 
-            "success": True,
+            "success":
+                True,
 
-            "games": get_all_games()
+            "games":
+                get_all_games()
 
         })
 
     except Exception as e:
 
         return jsonify({
-            "success": False,
-            "error": str(e)
+
+            "success":
+                False,
+
+            "error":
+                str(e)
+
         }), 500
 
 
@@ -846,24 +988,38 @@ def enter_game(game_id):
         if not telegram_user:
 
             return jsonify({
-                "success": False,
-                "error": (
+
+                "success":
+                    False,
+
+                "error":
                     "Unauthorized Telegram session."
-                )
+
             }), 401
 
         user = get_or_create_user(
             telegram_user
         )
 
-        game = get_game(game_id)
+        game = get_game(
+            game_id
+        )
 
         if not game:
 
             return jsonify({
-                "success": False,
-                "error": "Game not found."
+
+                "success":
+                    False,
+
+                "error":
+                    "Game not found."
+
             }), 404
+
+        # ----------------------------------------------------
+        # GAME MAINTENANCE
+        # ----------------------------------------------------
 
         if (
             game.get(
@@ -871,17 +1027,34 @@ def enter_game(game_id):
                 False
             )
             and not is_maintenance_bypass(
-                telegram_user["telegram_id"]
+                telegram_user[
+                    "telegram_id"
+                ]
             )
         ):
 
             return jsonify({
-                "success": False,
-                "error": "This game is currently under maintenance.",
-                "code": "GAME_MAINTENANCE",
-                "maintenance": True,
-                "game_id": game_id
+
+                "success":
+                    False,
+
+                "error":
+                    "This game is currently under maintenance.",
+
+                "code":
+                    "GAME_MAINTENANCE",
+
+                "maintenance":
+                    True,
+
+                "game_id":
+                    game_id
+
             }), 503
+
+        # ----------------------------------------------------
+        # GAME LOCK
+        # ----------------------------------------------------
 
         if not game.get(
             "active",
@@ -889,11 +1062,18 @@ def enter_game(game_id):
         ):
 
             return jsonify({
-                "success": False,
-                "error": (
+
+                "success":
+                    False,
+
+                "error":
                     "This game is coming soon."
-                )
+
             }), 403
+
+        # ----------------------------------------------------
+        # ACTIVE CHALLENGE
+        # ----------------------------------------------------
 
         challenge = get_active_challenge(
             game_id
@@ -902,16 +1082,26 @@ def enter_game(game_id):
         if not challenge:
 
             return jsonify({
-                "success": False,
-                "error": (
-                    "No active challenge "
-                    "is available yet."
-                )
+
+                "success":
+                    False,
+
+                "error":
+                    "No active challenge is available yet."
+
             }), 404
 
         telegram_id = user[
             "telegram_id"
         ]
+
+        # ----------------------------------------------------
+        # PREVENT DUPLICATE ENTRY
+        #
+        # IMPORTANT:
+        # Re-entering the same challenge does NOT count as
+        # another game participation or streak day.
+        # ----------------------------------------------------
 
         if has_entered_challenge(
             telegram_id,
@@ -921,18 +1111,25 @@ def enter_game(game_id):
 
             return jsonify({
 
-                "success": True,
+                "success":
+                    True,
 
-                "already_entered": True,
+                "already_entered":
+                    True,
 
                 "challenge":
                     get_public_challenge(
                         challenge
                     ),
 
-                "user": user
+                "user":
+                    user
 
             })
+
+        # ----------------------------------------------------
+        # ENTRY FEE
+        # ----------------------------------------------------
 
         entry_fee = int(
             game.get(
@@ -949,11 +1146,13 @@ def enter_game(game_id):
         ) < entry_fee:
 
             return jsonify({
-                "success": False,
-                "error": (
-                    "Not enough "
-                    "QuizBee Points."
-                )
+
+                "success":
+                    False,
+
+                "error":
+                    "Not enough QuizBee Points."
+
             }), 400
 
         new_balance = (
@@ -965,6 +1164,10 @@ def enter_game(game_id):
             )
             - entry_fee
         )
+
+        # ----------------------------------------------------
+        # UPDATE USER BALANCE
+        # ----------------------------------------------------
 
         user_ref(
             telegram_id
@@ -980,7 +1183,12 @@ def enter_game(game_id):
 
             "updated_at":
                 now()
+
         })
+
+        # ----------------------------------------------------
+        # CREATE GAME ENTRY
+        # ----------------------------------------------------
 
         entry_ref = (
             db.collection(
@@ -1007,7 +1215,12 @@ def enter_game(game_id):
 
             "created_at":
                 now()
+
         })
+
+        # ----------------------------------------------------
+        # TRANSACTION RECORD
+        # ----------------------------------------------------
 
         db.collection(
             "transactions"
@@ -1033,33 +1246,41 @@ def enter_game(game_id):
 
             "created_at":
                 now()
+
         })
 
         user[
-    "quizbee_points"
-] = new_balance
+            "quizbee_points"
+        ] = new_balance
 
-# --------------------------------------------------------
-# Phase 8:
-# A successful NEW game entry counts as participation.
-# This is where the daily streak is updated.
-# --------------------------------------------------------
+        # ----------------------------------------------------
+        # PHASE 8 STREAK
+        #
+        # Only a genuinely NEW successful game entry counts
+        # as game participation.
+        # ----------------------------------------------------
 
-participation = (
-    record_game_participation(
-        telegram_id
-    )
-)
+        participation = (
+            record_game_participation(
+                telegram_id
+            )
+        )
 
-user.update(
-    participation
-)
+        user.update(
+            participation
+        )
 
-return jsonify({
+        # ----------------------------------------------------
+        # RESPONSE
+        # ----------------------------------------------------
 
-    "success": True, 
+        return jsonify({
 
-            "already_entered": False,
+            "success":
+                True,
+
+            "already_entered":
+                False,
 
             "challenge":
                 get_public_challenge(
@@ -1074,8 +1295,13 @@ return jsonify({
     except Exception as e:
 
         return jsonify({
-            "success": False,
-            "error": str(e)
+
+            "success":
+                False,
+
+            "error":
+                str(e)
+
         }), 500
 
 
@@ -1095,19 +1321,29 @@ def challenge(game_id):
         if not telegram_user:
 
             return jsonify({
-                "success": False,
-                "error": (
+
+                "success":
+                    False,
+
+                "error":
                     "Unauthorized Telegram session."
-                )
+
             }), 401
 
-        game = get_game(game_id)
+        game = get_game(
+            game_id
+        )
 
         if not game:
 
             return jsonify({
-                "success": False,
-                "error": "Game not found."
+
+                "success":
+                    False,
+
+                "error":
+                    "Game not found."
+
             }), 404
 
         if (
@@ -1123,11 +1359,22 @@ def challenge(game_id):
         ):
 
             return jsonify({
-                "success": False,
-                "error": "This game is currently under maintenance.",
-                "code": "GAME_MAINTENANCE",
-                "maintenance": True,
-                "game_id": game_id
+
+                "success":
+                    False,
+
+                "error":
+                    "This game is currently under maintenance.",
+
+                "code":
+                    "GAME_MAINTENANCE",
+
+                "maintenance":
+                    True,
+
+                "game_id":
+                    game_id
+
             }), 503
 
         if not game.get(
@@ -1136,10 +1383,13 @@ def challenge(game_id):
         ):
 
             return jsonify({
-                "success": False,
-                "error": (
+
+                "success":
+                    False,
+
+                "error":
                     "This game is coming soon."
-                )
+
             }), 403
 
         challenge_data = (
@@ -1151,17 +1401,22 @@ def challenge(game_id):
         if not challenge_data:
 
             return jsonify({
-                "success": False,
-                "error": (
+
+                "success":
+                    False,
+
+                "error":
                     "No active challenge."
-                )
+
             }), 404
 
         return jsonify({
 
-            "success": True,
+            "success":
+                True,
 
-            "game": game,
+            "game":
+                game,
 
             "challenge":
                 get_public_challenge(
@@ -1173,8 +1428,13 @@ def challenge(game_id):
     except Exception as e:
 
         return jsonify({
-            "success": False,
-            "error": str(e)
+
+            "success":
+                False,
+
+            "error":
+                str(e)
+
         }), 500
 
 
@@ -1194,10 +1454,13 @@ def answer(game_id):
         if not telegram_user:
 
             return jsonify({
-                "success": False,
-                "error": (
+
+                "success":
+                    False,
+
+                "error":
                     "Unauthorized Telegram session."
-                )
+
             }), 401
 
         user = get_or_create_user(
@@ -1222,10 +1485,13 @@ def answer(game_id):
         if not challenge_id:
 
             return jsonify({
-                "success": False,
-                "error": (
+
+                "success":
+                    False,
+
+                "error":
                     "Missing challenge ID."
-                )
+
             }), 400
 
         challenge_ref = (
@@ -1243,10 +1509,13 @@ def answer(game_id):
         if not challenge_snap.exists:
 
             return jsonify({
-                "success": False,
-                "error": (
+
+                "success":
+                    False,
+
+                "error":
                     "Challenge not found."
-                )
+
             }), 404
 
         challenge_data = (
@@ -1258,10 +1527,13 @@ def answer(game_id):
         ) != game_id:
 
             return jsonify({
-                "success": False,
-                "error": (
+
+                "success":
+                    False,
+
+                "error":
                     "Invalid challenge."
-                )
+
             }), 400
 
         telegram_id = user[
@@ -1275,11 +1547,13 @@ def answer(game_id):
         ):
 
             return jsonify({
-                "success": False,
-                "error": (
-                    "You must enter "
-                    "the game first."
-                )
+
+                "success":
+                    False,
+
+                "error":
+                    "You must enter the game first."
+
             }), 403
 
         normalized = normalize_answer(
@@ -1303,7 +1577,9 @@ def answer(game_id):
 
         accepted_normalized = [
 
-            normalize_answer(x)
+            normalize_answer(
+                x
+            )
 
             for x in accepted_answers
 
@@ -1317,6 +1593,10 @@ def answer(game_id):
             in accepted_normalized
 
         )
+
+        # ----------------------------------------------------
+        # STORE ANSWER
+        # ----------------------------------------------------
 
         answer_ref = (
             db.collection(
@@ -1356,13 +1636,17 @@ def answer(game_id):
 
             return jsonify({
 
-                "success": True,
+                "success":
+                    True,
 
-                "correct": False,
+                "correct":
+                    False,
 
-                "reward": 0,
+                "reward":
+                    0,
 
-                "reward_points": 0,
+                "reward_points":
+                    0,
 
                 "message":
                     "Wrong answer. Try again."
@@ -1370,7 +1654,7 @@ def answer(game_id):
             })
 
         # ----------------------------------------------------
-        # CHECK WHETHER THIS USER ALREADY RECEIVED THE REWARD
+        # CHECK WHETHER USER ALREADY RECEIVED REWARD
         # ----------------------------------------------------
 
         previous_correct_query = (
@@ -1403,20 +1687,27 @@ def answer(game_id):
             previous_correct_query.stream()
         )
 
-        # The answer we just created is included.
-        if len(previous_correct) > 1:
+        # The answer just created is included.
+        if len(
+            previous_correct
+        ) > 1:
 
             return jsonify({
 
-                "success": True,
+                "success":
+                    True,
 
-                "correct": True,
+                "correct":
+                    True,
 
-                "already_rewarded": True,
+                "already_rewarded":
+                    True,
 
-                "reward": 0,
+                "reward":
+                    0,
 
-                "reward_points": 0,
+                "reward_points":
+                    0,
 
                 "message":
                     "Correct answer."
@@ -1431,27 +1722,36 @@ def answer(game_id):
         )
 
         update_data = {
-            "updated_at": now()
+            "updated_at":
+                now()
         }
 
         if reward > 0:
 
-            update_data["quizbee_points"] = (
-                firestore.Increment(reward)
+            update_data[
+                "quizbee_points"
+            ] = firestore.Increment(
+                reward
             )
 
-            update_data["total_earned"] = (
-                firestore.Increment(reward)
+            update_data[
+                "total_earned"
+            ] = firestore.Increment(
+                reward
             )
 
-        # Record leaderboard win (first correct answer only)
-        update_data["wins"] = (
-            firestore.Increment(1)
+        # Record leaderboard win.
+        update_data[
+            "wins"
+        ] = firestore.Increment(
+            1
         )
 
         user_ref(
             telegram_id
-        ).update(update_data)
+        ).update(
+            update_data
+        )
 
         db.collection(
             "transactions"
@@ -1488,13 +1788,17 @@ def answer(game_id):
 
         return jsonify({
 
-            "success": True,
+            "success":
+                True,
 
-            "correct": True,
+            "correct":
+                True,
 
-            "reward": reward,
+            "reward":
+                reward,
 
-            "reward_points": reward,
+            "reward_points":
+                reward,
 
             "user":
                 updated_user,
@@ -1507,8 +1811,13 @@ def answer(game_id):
     except Exception as e:
 
         return jsonify({
-            "success": False,
-            "error": str(e)
+
+            "success":
+                False,
+
+            "error":
+                str(e)
+
         }), 500
 
 
@@ -1528,10 +1837,13 @@ def mock_complete_ad():
         if not telegram_user:
 
             return jsonify({
-                "success": False,
-                "error": (
+
+                "success":
+                    False,
+
+                "error":
                     "Unauthorized Telegram session."
-                )
+
             }), 401
 
         user = get_or_create_user(
@@ -1613,11 +1925,14 @@ def mock_complete_ad():
 
         return jsonify({
 
-            "success": True,
+            "success":
+                True,
 
-            "reward": reward,
+            "reward":
+                reward,
 
-            "reward_points": reward,
+            "reward_points":
+                reward,
 
             "user":
                 updated_user,
@@ -1630,8 +1945,13 @@ def mock_complete_ad():
     except Exception as e:
 
         return jsonify({
-            "success": False,
-            "error": str(e)
+
+            "success":
+                False,
+
+            "error":
+                str(e)
+
         }), 500
 
 
@@ -1651,15 +1971,20 @@ def leaderboard():
         if not telegram_user:
 
             return jsonify({
-                "success": False,
-                "error": (
+
+                "success":
+                    False,
+
+                "error":
                     "Unauthorized Telegram session."
-                )
+
             }), 401
 
-        users = db.collection(
-            "users"
-        ).stream()
+        users = (
+            db.collection(
+                "users"
+            ).stream()
+        )
 
         leaderboard_data = []
 
@@ -1668,17 +1993,21 @@ def leaderboard():
             data = snap.to_dict() or {}
 
             wins = int(
-                data.get("wins", 0) or 0
+                data.get(
+                    "wins",
+                    0
+                ) or 0
             )
 
             leaderboard_data.append({
 
-                "telegram_id": str(
-                    data.get(
-                        "telegram_id",
-                        snap.id
-                    )
-                ),
+                "telegram_id":
+                    str(
+                        data.get(
+                            "telegram_id",
+                            snap.id
+                        )
+                    ),
 
                 "username":
                     data.get(
@@ -1692,13 +2021,14 @@ def leaderboard():
                         ""
                     ),
 
-                "wins": wins
+                "wins":
+                    wins
 
             })
 
         leaderboard_data.sort(
             key=lambda x: x["wins"],
-            reverse=True,
+            reverse=True
         )
 
         leaderboard_data = (
@@ -1709,11 +2039,15 @@ def leaderboard():
             leaderboard_data,
             start=1
         ):
-            player["rank"] = index
+
+            player[
+                "rank"
+            ] = index
 
         return jsonify({
 
-            "success": True,
+            "success":
+                True,
 
             "leaderboard":
                 leaderboard_data
@@ -1723,8 +2057,13 @@ def leaderboard():
     except Exception as e:
 
         return jsonify({
-            "success": False,
-            "error": str(e)
+
+            "success":
+                False,
+
+            "error":
+                str(e)
+
         }), 500
 
 
@@ -1744,10 +2083,13 @@ def profile():
         if not telegram_user:
 
             return jsonify({
-                "success": False,
-                "error": (
+
+                "success":
+                    False,
+
+                "error":
                     "Unauthorized Telegram session."
-                )
+
             }), 401
 
         user = get_or_create_user(
@@ -1756,7 +2098,8 @@ def profile():
 
         return jsonify({
 
-            "success": True,
+            "success":
+                True,
 
             "user":
                 user
@@ -1766,8 +2109,13 @@ def profile():
     except Exception as e:
 
         return jsonify({
-            "success": False,
-            "error": str(e)
+
+            "success":
+                False,
+
+            "error":
+                str(e)
+
         }), 500
 
 
@@ -1781,10 +2129,13 @@ def dev_setup():
     if not DEV_MODE:
 
         return jsonify({
-            "success": False,
-            "error": (
+
+            "success":
+                False,
+
+            "error":
                 "Development mode disabled."
-            )
+
         }), 403
 
     games = [
@@ -1948,7 +2299,8 @@ def dev_setup():
 
     return jsonify({
 
-        "success": True,
+        "success":
+            True,
 
         "message":
             "Games created."
@@ -1962,9 +2314,13 @@ def create_challenges():
     if not DEV_MODE:
 
         return jsonify({
-            "success": False,
+
+            "success":
+                False,
+
             "error":
                 "Development mode disabled."
+
         }), 403
 
     existing = (
@@ -2010,8 +2366,11 @@ def create_challenges():
                 20,
 
             "metadata": {
-                "image_url": "",
-                "category": "Football"
+                "image_url":
+                    "",
+
+                "category":
+                    "Football"
             }
         },
 
@@ -2049,7 +2408,8 @@ def create_challenges():
                 50,
 
             "metadata": {
-                "difficulty": "hard"
+                "difficulty":
+                    "hard"
             }
         },
 
@@ -2218,7 +2578,8 @@ def create_challenges():
 
     return jsonify({
 
-        "success": True,
+        "success":
+            True,
 
         "message":
             "Demo challenges created."
@@ -2232,9 +2593,13 @@ def unlock_game(game_id):
     if not DEV_MODE:
 
         return jsonify({
-            "success": False,
+
+            "success":
+                False,
+
             "error":
                 "Development mode disabled."
+
         }), 403
 
     ref = (
@@ -2248,9 +2613,13 @@ def unlock_game(game_id):
     if not ref.get().exists:
 
         return jsonify({
-            "success": False,
+
+            "success":
+                False,
+
             "error":
                 "Game not found."
+
         }), 404
 
     ref.update({
@@ -2283,9 +2652,13 @@ def lock_game(game_id):
     if not DEV_MODE:
 
         return jsonify({
-            "success": False,
+
+            "success":
+                False,
+
             "error":
                 "Development mode disabled."
+
         }), 403
 
     ref = (
@@ -2299,9 +2672,13 @@ def lock_game(game_id):
     if not ref.get().exists:
 
         return jsonify({
-            "success": False,
+
+            "success":
+                False,
+
             "error":
                 "Game not found."
+
         }), 404
 
     ref.update({
@@ -2334,9 +2711,13 @@ def reset_demo():
     if not DEV_MODE:
 
         return jsonify({
-            "success": False,
+
+            "success":
+                False,
+
             "error":
                 "Development mode disabled."
+
         }), 403
 
     telegram_id = (
@@ -2358,10 +2739,14 @@ def reset_demo():
         "first_name":
             "QuizBee",
 
+        "last_name":
+            "",
+
         "quizbee_points":
             0,
-        
-        "wins": 0,
+
+        "wins":
+            0,
 
         "prize_balance":
             0,
@@ -2372,6 +2757,10 @@ def reset_demo():
         "total_spent":
             0,
 
+        # ----------------------------------------------------
+        # REFERRAL
+        # ----------------------------------------------------
+
         "referral_code":
             generate_referral_code(),
 
@@ -2381,8 +2770,42 @@ def reset_demo():
         "referrals_count":
             0,
 
+        "referral_processed":
+            False,
+
+        "referral_joined_at":
+            None,
+
+        # ----------------------------------------------------
+        # STREAK
+        #
+        # IMPORTANT:
+        # Reset starts at ZERO.
+        # It does NOT award a streak for merely creating
+        # or logging into the demo account.
+        # ----------------------------------------------------
+
         "streak_days":
-            1,
+            0,
+
+        "last_game_date":
+            None,
+
+        "last_game_at":
+            None,
+
+        "streak_month":
+            None,
+
+        "streak_month_best":
+            0,
+
+        "games_played_count":
+            0,
+
+        # ----------------------------------------------------
+        # DATES
+        # ----------------------------------------------------
 
         "last_login":
             now(),
@@ -2476,4 +2899,4 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=port,
         debug=False
-)
+    )
