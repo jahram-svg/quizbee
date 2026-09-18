@@ -4486,3 +4486,614 @@ document.addEventListener(
 
     }
 ); 
+
+/* ============================================================
+   REFERRAL / STREAK
+============================================================ */
+
+let currentReferralPeriod = "weekly";
+let currentReferralLeaderboard = [];
+
+
+/* ============================================================
+   LOAD FULL PAGE
+============================================================ */
+
+async function loadReferralStreakPage() {
+
+    const details =
+        document.getElementById(
+            "referralDetailsPanel"
+        );
+
+    if (details) {
+        details.style.display =
+            "none";
+    }
+
+    await loadReferralLeaderboard(
+        "weekly"
+    );
+
+    await loadStreakLeaderboard();
+}
+
+
+/* ============================================================
+   REFERRAL LEADERBOARD
+============================================================ */
+
+async function loadReferralLeaderboard(
+    period = "weekly"
+) {
+
+    currentReferralPeriod =
+        period;
+
+    const container =
+        document.getElementById(
+            "referralLeaderboard"
+        );
+
+    if (!container) {
+        return;
+    }
+
+    container.innerHTML =
+        "Loading referral leaderboard...";
+
+
+    const weeklyTab =
+        document.getElementById(
+            "referralWeeklyTab"
+        );
+
+    const monthlyTab =
+        document.getElementById(
+            "referralMonthlyTab"
+        );
+
+
+    if (weeklyTab) {
+        weeklyTab.classList.toggle(
+            "active",
+            period === "weekly"
+        );
+    }
+
+    if (monthlyTab) {
+        monthlyTab.classList.toggle(
+            "active",
+            period === "monthly"
+        );
+    }
+
+
+    try {
+
+        const data =
+            await api(
+                `/api/admin/referral-streak/referrals?period=${encodeURIComponent(
+                    period
+                )}`
+            );
+
+
+        currentReferralLeaderboard =
+            data.leaderboard || [];
+
+
+        if (
+            !currentReferralLeaderboard.length
+        ) {
+
+            container.innerHTML = `
+                <div class="list-card">
+                    No referral data for this period yet.
+                </div>
+            `;
+
+            return;
+        }
+
+
+        container.innerHTML =
+            currentReferralLeaderboard
+                .map(
+                    renderReferralRow
+                )
+                .join("");
+
+
+    } catch (error) {
+
+        container.innerHTML = `
+            <div class="list-card">
+                ${escapeHtml(
+                    error.message ||
+                    "Unable to load referral leaderboard."
+                )}
+            </div>
+        `;
+    }
+}
+
+
+/* ============================================================
+   REFERRAL ROW
+============================================================ */
+
+function renderReferralRow(
+    item
+) {
+
+    const username =
+        item.display_username ||
+        "No username";
+
+    const rank =
+        Number(
+            item.rank || 0
+        );
+
+    const referrals =
+        Number(
+            item.referrals || 0
+        );
+
+
+    return `
+
+        <button
+            class="referral-rank-row"
+            onclick="
+                openReferralDetails(
+                    '${escapeJs(
+                        item.telegram_id
+                    )}',
+                    '${escapeJs(
+                        username
+                    )}'
+                )
+            "
+        >
+
+            <div
+                class="referral-rank-number"
+            >
+                #${rank}
+            </div>
+
+
+            <div
+                class="referral-rank-name"
+            >
+
+                <strong>
+                    ${escapeHtml(
+                        username
+                    )}
+                </strong>
+
+                <small>
+                    Tap to view referred users
+                </small>
+
+            </div>
+
+
+            <div
+                class="referral-rank-score"
+            >
+                ${referrals}
+            </div>
+
+        </button>
+
+    `;
+}
+
+
+/* ============================================================
+   REFERRER DETAILS
+============================================================ */
+
+async function openReferralDetails(
+    telegramId,
+    username
+) {
+
+    const leaderboard =
+        document.getElementById(
+            "referralLeaderboard"
+        );
+
+    const details =
+        document.getElementById(
+            "referralDetailsPanel"
+        );
+
+    const title =
+        document.getElementById(
+            "referralDetailsTitle"
+        );
+
+    const list =
+        document.getElementById(
+            "referralDetailsList"
+        );
+
+
+    if (leaderboard) {
+        leaderboard.parentElement.style.display =
+            "none";
+    }
+
+    if (details) {
+        details.style.display =
+            "block";
+    }
+
+    if (title) {
+
+        title.textContent =
+            `${username} — Referred Users`;
+    }
+
+    if (list) {
+        list.innerHTML =
+            "Loading referred users...";
+    }
+
+
+    try {
+
+        const data =
+            await api(
+                `/api/admin/referral-streak/referrer/${encodeURIComponent(
+                    telegramId
+                )}`
+            );
+
+
+        const users =
+            data.users || [];
+
+
+        if (!users.length) {
+
+            list.innerHTML = `
+                <div class="list-card">
+                    No referred users yet.
+                </div>
+            `;
+
+            return;
+        }
+
+
+        list.innerHTML =
+            users
+                .map(
+                    renderReferredUser
+                )
+                .join("");
+
+
+    } catch (error) {
+
+        list.innerHTML = `
+            <div class="list-card">
+                ${escapeHtml(
+                    error.message ||
+                    "Unable to load referred users."
+                )}
+            </div>
+        `;
+    }
+}
+
+
+/* ============================================================
+   REFERRED USER ROW
+============================================================ */
+
+function renderReferredUser(
+    item
+) {
+
+    const username =
+        item.display_username ||
+        "No username";
+
+    const funding =
+        item.funded_amount ||
+        "0";
+
+    const played =
+        item.played === true;
+
+
+    return `
+
+        <div
+            class="
+                list-card
+                referral-user-card
+                ${
+                    item.funded
+                        ? "referral-funded"
+                        : "referral-not-funded"
+                }
+            "
+        >
+
+            <div
+                class="referral-user-main"
+            >
+
+                <strong>
+                    ${escapeHtml(
+                        username
+                    )}
+                </strong>
+
+                <small>
+                    ${
+                        played
+                            ? "🎮 Played a game"
+                            : "🎮 Has not played"
+                    }
+                </small>
+
+            </div>
+
+
+            <div
+                class="referral-user-funding"
+            >
+
+                <span>
+                    Funded
+                </span>
+
+                <strong>
+                    ${escapeHtml(
+                        funding
+                    )}
+                </strong>
+
+            </div>
+
+        </div>
+
+    `;
+}
+
+
+/* ============================================================
+   CLOSE REFERRAL DETAILS
+============================================================ */
+
+function closeReferralDetails() {
+
+    const details =
+        document.getElementById(
+            "referralDetailsPanel"
+        );
+
+    const leaderboard =
+        document.getElementById(
+            "referralLeaderboard"
+        );
+
+
+    if (details) {
+        details.style.display =
+            "none";
+    }
+
+    if (
+        leaderboard &&
+        leaderboard.parentElement
+    ) {
+
+        leaderboard.parentElement.style.display =
+            "";
+    }
+}
+
+
+/* ============================================================
+   COPY TOP 10
+============================================================ */
+
+async function copyReferralTop10() {
+
+    const top10 =
+        currentReferralLeaderboard
+            .slice(0, 10);
+
+
+    if (!top10.length) {
+
+        showToast(
+            "No referral leaderboard data to copy."
+        );
+
+        return;
+    }
+
+
+    const text =
+        top10
+            .map(
+                (item, index) => {
+
+                    const username =
+                        item.username
+                            ? `@${item.username}`
+                            : "No username";
+
+                    return (
+                        `${index + 1}. ` +
+                        `${username} — ` +
+                        `${Number(
+                            item.referrals || 0
+                        )} referrals`
+                    );
+
+                }
+            )
+            .join("\n");
+
+
+    try {
+
+        await navigator.clipboard.writeText(
+            text
+        );
+
+        showToast(
+            "Top 10 referral list copied."
+        );
+
+    } catch (error) {
+
+        showToast(
+            "Unable to copy. Please try again."
+        );
+    }
+}
+
+
+/* ============================================================
+   STREAK LEADERBOARD
+============================================================ */
+
+async function loadStreakLeaderboard() {
+
+    const container =
+        document.getElementById(
+            "streakLeaderboard"
+        );
+
+    if (!container) {
+        return;
+    }
+
+    container.innerHTML =
+        "Loading streak leaderboard...";
+
+
+    try {
+
+        const data =
+            await api(
+                "/api/admin/referral-streak/streaks"
+            );
+
+
+        const leaderboard =
+            data.leaderboard || [];
+
+
+        if (!leaderboard.length) {
+
+            container.innerHTML = `
+                <div class="list-card">
+                    No streak data for this month yet.
+                </div>
+            `;
+
+            return;
+        }
+
+
+        container.innerHTML =
+            leaderboard
+                .map(
+                    (
+                        item,
+                        index
+                    ) => {
+
+                        const rank =
+                            Number(
+                                item.rank ||
+                                index + 1
+                            );
+
+                        const username =
+                            item.display_username ||
+                            "No username";
+
+                        const streak =
+                            Number(
+                                item.streak ||
+                                0
+                            );
+
+
+                        return `
+
+                            <div
+                                class="
+                                    list-card
+                                    streak-rank-row
+                                "
+                            >
+
+                                <div
+                                    class="
+                                        referral-rank-number
+                                    "
+                                >
+                                    #${rank}
+                                </div>
+
+
+                                <div
+                                    class="
+                                        referral-rank-name
+                                    "
+                                >
+
+                                    <strong>
+                                        ${escapeHtml(
+                                            username
+                                        )}
+                                    </strong>
+
+                                </div>
+
+
+                                <div
+                                    class="
+                                        referral-rank-score
+                                    "
+                                >
+                                    🔥 ${streak} days
+                                </div>
+
+                            </div>
+
+                        `;
+
+                    }
+                )
+                .join("");
+
+
+    } catch (error) {
+
+        container.innerHTML = `
+            <div class="list-card">
+                ${escapeHtml(
+                    error.message ||
+                    "Unable to load streak leaderboard."
+                )}
+            </div>
+        `;
+    }
+        } 
