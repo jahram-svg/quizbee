@@ -3159,10 +3159,14 @@ document
             settings.daily_earning_enabled
             !== false;
 
+
+        await loadFundingSettings();
+        
     } catch (error) {
 
         console.error(error);
     }
+    
 }
 
 
@@ -5167,3 +5171,138 @@ async function loadStreakLeaderboard() {
         `;
     }
         } 
+
+
+// ============================================================
+// FUNDING PAYMENT SETTINGS
+// ============================================================
+
+async function loadFundingSettings() {
+
+    try {
+
+        const data =
+            await api(
+                "/api/admin/funding-settings"
+            );
+
+        const settings =
+            data.settings || {};
+
+
+        document.getElementById(
+            "fundingNgnBankName"
+        ).value =
+            settings.funding_ngn_bank_name || "";
+
+
+        document.getElementById(
+            "fundingNgnAccountName"
+        ).value =
+            settings.funding_ngn_account_name || "";
+
+
+        document.getElementById(
+            "fundingNgnAccountNumber"
+        ).value =
+            settings.funding_ngn_account_number || "";
+
+
+        document.getElementById(
+            "fundingNgnInstructions"
+        ).value =
+            settings.funding_ngn_instructions || "";
+
+
+        document.getElementById(
+            "fundingUsdtNetwork"
+        ).value =
+            settings.funding_usdt_network ||
+            "BEP20";
+
+
+        document.getElementById(
+            "fundingUsdtAddress"
+        ).value =
+            settings.funding_usdt_address || "";
+
+
+        document.getElementById(
+            "fundingUsdtInstructions"
+        ).value =
+            settings.funding_usdt_instructions || "";
+
+    } catch (error) {
+
+        console.error(
+            "Funding settings error:",
+            error
+        );
+
+    }
+}
+
+
+async function saveFundingSettings() {
+
+    try {
+
+        await api(
+            "/api/admin/funding-settings",
+            {
+                method: "POST",
+
+                body:
+                    JSON.stringify({
+
+                        funding_ngn_bank_name:
+                            document.getElementById(
+                                "fundingNgnBankName"
+                            ).value.trim(),
+
+                        funding_ngn_account_name:
+                            document.getElementById(
+                                "fundingNgnAccountName"
+                            ).value.trim(),
+
+                        funding_ngn_account_number:
+                            document.getElementById(
+                                "fundingNgnAccountNumber"
+                            ).value.trim(),
+
+                        funding_ngn_instructions:
+                            document.getElementById(
+                                "fundingNgnInstructions"
+                            ).value.trim(),
+
+                        funding_usdt_network:
+                            document.getElementById(
+                                "fundingUsdtNetwork"
+                            ).value.trim(),
+
+                        funding_usdt_address:
+                            document.getElementById(
+                                "fundingUsdtAddress"
+                            ).value.trim(),
+
+                        funding_usdt_instructions:
+                            document.getElementById(
+                                "fundingUsdtInstructions"
+                            ).value.trim()
+
+                    })
+            }
+        );
+
+        showToast(
+            "✅ Funding payment details saved."
+        );
+
+    } catch (error) {
+
+        showToast(
+            error.message
+        );
+
+    }
+}
