@@ -2412,3 +2412,200 @@ def update_raffle_settings():
             "success": False,
             "error": str(e)
         }), 500
+
+
+# ============================================================
+# FUNDING PAYMENT SETTINGS
+# ============================================================
+
+@admin_bp.get(
+    "/funding-settings"
+)
+def get_funding_settings():
+
+    admin, error = require_admin()
+
+    if error:
+        return admin_error(error)
+
+    try:
+
+        snap = (
+            db.collection("settings")
+            .document("app")
+            .get()
+        )
+
+        data = (
+            snap.to_dict()
+            or {}
+        )
+
+        return jsonify({
+            "success": True,
+            "settings": {
+
+                "funding_ngn_bank_name":
+                    data.get(
+                        "funding_ngn_bank_name",
+                        ""
+                    ),
+
+                "funding_ngn_account_name":
+                    data.get(
+                        "funding_ngn_account_name",
+                        ""
+                    ),
+
+                "funding_ngn_account_number":
+                    data.get(
+                        "funding_ngn_account_number",
+                        ""
+                    ),
+
+                "funding_ngn_instructions":
+                    data.get(
+                        "funding_ngn_instructions",
+                        ""
+                    ),
+
+                "funding_usdt_network":
+                    data.get(
+                        "funding_usdt_network",
+                        "BEP20"
+                    ),
+
+                "funding_usdt_address":
+                    data.get(
+                        "funding_usdt_address",
+                        ""
+                    ),
+
+                "funding_usdt_instructions":
+                    data.get(
+                        "funding_usdt_instructions",
+                        ""
+                    )
+
+            }
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@admin_bp.post(
+    "/funding-settings"
+)
+def update_funding_settings():
+
+    admin, error = require_admin()
+
+    if error:
+        return admin_error(error)
+
+    try:
+
+        body = (
+            request.get_json(
+                silent=True
+            )
+            or {}
+        )
+
+        updates = {
+
+            "funding_ngn_bank_name":
+                str(
+                    body.get(
+                        "funding_ngn_bank_name",
+                        ""
+                    )
+                ).strip(),
+
+            "funding_ngn_account_name":
+                str(
+                    body.get(
+                        "funding_ngn_account_name",
+                        ""
+                    )
+                ).strip(),
+
+            "funding_ngn_account_number":
+                str(
+                    body.get(
+                        "funding_ngn_account_number",
+                        ""
+                    )
+                ).strip(),
+
+            "funding_ngn_instructions":
+                str(
+                    body.get(
+                        "funding_ngn_instructions",
+                        ""
+                    )
+                ).strip(),
+
+            "funding_usdt_network":
+                str(
+                    body.get(
+                        "funding_usdt_network",
+                        "BEP20"
+                    )
+                ).strip(),
+
+            "funding_usdt_address":
+                str(
+                    body.get(
+                        "funding_usdt_address",
+                        ""
+                    )
+                ).strip(),
+
+            "funding_usdt_instructions":
+                str(
+                    body.get(
+                        "funding_usdt_instructions",
+                        ""
+                    )
+                ).strip(),
+
+            "updated_at":
+                now(),
+
+            "updated_by":
+                str(
+                    admin[
+                        "telegram_id"
+                    ]
+                )
+
+        }
+
+        (
+            db.collection("settings")
+            .document("app")
+            .set(
+                updates,
+                merge=True
+            )
+        )
+
+        return jsonify({
+            "success": True,
+            "message":
+                "Funding payment settings saved."
+        })
+
+    except Exception as e:
+
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+        
