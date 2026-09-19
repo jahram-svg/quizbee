@@ -1742,33 +1742,33 @@ def reject_point_order(
         })
 
     telegram_id = str(
-    order.get(
-        "telegram_id",
-        ""
-    )
-)
-
-create_notification(
-    user_id=telegram_id,
-    title="❌ Payment Rejected",
-    message=(
-        "Your QuizBee funding request "
-        "was rejected."
-        + (
-            f"\n\nAdmin note: {note}"
-            if note
-            else ""
+        order.get(
+            "telegram_id",
+            ""
         )
-    ),
-    notification_type="warning",
-    action_url="",
-    button_text="",
-    dedupe_key=(
-        f"point-purchase-rejected:"
-        f"{order_id}"
-    ),
-    send_telegram=True
-)
+    )
+
+    create_notification(
+        user_id=telegram_id,
+        title="❌ Payment Rejected",
+        message=(
+            "Your QuizBee funding request "
+            "was rejected."
+            + (
+                f"\n\nAdmin note: {note}"
+                if note
+                else ""
+            )
+        ),
+        notification_type="warning",
+        action_url="",
+        button_text="",
+        dedupe_key=(
+            f"point-purchase-rejected:"
+            f"{order_id}"
+        ),
+        send_telegram=True
+    )
 
     return jsonify({
         "success": True,
