@@ -828,37 +828,66 @@ def admin_withdrawals():
         "pending"
     )
 
-    query = (
-        db.collection(
-            "withdrawals"
-        )
-    )
+    try:
 
-    if status:
-        query = query.where(
-            "status",
-            "==",
-            status
+        query = (
+            db.collection(
+                "withdrawals"
+            )
         )
 
-    docs = (
-        query.order_by(
-            "created_at",
-            direction=firestore.Query.DESCENDING
+        if status:
+            query = query.where(
+                "status",
+                "==",
+                status
+            )
+
+        # ----------------------------------------------------
+        # Do NOT use Firestore order_by here.
+        #
+        # Filtering by status + ordering by created_at
+        # can require a composite Firestore index.
+        # We sort locally instead.
+        # ----------------------------------------------------
+
+        docs = list(
+            query
+            .limit(100)
+            .stream()
         )
-        .limit(100)
-        .stream()
-    )
 
-    results = [
-        serialize_doc(doc)
-        for doc in docs
-    ]
+        results = [
+            serialize_doc(doc)
+            for doc in docs
+        ]
 
-    return jsonify({
-        "success": True,
-        "withdrawals": results
-    })
+        results.sort(
+            key=lambda item:
+                item.get(
+                    "created_at",
+                    ""
+                ) or "",
+            reverse=True
+        )
+
+        return jsonify({
+            "success": True,
+            "withdrawals": results
+        })
+
+    except Exception as e:
+
+        print(
+            "Admin withdrawals error:",
+            repr(e)
+        )
+
+        return jsonify({
+            "success": False,
+            "error":
+                "Unable to load withdrawals."
+        }), 500
 
 
 # ============================================================
@@ -1445,32 +1474,66 @@ def admin_point_orders():
         "pending"
     )
 
-    docs = (
-        db.collection(
-            "point_orders"
-        )
-        .where(
-            "status",
-            "==",
-            status
-        )
-        .order_by(
-            "created_at",
-            direction=firestore.Query.DESCENDING
-        )
-        .limit(100)
-        .stream()
-    )
+    try:
 
-    results = [
-        serialize_doc(doc)
-        for doc in docs
-    ]
+        query = (
+            db.collection(
+                "point_orders"
+            )
+        )
 
-    return jsonify({
-        "success": True,
-        "orders": results
-    })
+        if status:
+            query = query.where(
+                "status",
+                "==",
+                status
+            )
+
+        # ----------------------------------------------------
+        # Do NOT use Firestore order_by here.
+        #
+        # The status filter + created_at ordering can require
+        # a composite Firestore index.
+        # Sort the returned documents locally instead.
+        # ----------------------------------------------------
+
+        docs = list(
+            query
+            .limit(100)
+            .stream()
+        )
+
+        results = [
+            serialize_doc(doc)
+            for doc in docs
+        ]
+
+        results.sort(
+            key=lambda item:
+                item.get(
+                    "created_at",
+                    ""
+                ) or "",
+            reverse=True
+        )
+
+        return jsonify({
+            "success": True,
+            "orders": results
+        })
+
+    except Exception as e:
+
+        print(
+            "Admin point orders error:",
+            repr(e)
+        )
+
+        return jsonify({
+            "success": False,
+            "error":
+                "Unable to load point purchases."
+        }), 500
 
 
 # ============================================================
