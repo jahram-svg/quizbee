@@ -2902,6 +2902,44 @@ async function loadPointOrders() {
 
 function renderPointOrder(item) {
 
+    const currency =
+        item.currency ||
+        "";
+
+    const amount =
+        Number(
+            item.amount || 0
+        );
+
+    const amountText =
+        currency === "NGN"
+            ? `₦${amount.toLocaleString()}`
+            : `$${amount.toFixed(2)}`;
+
+    const username =
+        item.username
+        ? `@${item.username}`
+        : "No username";
+
+    const receipt =
+        item.receipt_file_id
+        ? `
+            <a
+                class="secondary-btn"
+                href="${API_URL}/api/wallet/admin/point-orders/${encodeURIComponent(item.id)}/receipt"
+                target="_blank"
+                rel="noopener noreferrer"
+                style="display:inline-block;text-decoration:none;"
+            >
+                🧾 View Receipt
+            </a>
+        `
+        : `
+            <span class="badge">
+                No Receipt
+            </span>
+        `;
+
     return `
 
         <div class="list-card">
@@ -2910,14 +2948,41 @@ function renderPointOrder(item) {
                 ${Number(
                     item.points || 0
                 ).toLocaleString()}
-                Points
+                QuizBee Points
             </h3>
 
             <p>
                 User:
+                <strong>
+                    ${escapeHtml(
+                        username
+                    )}
+                </strong>
+            </p>
+
+            <p>
+                Telegram ID:
                 ${escapeHtml(
                     item.telegram_id || ""
                 )}
+            </p>
+
+            <p>
+                Payment:
+                <strong>
+                    ${escapeHtml(
+                        currency
+                    )}
+                </strong>
+            </p>
+
+            <p>
+                Amount:
+                <strong>
+                    ${escapeHtml(
+                        amountText
+                    )}
+                </strong>
             </p>
 
             <p>
@@ -2928,14 +2993,19 @@ function renderPointOrder(item) {
             </p>
 
             <p>
-                Amount:
-                ${escapeHtml(
-                    String(
-                        item.amount ||
-                        ""
-                    )
-                )}
+                Status:
+                <span class="badge">
+                    ${escapeHtml(
+                        item.status || "pending"
+                    )}
+                </span>
             </p>
+
+            <div class="form-actions">
+
+                ${receipt}
+
+            </div>
 
             <div class="form-actions">
 
@@ -2943,14 +3013,14 @@ function renderPointOrder(item) {
                     class="primary-btn"
                     onclick="approvePointOrder('${item.id}')"
                 >
-                    Approve
+                    ✅ Approve
                 </button>
 
                 <button
                     class="danger-btn"
                     onclick="rejectPointOrder('${item.id}')"
                 >
-                    Reject
+                    ❌ Reject
                 </button>
 
             </div>
