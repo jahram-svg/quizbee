@@ -8,54 +8,22 @@ let walletPointOrders = [];
 
 
 // ============================================================
-// CONFIG
+// QUIZBEE FUNDING BOT
 // ============================================================
 
-const WALLET_SUPPORT_BOT =
-    window.QUIZBEE_CONFIG?.SUPPORT_BOT_USERNAME ||
-    "";
+const FUNDING_BOT_USERNAME =
+    window.QUIZBEE_CONFIG?.FUNDING_BOT_USERNAME ||
+    "QuizBeeFundingBot";
 
 
 // ============================================================
-// OPEN TELEGRAM SUPPORT
+// OPEN FUNDING BOT
 // ============================================================
 
-function openPurchaseSupport(
-    type
-) {
-
-    if (!WALLET_SUPPORT_BOT) {
-
-        showToast(
-            "Payment support is not configured yet."
-        );
-
-        return;
-    }
-
-    let message = "";
-
-    if (type === "nigeria") {
-
-        message =
-            "purchase 100ngn 50coins";
-
-    } else if (type === "crypto") {
-
-        message =
-            "purchase 1usd 1000coins";
-
-    } else {
-
-        message =
-            "I want to buy QuizBee Points.";
-
-    }
+function openFundingBot() {
 
     const url =
-        `https://t.me/${WALLET_SUPPORT_BOT}?text=${encodeURIComponent(
-            message
-        )}`;
+        `https://t.me/${FUNDING_BOT_USERNAME}?start=fund`;
 
     if (
         window.Telegram &&
@@ -108,8 +76,10 @@ async function buyPoints() {
             );
 
         if (title) {
+
             title.textContent =
-                "💰 Buy QuizBee Points";
+                "💰 Fund QuizBee Wallet";
+
         }
     }
 
@@ -135,95 +105,50 @@ async function buyPoints() {
 
 
             <div class="wallet-section-title">
-                Choose a payment method
+                Fund your wallet
+            </div>
+
+
+            <div class="wallet-note">
+
+                <strong>
+                    💰 Funding Rates
+                </strong>
+
+                <p>
+                    🇳🇬 ₦100 =
+                    <strong>50 QuizBee Points</strong>
+                </p>
+
+                <p>
+                    💵 $1 =
+                    <strong>500 QuizBee Points</strong>
+                </p>
+
             </div>
 
 
             <button
                 class="wallet-option"
-                onclick="openPurchaseSupport('nigeria')"
+                onclick="openFundingBot()"
             >
 
                 <div class="wallet-option-icon">
-                    🇳🇬
+                    💳
                 </div>
 
                 <div class="wallet-option-info">
 
                     <strong>
-                        Nigeria
+                        Fund Wallet
                     </strong>
 
                     <span>
-                        ₦100 → 50 QuizBee Points
+                        Pay with NGN or USDT
                     </span>
 
                     <small>
-                        Manual payment
-                    </small>
-
-                </div>
-
-                <div class="wallet-arrow">
-                    ›
-                </div>
-
-            </button>
-
-
-            <button
-                class="wallet-option"
-                onclick="openPurchaseSupport('crypto')"
-            >
-
-                <div class="wallet-option-icon">
-                    🌎
-                </div>
-
-                <div class="wallet-option-info">
-
-                    <strong>
-                        Crypto
-                    </strong>
-
-                    <span>
-                        $1 → 1,000 QuizBee Points
-                    </span>
-
-                    <small>
-                        Manual payment
-                    </small>
-
-                </div>
-
-                <div class="wallet-arrow">
-                    ›
-                </div>
-
-            </button>
-
-
-            <button
-                class="wallet-option stars-option"
-                onclick="startStarsPurchase()"
-            >
-
-                <div class="wallet-option-icon">
-                    ⭐
-                </div>
-
-                <div class="wallet-option-info">
-
-                    <strong>
-                        Telegram Stars
-                    </strong>
-
-                    <span>
-                        Buy points instantly
-                    </span>
-
-                    <small>
-                        Telegram payment
+                        Secure manual payment
                     </small>
 
                 </div>
@@ -238,15 +163,36 @@ async function buyPoints() {
             <div class="wallet-note">
 
                 <strong>
-                    Manual payments
+                    How it works
                 </strong>
 
                 <p>
-                    After making a manual payment,
-                    send your payment proof through
-                    QuizBee Support. Your points will
-                    be added after the payment is
-                    verified.
+                    1. Open QuizBee Funding.
+                </p>
+
+                <p>
+                    2. Choose NGN or USDT.
+                </p>
+
+                <p>
+                    3. Enter your payment amount.
+                </p>
+
+                <p>
+                    4. Make the payment.
+                </p>
+
+                <p>
+                    5. Send your receipt.
+                </p>
+
+                <p>
+                    6. Submit it for Admin review.
+                </p>
+
+                <p>
+                    7. Your Points are credited
+                    after approval.
                 </p>
 
             </div>
@@ -280,7 +226,6 @@ async function buyPoints() {
             ).toLocaleString();
 
     }
-
 }
 
 
