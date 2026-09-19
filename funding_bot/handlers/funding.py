@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -15,9 +15,9 @@ from aiogram.types import (
 from firebase_admin import firestore
 
 from backend.firebase import db
-from backend.notifications import create_notification
 
 from funding_bot.config import (
+    FUNDING_BOT_TOKEN,
     get_admin_ids
 )
 
@@ -259,7 +259,7 @@ def money_text(
 
 
 # ============================================================
-# ADMIN ALERT
+# ADMIN RECEIPT NOTIFICATION
 # ============================================================
 
 async def notify_admins(
@@ -268,19 +268,32 @@ async def notify_admins(
     receipt_type=None
 ):
 
-    from aiogram import Bot
+    """
+    Sends the funding request directly to every configured
+    admin through the QuizBee Funding Bot.
 
-    from funding_bot.config import (
-        ADMIN_BOT_TOKEN
-    )
+    For receipts:
+    - photo -> send_photo using Telegram file_id
+    - document -> send_document using Telegram file_id
 
-    if not ADMIN_BOT_TOKEN:
+    No Firebase Storage or file download is required.
+    """
+
+    if not FUNDING_BOT_TOKEN:
+
+        print(
+            "Funding bot token is missing."
+        )
 
         return
 
     admin_ids = get_admin_ids()
 
     if not admin_ids:
+
+        print(
+            "No admin Telegram IDs configured."
+        )
 
         return
 
@@ -289,6 +302,27 @@ async def notify_admins(
             "username"
         )
         or "no_username"
+    )
+
+    first_name = (
+        order.get(
+            "first_name"
+        )
+        or ""
+    )
+
+    last_name = (
+        order.get(
+            "last_name"
+        )
+        or ""
+    )
+
+    telegram_id = str(
+        order.get(
+            "telegram_id",
+            ""
+        )
     )
 
     currency = order.get(
@@ -306,26 +340,45 @@ async def notify_admins(
         0
     )
 
-    text = (
-        "💰 <b>New QuizBee Funding Request</b>\n\n"
-        f"👤 User: @{username}\n"
-        f"🆔 Telegram ID: "
-        f"<code>{order.get('telegram_id', '')}</code>\n"
-        f"💱 Currency: {currency}\n"
-        f"💵 Amount: {amount}\n"
-        f"🪙 Points: {points:,}\n"
-        f"🆔 Order: <code>{order_id}</code>\n"
-        f"📌 Status: Pending Review"
+    receipt_file_id = order.get(
+        "receipt_file_id"
     )
 
-    if receipt_type:
-
-        text += (
-            f"\n🧾 Receipt: {receipt_type}"
+    receipt_type = (
+        receipt_type
+        or order.get(
+            "receipt_type"
         )
+        or ""
+    )
+
+    display_name = (
+        f"{first_name} {last_name}"
+    ).strip()
+
+    if not display_name:
+
+        display_name = "Unknown"
+
+    caption = (
+        "💰 <b>NEW QUIZBEE FUNDING REQUEST</b>\n\n"
+        f"👤 Name: <b>{display_name}</b>\n"
+        f"🔗 Username: @{username}\n"
+        f"🆔 Telegram ID: "
+        f"<code>{telegram_id}</code>\n\n"
+        f"💱 Currency: <b>{currency}</b>\n"
+        f"💵 Amount: <b>{amount}</b>\n"
+        f"🪙 Points: <b>{int(points):,}</b>\n"
+        f"🧾 Receipt Type: <b>{receipt_type or 'Unknown'}</b>\n\n"
+        f"🆔 Order ID:\n"
+        f"<code>{order_id}</code>\n\n"
+        "📌 <b>Status: Pending Admin Review</b>\n\n"
+        "Open the QuizBee Admin Mini App to "
+        "approve or reject this payment."
+    )
 
     bot = Bot(
-        token=ADMIN_BOT_TOKEN
+        token=FUNDING_BOT_TOKEN
     )
 
     try:
@@ -334,17 +387,51 @@ async def notify_admins(
 
             try:
 
-                await bot.send_message(
-                    chat_id=int(
-                        admin_id
-                    ),
-                    text=text
+                chat_id = int(
+                    admin_id
                 )
+
+                # ------------------------------------------------
+                # Send the actual receipt file.
+                # ------------------------------------------------
+
+                if (
+                    receipt_file_id
+                    and receipt_type == "photo"
+                ):
+
+                    await bot.send_photo(
+                        chat_id=chat_id,
+                        photo=receipt_file_id,
+                        caption=caption
+                    )
+
+                elif (
+                    receipt_file_id
+                    and receipt_type == "document"
+                ):
+
+                    await bot.send_document(
+                        chat_id=chat_id,
+                        document=receipt_file_id,
+                        caption=caption
+                    )
+
+                else:
+
+                    # ------------------------------------------------
+                    # Fallback if no receipt file is available.
+                    # ------------------------------------------------
+
+                    await bot.send_message(
+                        chat_id=chat_id,
+                        text=caption
+                    )
 
             except Exception as e:
 
                 print(
-                    "Admin notification error:",
+                    "Admin receipt notification error:",
                     e
                 )
 
@@ -1157,6 +1244,10 @@ async def submit_payment(
         "Payment submitted for review."
     )
 
+    # --------------------------------------------------------
+    # SEND RECEIPT DIRECTLY TO ADMINS
+    # --------------------------------------------------------
+
     await notify_admins(
         order_id,
         {
@@ -1247,31 +1338,31 @@ async def cancel_funding(
     FundingStates.awaiting_receipt
 )
 async def waiting_for_receipt(
-    message: Message
+    message: Message,
+    state: FSMContext
 ):
 
     await message.answer(
-        "🧾 Please send your payment receipt "
-        "as a photo or document.\n\n"
-        "Example: a screenshot of your bank "
-        "transfer or USDT transaction."
+        "🧾 <b>Receipt needed.</b>\n\n"
+        "Please send your payment receipt as a "
+        "photo/screenshot or document."
     )
 
 
 # ============================================================
-# TEXT AFTER RECEIPT
+# TEXT WHILE AWAITING APPROVAL
 # ============================================================
 
 @router.message(
     FundingStates.awaiting_approval
 )
-async def waiting_for_approval(
-    message: Message
+async def waiting_for_admin_review(
+    message: Message,
+    state: FSMContext
 ):
 
     await message.answer(
-        "Your receipt has already been received.\n\n"
-        "Please use the <b>Approve Payment</b> "
-        "button on the receipt message to submit "
-        "your payment for Admin review."
-  )
+        "⏳ <b>Payment already submitted.</b>\n\n"
+        "Your payment is currently under Admin review.\n\n"
+        "Please wait for QuizBee Admin to verify it."
+    )
