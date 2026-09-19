@@ -2924,15 +2924,13 @@ function renderPointOrder(item) {
     const receipt =
         item.receipt_file_id
         ? `
-            <a
+            <button
                 class="secondary-btn"
-                href="${API_URL}/api/wallet/admin/point-orders/${encodeURIComponent(item.id)}/receipt"
-                target="_blank"
-                rel="noopener noreferrer"
-                style="display:inline-block;text-decoration:none;"
+                onclick="viewPointOrderReceipt('${encodeURIComponent(item.id)}')"
+                type="button"
             >
                 🧾 View Receipt
-            </a>
+            </button>
         `
         : `
             <span class="badge">
@@ -3027,6 +3025,156 @@ function renderPointOrder(item) {
 
         </div>
     `;
+}
+
+
+async function viewPointOrderReceipt(orderId) {
+
+    let receiptWindow = null;
+
+    try {
+
+        // Open the window immediately so mobile browsers
+        // do not block it as a popup.
+        receiptWindow = window.open(
+            "",
+            "_blank"
+        );
+
+        if (receiptWindow) {
+
+            receiptWindow.document.write(`
+                <html>
+                    <head>
+                        <title>QuizBee Receipt</title>
+                    </head>
+                    <body
+                        style="
+                            font-family: sans-serif;
+                            text-align: center;
+                            padding: 30px;
+                        "
+                    >
+                        <h3>Loading receipt...</h3>
+                        <p>Please wait.</p>
+                    </body>
+                </html>
+            `);
+
+            receiptWindow.document.close();
+        }
+
+        const initData =
+            getInitData();
+
+        if (!initData) {
+
+            throw new Error(
+                "Telegram admin session not available."
+            );
+        }
+
+        const response =
+            await fetch(
+                `${API_URL}/api/wallet/admin/point-orders/${orderId}/receipt`,
+                {
+                    method: "GET",
+
+                    headers: {
+                        "X-Telegram-Init-Data":
+                            initData
+                    }
+                }
+            );
+
+        if (!response.ok) {
+
+            let message =
+                `Unable to load receipt (${response.status}).`;
+
+            try {
+
+                const data =
+                    await response.json();
+
+                message =
+                    data.error ||
+                    message;
+
+            } catch {
+                // Keep the default message.
+            }
+
+            throw new Error(
+                message
+            );
+        }
+
+        const blob =
+            await response.blob();
+
+        const receiptUrl =
+            URL.createObjectURL(blob);
+
+        if (receiptWindow) {
+
+            receiptWindow.location.href =
+                receiptUrl;
+
+        } else {
+
+            window.open(
+                receiptUrl,
+                "_blank"
+            );
+        }
+
+        // Give the browser enough time to load the
+        // object URL before allowing it to be cleaned up.
+        setTimeout(() => {
+
+            URL.revokeObjectURL(
+                receiptUrl
+            );
+
+        }, 60000);
+
+    } catch (error) {
+
+        console.error(
+            "Receipt error:",
+            error
+        );
+
+        if (receiptWindow) {
+
+            receiptWindow.document.body.innerHTML = `
+                <div
+                    style="
+                        font-family:sans-serif;
+                        padding:30px;
+                        text-align:center;
+                    "
+                >
+                    <h3>Unable to load receipt</h3>
+
+                    <p>
+                        ${escapeHtml(
+                            error.message ||
+                            "Something went wrong."
+                        )}
+                    </p>
+                </div>
+            `;
+
+        } else {
+
+            showToast(
+                error.message ||
+                "Unable to load receipt."
+            );
+        }
+    }
 }
 
 
