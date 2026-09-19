@@ -1118,6 +1118,123 @@
                 </label>
 
 
+          <!-- FUNDING PAYMENT SETTINGS -->
+
+<div class="panel">
+
+    <div class="panel-header">
+
+        <h2>
+            💰 Funding Payment Details
+        </h2>
+
+    </div>
+
+    <p>
+        These details are shown to users by
+        the QuizBee Funding Bot.
+    </p>
+
+
+    <h3>
+        🇳🇬 NGN Bank Payment
+    </h3>
+
+    <label>
+        Bank Name
+    </label>
+
+    <input
+        id="fundingNgnBankName"
+        type="text"
+        placeholder="e.g. Opay"
+    >
+
+
+    <label>
+        Account Name
+    </label>
+
+    <input
+        id="fundingNgnAccountName"
+        type="text"
+        placeholder="Account holder name"
+    >
+
+
+    <label>
+        Account Number
+    </label>
+
+    <input
+        id="fundingNgnAccountNumber"
+        type="text"
+        inputmode="numeric"
+        placeholder="Account number"
+    >
+
+
+    <label>
+        NGN Instructions
+    </label>
+
+    <textarea
+        id="fundingNgnInstructions"
+        rows="4"
+        placeholder="Additional payment instructions..."
+    ></textarea>
+
+
+    <hr>
+
+
+    <h3>
+        💵 USDT Payment
+    </h3>
+
+
+    <label>
+        Network
+    </label>
+
+    <input
+        id="fundingUsdtNetwork"
+        type="text"
+        value="BEP20"
+        placeholder="BEP20"
+    >
+
+
+    <label>
+        USDT Wallet Address
+    </label>
+
+    <input
+        id="fundingUsdtAddress"
+        type="text"
+        placeholder="Your USDT BEP20 address"
+    >
+
+
+    <label>
+        USDT Instructions
+    </label>
+
+    <textarea
+        id="fundingUsdtInstructions"
+        rows="4"
+        placeholder="Additional USDT payment instructions..."
+    ></textarea>
+
+
+    <button
+        class="primary-btn full"
+        onclick="saveFundingSettings()"
+    >
+        Save Funding Details
+    </button>
+
+</div>
                 <button
                     class="primary-btn full"
                     onclick="saveSettings()"
