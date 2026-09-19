@@ -1,12 +1,24 @@
+import io
+import os
+import requests
+
+from flask import (
+    Blueprint,
+    jsonify,
+    request,
+    send_file
+) 
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
-from flask import Blueprint, jsonify, request
 from firebase_admin import firestore
 
 from backend.firebase import db
 from backend.telegram_auth import validate_telegram_init_data
 from backend.notifications import create_notification
+from backend.admin import (
+    require_admin as admin_require_admin
+)
 
 
 wallet_bp = Blueprint(
@@ -287,7 +299,7 @@ def purchase_options():
                 "icon": "🌎",
                 "price": 1,
                 "currency": "USD",
-                "points": 1000,
+                "points": 500,
                 "method": "manual"
             },
             {
@@ -337,14 +349,14 @@ def create_point_order():
             "amount": 100,
             "currency": "NGN",
             "points": 50,
-            "provider": "manual_paystack"
+            "provider": "quizbee_funding_bot" 
         },
         "crypto_manual": {
-            "amount": 1,
-            "currency": "USD",
-            "points": 1000,
-            "provider": "manual_crypto"
-        }
+        "amount": 1,
+        "currency": "USD",
+        "points": 500,
+        "provider": "quizbee_funding_bot"
+}
     }
 
     package = packages.get(
@@ -775,34 +787,19 @@ def withdrawals():
 # ADMIN AUTH
 # ============================================================
 
-def is_admin(telegram_id):
-
-    import os
-
-    admin_id = os.getenv(
-        "ADMIN_TELEGRAM_ID",
-        ""
-    ).strip()
-
-    return (
-        admin_id
-        and str(telegram_id) == admin_id
-    )
-
-
 def require_admin():
 
-    user = require_user()
+    admin, error = admin_require_admin()
 
-    if not user:
-        return None
+    if error == "FORBIDDEN":
 
-    if not is_admin(
-        user["telegram_id"]
-    ):
         return "FORBIDDEN"
 
-    return user
+    if error:
+
+        return None
+
+    return admin
 
 
 # ============================================================
@@ -1264,6 +1261,165 @@ def mark_withdrawal_paid(
 
 
 # ============================================================
+# ADMIN: VIEW POINT PURCHASE RECEIPT
+# ============================================================
+
+@wallet_bp.get(
+    "/admin/point-orders/<order_id>/receipt"
+)
+def point_order_receipt(
+    order_id
+):
+
+    admin = require_admin()
+
+    if admin == "FORBIDDEN":
+
+        return jsonify({
+            "success": False,
+            "error":
+                "Admin access required."
+        }), 403
+
+    if not admin:
+
+        return jsonify({
+            "success": False,
+            "error":
+                "Unauthorized Telegram session."
+        }), 401
+
+    ref = (
+        db.collection(
+            "point_orders"
+        )
+        .document(
+            order_id
+        )
+    )
+
+    snap = ref.get()
+
+    if not snap.exists:
+
+        return jsonify({
+            "success": False,
+            "error":
+                "Point order not found."
+        }), 404
+
+    order = (
+        snap.to_dict()
+        or {}
+    )
+
+    file_id = order.get(
+        "receipt_file_id"
+    )
+
+    if not file_id:
+
+        return jsonify({
+            "success": False,
+            "error":
+                "No receipt attached."
+        }), 404
+
+    token = os.getenv(
+        "FUNDING_BOT_TOKEN",
+        ""
+    ).strip()
+
+    if not token:
+
+        return jsonify({
+            "success": False,
+            "error":
+                "Funding bot token is not configured."
+        }), 500
+
+    try:
+
+        get_file_response = requests.get(
+            "https://api.telegram.org/bot"
+            f"{token}/getFile",
+            params={
+                "file_id":
+                    file_id
+            },
+            timeout=20
+        )
+
+        get_file_response.raise_for_status()
+
+        file_data = (
+            get_file_response
+            .json()
+        )
+
+        if not file_data.get(
+            "ok"
+        ):
+
+            return jsonify({
+                "success": False,
+                "error":
+                    "Unable to retrieve receipt."
+            }), 502
+
+        file_path = (
+            file_data
+            .get("result", {})
+            .get("file_path")
+        )
+
+        if not file_path:
+
+            return jsonify({
+                "success": False,
+                "error":
+                    "Receipt file path unavailable."
+            }), 502
+
+        download_url = (
+            "https://api.telegram.org/file/bot"
+            f"{token}/{file_path}"
+        )
+
+        file_response = requests.get(
+            download_url,
+            timeout=30
+        )
+
+        file_response.raise_for_status()
+
+        content_type = (
+            file_response
+            .headers
+            .get(
+                "Content-Type",
+                "application/octet-stream"
+            )
+        )
+
+        return send_file(
+            io.BytesIO(
+                file_response.content
+            ),
+            mimetype=content_type,
+            as_attachment=False
+        )
+
+    except Exception as e:
+
+        return jsonify({
+            "success": False,
+            "error":
+                f"Unable to load receipt: {e}"
+        }), 500
+
+
+# ============================================================
 # ADMIN: POINT PURCHASES
 # ============================================================
 
@@ -1457,6 +1613,24 @@ def approve_point_order(
         }
     )
 
+    create_notification(
+    user_id=telegram_id,
+    title="💰 Points Added!",
+    message=(
+        f"Your payment has been approved.\n\n"
+        f"🪙 {points:,} QuizBee Points "
+        f"have been added to your wallet."
+    ),
+    notification_type="wallet",
+    action_url="",
+    button_text="",
+    dedupe_key=(
+        f"point-purchase-approved:"
+        f"{order_id}"
+    ),
+    send_telegram=True
+    )
+
     return jsonify({
         "success": True,
         "points_added": points,
@@ -1566,6 +1740,35 @@ def reject_point_order(
             "status": "rejected",
             "updated_at": now()
         })
+
+    telegram_id = str(
+    order.get(
+        "telegram_id",
+        ""
+    )
+)
+
+create_notification(
+    user_id=telegram_id,
+    title="❌ Payment Rejected",
+    message=(
+        "Your QuizBee funding request "
+        "was rejected."
+        + (
+            f"\n\nAdmin note: {note}"
+            if note
+            else ""
+        )
+    ),
+    notification_type="warning",
+    action_url="",
+    button_text="",
+    dedupe_key=(
+        f"point-purchase-rejected:"
+        f"{order_id}"
+    ),
+    send_telegram=True
+)
 
     return jsonify({
         "success": True,
