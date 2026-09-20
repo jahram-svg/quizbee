@@ -2476,6 +2476,132 @@ async function submitAnswer(
 // ADS
 // ============================================================
 
+let adsgramController = null;
+let adsSettings = {
+    enabled: true,
+    reward_points: 1,
+    daily_limit: 10,
+    ads_watched: 0
+};
+
+
+// ------------------------------------------------------------
+// ADSGRAM INITIALIZATION
+// ------------------------------------------------------------
+
+function initAdsGram() {
+
+    try {
+
+        const blockId =
+            CONFIG.ADSGRAM_BLOCK_ID;
+
+        if (
+            !blockId ||
+            !window.Adsgram
+        ) {
+
+            console.warn(
+                "AdsGram is not available."
+            );
+
+            return null;
+        }
+
+        adsgramController =
+            window.Adsgram.init({
+
+                blockId:
+                    String(blockId),
+
+                debug:
+                    Boolean(
+                        CONFIG.ADSGRAM_DEBUG
+                    ),
+
+                debugConsole:
+                    Boolean(
+                        CONFIG.ADSGRAM_DEBUG
+                    ),
+
+                debugBannerType:
+                    "RewardedVideo"
+
+            });
+
+        return adsgramController;
+
+    } catch (error) {
+
+        console.error(
+            "AdsGram initialization error:",
+            error
+        );
+
+        return null;
+    }
+}
+
+
+// ------------------------------------------------------------
+// LOAD ADS STATUS
+// ------------------------------------------------------------
+
+async function loadAdsStatus() {
+
+    try {
+
+        const data =
+            await api(
+                "/api/ads/status"
+            );
+
+        adsSettings = {
+
+            enabled:
+                data.enabled !== false,
+
+            reward_points:
+                Number(
+                    data.reward_points ?? 1
+                ),
+
+            daily_limit:
+                Number(
+                    data.daily_limit ?? 10
+                ),
+
+            ads_watched:
+                Number(
+                    data.ads_watched ?? 0
+                )
+
+        };
+
+        adsWatched =
+            adsSettings.ads_watched;
+
+        updateAdsUI();
+
+    } catch (error) {
+
+        console.error(
+            "Ads status error:",
+            error
+        );
+
+        /*
+         * Keep the default UI if the
+         * status request fails.
+         */
+    }
+}
+
+
+// ------------------------------------------------------------
+// WATCH REWARDED AD
+// ------------------------------------------------------------
+
 async function watchAd() {
 
     const button =
@@ -2484,25 +2610,105 @@ async function watchAd() {
         );
 
 
+    if (
+        !adsSettings.enabled
+    ) {
+
+        showToast(
+            "📺 Ads are currently unavailable."
+        );
+
+        return;
+    }
+
+
+    if (
+        adsWatched >=
+        adsSettings.daily_limit
+    ) {
+
+        showToast(
+            "🎉 You have reached today's ad limit."
+        );
+
+        updateAdsUI();
+
+        return;
+    }
+
+
     if (button) {
 
         button.disabled =
             true;
 
         button.textContent =
-            "📺 COMPLETING...";
-
+            "📺 LOADING AD...";
     }
 
 
     try {
 
+        if (!adsgramController) {
+
+            adsgramController =
+                initAdsGram();
+        }
+
+
+        if (!adsgramController) {
+
+            throw new Error(
+                "Ads are not ready yet. Please try again."
+            );
+        }
+
+
+        /*
+         * AdsGram Reward format:
+         *
+         * show() resolves only after
+         * the rewarded ad has been
+         * watched to completion.
+         *
+         * If skipped/error occurs,
+         * the promise rejects.
+         */
+
+        if (button) {
+
+            button.textContent =
+                "📺 WATCHING...";
+        }
+
+
+        await adsgramController.show();
+
+
+        /*
+         * IMPORTANT:
+         *
+         * We only call our backend
+         * after AdsGram reports that
+         * the Reward ad completed.
+         */
+
+        if (button) {
+
+            button.textContent =
+                "💰 CLAIMING...";
+        }
+
+
         const data =
             await api(
-                "/api/ads/mock-complete",
+                "/api/ads/reward",
                 {
-                    method: "POST",
-                    body: JSON.stringify({})
+                    method:
+                        "POST",
+
+                    body:
+                        JSON.stringify({})
                 }
             );
 
@@ -2512,7 +2718,6 @@ async function watchAd() {
             updateUserState(
                 data.user
             );
-
         }
 
 
@@ -2520,7 +2725,7 @@ async function watchAd() {
             Number(
                 data.reward_points ??
                 data.reward ??
-                1
+                adsSettings.reward_points
             );
 
 
@@ -2531,28 +2736,29 @@ async function watchAd() {
             );
 
 
+        adsSettings.ads_watched =
+            adsWatched;
+
+
         updateAdsUI();
 
 
         showToast(
-            `📺 Ad completed! +${reward} point`
+            `📺 Ad completed! +${reward} QuizBee Point${reward === 1 ? "" : "s"}`
         );
 
 
     } catch (error) {
 
         console.error(
-            "Ad error:",
+            "AdsGram / ad reward error:",
             error
         );
 
 
         showToast(
-
             error.message ||
-
-            "Unable to complete ad."
-
+            "Unable to complete the ad."
         );
 
 
@@ -2565,13 +2771,14 @@ async function watchAd() {
 
             button.textContent =
                 "📺 WATCH AD";
-
         }
-
     }
-
 }
 
+
+// ------------------------------------------------------------
+// ADS UI
+// ------------------------------------------------------------
 
 function updateAdsUI() {
 
@@ -2580,18 +2787,33 @@ function updateAdsUI() {
             "adsProgress"
         );
 
-
     const progressBar =
         document.getElementById(
             "adsProgressBar"
+        );
+
+    const button =
+        document.getElementById(
+            "watchAdButton"
+        );
+
+
+    const limit =
+        Number(
+            adsSettings.daily_limit ?? 10
+        );
+
+
+    const watched =
+        Number(
+            adsWatched ?? 0
         );
 
 
     if (progress) {
 
         progress.textContent =
-            `${adsWatched}/10`;
-
+            `${watched}/${limit}`;
     }
 
 
@@ -2599,12 +2821,64 @@ function updateAdsUI() {
 
         progressBar.style.width =
             `${Math.min(
-                adsWatched / 10 * 100,
+                watched / Math.max(limit, 1) * 100,
                 100
             )}%`;
-
     }
 
+
+    if (button) {
+
+        if (!adsSettings.enabled) {
+
+            button.disabled =
+                true;
+
+            button.textContent =
+                "📺 ADS UNAVAILABLE";
+
+        } else if (
+            watched >= limit
+        ) {
+
+            button.disabled =
+                true;
+
+            button.textContent =
+                "✅ DAILY LIMIT REACHED";
+
+        } else {
+
+            button.disabled =
+                false;
+
+            button.textContent =
+                "📺 WATCH AD";
+        }
+    }
+
+
+    /*
+     * Update the reward box if
+     * the existing element exists.
+     */
+
+    const rewardText =
+        document.querySelector(
+            ".reward-box strong"
+        );
+
+
+    if (rewardText) {
+
+        const total =
+            Number(
+                adsSettings.reward_points ?? 1
+            ) * limit;
+
+        rewardText.textContent =
+            `+${total} Points`;
+    }
 }
 
 
