@@ -2857,6 +2857,21 @@ function updateAdsUI() {
     }
 
 
+        const earningHint =
+        document.getElementById(
+            "adsEarningHint"
+        );
+
+    if (earningHint) {
+
+        earningHint.textContent =
+            `💡 Low on points? Watch ${limit} ads, earn up to ${
+                limit * reward
+            } QuizBee Points, and enter Daily Earning.`;
+
+    }
+
+
     if (button) {
 
         if (!adsSettings.enabled) {
