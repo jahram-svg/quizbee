@@ -3,6 +3,7 @@ import re
 import random
 import string
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -1825,16 +1826,241 @@ def answer(game_id):
 # ADS
 # ============================================================
 
-@app.post("/api/ads/mock-complete")
-def mock_complete_ad():
+ADS_TIMEZONE = ZoneInfo(
+    "Africa/Lagos"
+)
+
+
+def get_ads_today():
+
+    return datetime.now(
+        ADS_TIMEZONE
+    ).date().isoformat()
+
+
+def get_ads_settings():
+
+    settings =
+        get_app_settings()
+
+    return {
+
+        "enabled":
+            settings.get(
+                "ads_enabled",
+                True
+            ),
+
+        "reward_points":
+            max(
+                1,
+                int(
+                    settings.get(
+                        "ads_reward_points",
+                        1
+                    )
+                )
+            ),
+
+        "daily_limit":
+            max(
+                1,
+                int(
+                    settings.get(
+                        "ads_daily_limit",
+                        10
+                    )
+                )
+            )
+    }
+
+
+@app.get("/api/ads/status")
+def ads_status():
 
     try:
 
-        telegram_user = (
+        telegram_user =
             require_telegram_user()
-        )
 
         if not telegram_user:
+
+            return jsonify({
+                "success": False,
+                "error":
+                    "Unauthorized Telegram session."
+            }), 401
+
+
+        user =
+            get_or_create_user(
+                telegram_user
+            )
+
+
+        telegram_id =
+            user["telegram_id"]
+
+
+        settings =
+            get_ads_settings()
+
+
+        today =
+            get_ads_today()
+
+
+        docs = (
+            db.collection(
+                "ad_rewards"
+            )
+            .where(
+                "telegram_id",
+                "==",
+                telegram_id
+            )
+            .stream()
+        )
+
+
+        watched = 0
+
+
+        for doc in docs:
+
+            data =
+                doc.to_dict() or {}
+
+            if (
+                data.get(
+                    "ad_day"
+                ) == today
+                and data.get(
+                    "status"
+                ) == "completed"
+            ):
+
+                watched += 1
+
+
+        return jsonify({
+
+            "success":
+                True,
+
+            "enabled":
+                settings["enabled"],
+
+            "reward_points":
+                settings["reward_points"],
+
+            "daily_limit":
+                settings["daily_limit"],
+
+            "ads_watched":
+                watched
+        })
+
+
+    except Exception as e:
+
+        return jsonify({
+
+            "success":
+                False,
+
+            "error":
+                str(e)
+
+        }), 500
+
+
+@app.post("/api/ads/reward")
+def reward_ad():
+
+    try:
+
+        telegram_user =
+            require_telegram_user()
+
+        if not telegram_user:
+
+            return jsonify({
+                "success": False,
+                "error":
+                    "Unauthorized Telegram session."
+            }), 401
+
+
+        user =
+            get_or_create_user(
+                telegram_user
+            )
+
+
+        telegram_id =
+            user["telegram_id"]
+
+
+        settings =
+            get_ads_settings()
+
+
+        if not settings["enabled"]:
+
+            return jsonify({
+                "success": False,
+                "error":
+                    "Ads are currently disabled."
+            }), 403
+
+
+        today =
+            get_ads_today()
+
+
+        # Count today's completed ads.
+        #
+        # We intentionally avoid a Firestore
+        # composite query here. 
+
+        docs = (
+            db.collection(
+                "ad_rewards"
+            )
+            .where(
+                "telegram_id",
+                "==",
+                telegram_id
+            )
+            .stream()
+        )
+
+
+        watched = 0
+
+
+        for doc in docs:
+
+            data =
+                doc.to_dict() or {}
+
+            if (
+                data.get(
+                    "ad_day"
+                ) == today
+                and data.get(
+                    "status"
+                ) == "completed"
+            ):
+
+                watched += 1
+
+
+        if (
+            watched >=
+            settings["daily_limit"]
+        ):
 
             return jsonify({
 
@@ -1842,23 +2068,25 @@ def mock_complete_ad():
                     False,
 
                 "error":
-                    "Unauthorized Telegram session."
+                    "You have reached today's ad limit.",
 
-            }), 401
+                "ads_watched":
+                    watched
 
-        user = get_or_create_user(
-            telegram_user
-        )
+            }), 429
 
-        telegram_id = user[
-            "telegram_id"
-        ]
 
-        reward = 1
+        reward =
+            settings["reward_points"]
 
-        db.collection(
-            "ad_rewards"
-        ).document().set({
+
+        ad_ref =
+            db.collection(
+                "ad_rewards"
+            ).document()
+
+
+        ad_ref.set({
 
             "telegram_id":
                 telegram_id,
@@ -1867,15 +2095,22 @@ def mock_complete_ad():
                 reward,
 
             "provider":
-                "mock",
+                "adsgram",
+
+            "block_id":
+                "48771",
 
             "status":
                 "completed",
+
+            "ad_day":
+                today,
 
             "created_at":
                 now()
 
         })
+
 
         user_ref(
             telegram_id
@@ -1896,6 +2131,7 @@ def mock_complete_ad():
 
         })
 
+
         db.collection(
             "transactions"
         ).document().set({
@@ -1912,16 +2148,27 @@ def mock_complete_ad():
             "currency":
                 "quizbee_points",
 
+            "provider":
+                "adsgram",
+
+            "reference":
+                ad_ref.id,
+
             "created_at":
                 now()
 
         })
 
-        updated_user = (
+
+        updated_user =
             user_ref(
                 telegram_id
             ).get().to_dict()
-        )
+
+
+        new_count =
+            watched + 1
+
 
         return jsonify({
 
@@ -1934,13 +2181,21 @@ def mock_complete_ad():
             "reward_points":
                 reward,
 
+            "ads_watched":
+                new_count,
+
+            "daily_limit":
+                settings[
+                    "daily_limit"
+                ],
+
             "user":
                 updated_user,
 
             "message":
-                "+1 QuizBee Point"
-
+                f"+{reward} QuizBee Point"
         })
+
 
     except Exception as e:
 
