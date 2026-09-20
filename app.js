@@ -2800,6 +2800,11 @@ function updateAdsUI() {
             "watchAdButton"
         );
 
+    const rewardDisplay =
+        document.getElementById(
+            "adsRewardDisplay"
+        );
+
 
     const limit =
         Number(
@@ -2813,10 +2818,17 @@ function updateAdsUI() {
         );
 
 
+    const reward =
+        Number(
+            adsSettings.reward_points ?? 1
+        );
+
+
     if (progress) {
 
         progress.textContent =
             `${watched}/${limit}`;
+
     }
 
 
@@ -2824,9 +2836,24 @@ function updateAdsUI() {
 
         progressBar.style.width =
             `${Math.min(
-                watched / Math.max(limit, 1) * 100,
+                watched /
+                    Math.max(limit, 1) *
+                    100,
                 100
             )}%`;
+
+    }
+
+
+    if (rewardDisplay) {
+
+        rewardDisplay.textContent =
+            `+${reward} ${
+                reward === 1
+                    ? "Point"
+                    : "Points"
+            }`;
+
     }
 
 
@@ -2840,7 +2867,9 @@ function updateAdsUI() {
             button.textContent =
                 "📺 ADS UNAVAILABLE";
 
-        } else if (
+        }
+
+        else if (
             watched >= limit
         ) {
 
@@ -2850,38 +2879,20 @@ function updateAdsUI() {
             button.textContent =
                 "✅ DAILY LIMIT REACHED";
 
-        } else {
+        }
+
+        else {
 
             button.disabled =
                 false;
 
             button.textContent =
                 "📺 WATCH AD";
+
         }
+
     }
 
-
-    /*
-     * Update the reward box if
-     * the existing element exists.
-     */
-
-    const rewardText =
-        document.querySelector(
-            ".reward-box strong"
-        );
-
-
-    if (rewardText) {
-
-        const total =
-            Number(
-                adsSettings.reward_points ?? 1
-            ) * limit;
-
-        rewardText.textContent =
-            `+${total} Points`;
-    }
 }
 
 
