@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from flask import Blueprint, jsonify, request
 from firebase_admin import firestore
@@ -2443,6 +2444,393 @@ def update_settings():
             "success": False,
             "error":
                 str(e)
+        }), 500
+
+
+# ============================================================
+# ADS ACTIVITY
+# ============================================================
+
+ADS_TIMEZONE = ZoneInfo(
+    "Africa/Lagos"
+)
+
+
+@admin_bp.get("/ads/activity")
+def get_ads_activity():
+
+    admin, error = require_admin()
+
+    if error:
+        return error
+
+    try:
+
+        sort_by = (
+            request.args.get(
+                "sort",
+                "today"
+            )
+            .strip()
+            .lower()
+        )
+
+        if sort_by not in (
+            "today",
+            "weekly",
+            "monthly"
+        ):
+
+            sort_by = "today"
+
+
+        now_local = datetime.now(
+            ADS_TIMEZONE
+        )
+
+        today = (
+            now_local.date()
+        )
+
+        week_start = (
+            today
+            - __import__(
+                "datetime"
+            ).timedelta(
+                days=today.weekday()
+            )
+        )
+
+        month_start = today.replace(
+            day=1
+        )
+
+
+        # ----------------------------------------------------
+        # COLLECT AD ACTIVITY
+        # ----------------------------------------------------
+
+        activity = {}
+
+
+        ad_docs = (
+            db.collection(
+                "ad_rewards"
+            )
+            .stream()
+        )
+
+
+        for doc in ad_docs:
+
+            data = (
+                doc.to_dict()
+                or {}
+            )
+
+
+            if data.get(
+                "status"
+            ) != "completed":
+
+                continue
+
+
+            telegram_id = str(
+                data.get(
+                    "telegram_id",
+                    ""
+                )
+            )
+
+
+            if not telegram_id:
+                continue
+
+
+            if telegram_id not in activity:
+
+                activity[
+                    telegram_id
+                ] = {
+                    "ads_today": 0,
+                    "weekly_ads": 0,
+                    "monthly_ads": 0,
+                    "last_ad_at": None
+                }
+
+
+            ad_day_value = (
+                data.get(
+                    "ad_day"
+                )
+            )
+
+
+            try:
+
+                ad_date = (
+                    datetime.strptime(
+                        str(
+                            ad_day_value
+                        ),
+                        "%Y-%m-%d"
+                    ).date()
+                )
+
+            except Exception:
+
+                continue
+
+
+            if ad_date == today:
+
+                activity[
+                    telegram_id
+                ][
+                    "ads_today"
+                ] += 1
+
+
+            if ad_date >= week_start:
+
+                activity[
+                    telegram_id
+                ][
+                    "weekly_ads"
+                ] += 1
+
+
+            if ad_date >= month_start:
+
+                activity[
+                    telegram_id
+                ][
+                    "monthly_ads"
+                ] += 1
+
+
+            created_at = (
+                data.get(
+                    "created_at"
+                )
+            )
+
+
+            if created_at:
+
+                previous = (
+                    activity[
+                        telegram_id
+                    ].get(
+                        "last_ad_at"
+                    )
+                )
+
+
+                if (
+                    previous is None
+                    or created_at > previous
+                ):
+
+                    activity[
+                        telegram_id
+                    ][
+                        "last_ad_at"
+                    ] = created_at
+
+
+        # ----------------------------------------------------
+        # ADD USER INFORMATION
+        # ----------------------------------------------------
+
+        users = []
+
+        user_docs = (
+            db.collection(
+                "users"
+            )
+            .stream()
+        )
+
+
+        for doc in user_docs:
+
+            user = (
+                doc.to_dict()
+                or {}
+            )
+
+
+            telegram_id = str(
+                user.get(
+                    "telegram_id",
+                    doc.id
+                )
+            )
+
+
+            stats = activity.get(
+                telegram_id,
+                {
+                    "ads_today": 0,
+                    "weekly_ads": 0,
+                    "monthly_ads": 0,
+                    "last_ad_at": None
+                }
+            )
+
+
+            username = (
+                user.get(
+                    "username",
+                    ""
+                )
+                or ""
+            ).strip()
+
+
+            first_name = (
+                user.get(
+                    "first_name",
+                    ""
+                )
+                or ""
+            ).strip()
+
+
+            if username:
+
+                display_name = (
+                    f"@{username}"
+                )
+
+            elif first_name:
+
+                display_name = first_name
+
+            else:
+
+                display_name = (
+                    f"User {telegram_id}"
+                )
+
+
+            last_ad_at = (
+                stats.get(
+                    "last_ad_at"
+                )
+            )
+
+
+            if isinstance(
+                last_ad_at,
+                datetime
+            ):
+
+                last_ad_at = (
+                    last_ad_at.astimezone(
+                        ADS_TIMEZONE
+                    ).isoformat()
+                )
+
+
+            users.append({
+
+                "telegram_id":
+                    telegram_id,
+
+                "user":
+                    display_name,
+
+                "ads_today":
+                    stats[
+                        "ads_today"
+                    ],
+
+                "weekly_ads":
+                    stats[
+                        "weekly_ads"
+                    ],
+
+                "monthly_ads":
+                    stats[
+                        "monthly_ads"
+                    ],
+
+                "last_ad":
+                    last_ad_at
+
+            })
+
+
+        # ----------------------------------------------------
+        # SORT
+        # ----------------------------------------------------
+
+        sort_field = {
+
+            "today":
+                "ads_today",
+
+            "weekly":
+                "weekly_ads",
+
+            "monthly":
+                "monthly_ads"
+
+        }[
+            sort_by
+        ]
+
+
+        users.sort(
+            key=lambda item: (
+                item.get(
+                    sort_field,
+                    0
+                ),
+                item.get(
+                    "monthly_ads",
+                    0
+                ),
+                item.get(
+                    "weekly_ads",
+                    0
+                ),
+                item.get(
+                    "ads_today",
+                    0
+                )
+            ),
+            reverse=True
+        )
+
+
+        return jsonify({
+
+            "success":
+                True,
+
+            "sort":
+                sort_by,
+
+            "users":
+                users
+
+        })
+
+
+    except Exception as e:
+
+        return jsonify({
+
+            "success":
+                False,
+
+            "error":
+                str(e)
+
         }), 500
 
 # ============================================================
