@@ -3344,6 +3344,7 @@ document
 
 
 await loadFundingSettings();
+await loadAdsActivity();
         
     } catch (error) {
 
