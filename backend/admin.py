@@ -1956,6 +1956,7 @@ def transactions():
 # ============================================================
 
 DEFAULT_APP_SETTINGS = {
+
     "participant_visibility":
         "hidden",
 
@@ -1969,7 +1970,16 @@ DEFAULT_APP_SETTINGS = {
         [],
 
     "daily_earning_enabled":
-        True
+        True,
+
+    "ads_enabled":
+        True,
+
+    "ads_reward_points":
+        1,
+
+    "ads_daily_limit":
+        10
 }
 
 
@@ -2267,6 +2277,101 @@ def update_settings():
                     "daily_earning_enabled"
                 )
             )
+
+                # ----------------------------------------------------
+        # ADS & MONETIZATION
+        # ----------------------------------------------------
+
+        if (
+            "ads_enabled"
+            in body
+        ):
+
+            updates[
+                "ads_enabled"
+            ] = bool(
+                body.get(
+                    "ads_enabled"
+                )
+            )
+
+
+        if (
+            "ads_reward_points"
+            in body
+        ):
+
+            try:
+
+                reward_points = int(
+                    body.get(
+                        "ads_reward_points"
+                    )
+                )
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                return jsonify({
+                    "success": False,
+                    "error":
+                        "Invalid ad reward."
+                }), 400
+
+
+            if not 1 <= reward_points <= 100:
+
+                return jsonify({
+                    "success": False,
+                    "error":
+                        "Ad reward must be between 1 and 100 points."
+                }), 400
+
+
+            updates[
+                "ads_reward_points"
+            ] = reward_points
+
+
+        if (
+            "ads_daily_limit"
+            in body
+        ):
+
+            try:
+
+                daily_limit = int(
+                    body.get(
+                        "ads_daily_limit"
+                    )
+                )
+
+            except (
+                TypeError,
+                ValueError
+            ):
+
+                return jsonify({
+                    "success": False,
+                    "error":
+                        "Invalid daily ad limit."
+                }), 400
+
+
+            if not 1 <= daily_limit <= 100:
+
+                return jsonify({
+                    "success": False,
+                    "error":
+                        "Daily ad limit must be between 1 and 100."
+                }), 400
+
+
+            updates[
+                "ads_daily_limit"
+            ] = daily_limit
 
         # ----------------------------------------------------
         # AUDIT
