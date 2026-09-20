@@ -787,3 +787,63 @@ select:focus {
 .streak-rank-row .referral-rank-score {
     color: #d89000;
 }
+
+
+/* ============================================================
+   ADS ACTIVITY
+============================================================ */
+
+.ads-sort-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 15px 0;
+}
+
+
+.ads-activity-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+    margin-top: 15px;
+}
+
+
+.ads-activity-table {
+    width: 100%;
+    min-width: 650px;
+    border-collapse: collapse;
+}
+
+
+.ads-activity-table th,
+.ads-activity-table td {
+    padding: 12px 10px;
+    text-align: left;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    white-space: nowrap;
+}
+
+
+.ads-activity-table th {
+    font-size: 13px;
+    opacity: 0.75;
+}
+
+
+.ads-activity-table td {
+    font-size: 14px;
+}
+
+
+.ads-activity-table td:nth-child(2),
+.ads-activity-table td:nth-child(3),
+.ads-activity-table td:nth-child(4) {
+    text-align: center;
+}
+
+
+.ads-activity-table th:nth-child(2),
+.ads-activity-table th:nth-child(3),
+.ads-activity-table th:nth-child(4) {
+    text-align: center;
+}
