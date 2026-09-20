@@ -1840,8 +1840,7 @@ def get_ads_today():
 
 def get_ads_settings():
 
-    settings =
-        get_app_settings()
+    settings = get_app_settings()
 
     return {
 
@@ -1880,8 +1879,7 @@ def ads_status():
 
     try:
 
-        telegram_user =
-            require_telegram_user()
+        telegram_user = require_telegram_user()
 
         if not telegram_user:
 
@@ -1892,22 +1890,18 @@ def ads_status():
             }), 401
 
 
-        user =
-            get_or_create_user(
+        user = get_or_create_user(
                 telegram_user
             )
 
 
-        telegram_id =
-            user["telegram_id"]
+        telegram_id = user["telegram_id"]
 
 
-        settings =
-            get_ads_settings()
+        settings = get_ads_settings()
 
 
-        today =
-            get_ads_today()
+        today = get_ads_today()
 
 
         docs = (
@@ -1928,8 +1922,7 @@ def ads_status():
 
         for doc in docs:
 
-            data =
-                doc.to_dict() or {}
+            data = doc.to_dict() or {}
 
             if (
                 data.get(
@@ -1980,8 +1973,7 @@ def reward_ad():
 
     try:
 
-        telegram_user =
-            require_telegram_user()
+        telegram_user = require_telegram_user()
 
         if not telegram_user:
 
@@ -1992,18 +1984,15 @@ def reward_ad():
             }), 401
 
 
-        user =
-            get_or_create_user(
+        user = get_or_create_user(
                 telegram_user
             )
 
 
-        telegram_id =
-            user["telegram_id"]
+        telegram_id = user["telegram_id"]
 
 
-        settings =
-            get_ads_settings()
+        settings = get_ads_settings()
 
 
         if not settings["enabled"]:
@@ -2015,8 +2004,7 @@ def reward_ad():
             }), 403
 
 
-        today =
-            get_ads_today()
+        today = get_ads_today()
 
 
         # Count today's completed ads.
@@ -2042,8 +2030,7 @@ def reward_ad():
 
         for doc in docs:
 
-            data =
-                doc.to_dict() or {}
+            data = doc.to_dict() or {}
 
             if (
                 data.get(
@@ -2076,12 +2063,10 @@ def reward_ad():
             }), 429
 
 
-        reward =
-            settings["reward_points"]
+        reward = settings["reward_points"]
 
 
-        ad_ref =
-            db.collection(
+        ad_ref = db.collection(
                 "ad_rewards"
             ).document()
 
@@ -2160,14 +2145,12 @@ def reward_ad():
         })
 
 
-        updated_user =
-            user_ref(
-                telegram_id
-            ).get().to_dict()
+        updated_user = user_ref(
+            telegram_id
+        ).get().to_dict()
 
 
-        new_count =
-            watched + 1
+        new_count = watched + 1
 
 
         return jsonify({
