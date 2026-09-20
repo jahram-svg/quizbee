@@ -1197,6 +1197,120 @@
 </div>
 
 
+       <!-- ADS ACTIVITY -->
+
+<div class="panel">
+
+    <div class="panel-header">
+
+        <h2>
+            📊 Ad Activity
+        </h2>
+
+        <button
+            class="secondary-btn"
+            onclick="loadAdsActivity()"
+        >
+            ↻ Refresh
+        </button>
+
+    </div>
+
+
+    <p>
+        Monitor how many ads users have watched
+        today, this week, and this month.
+    </p>
+
+
+    <div
+        class="ads-sort-row"
+        id="adsSortButtons"
+    >
+
+        <button
+            id="adsSortToday"
+            class="primary-btn"
+            onclick="loadAdsActivity('today')"
+        >
+            Today
+        </button>
+
+        <button
+            id="adsSortWeekly"
+            class="secondary-btn"
+            onclick="loadAdsActivity('weekly')"
+        >
+            This Week
+        </button>
+
+        <button
+            id="adsSortMonthly"
+            class="secondary-btn"
+            onclick="loadAdsActivity('monthly')"
+        >
+            This Month
+        </button>
+
+    </div>
+
+
+    <div
+        id="adsActivitySummary"
+        class="info-box"
+    >
+        Loading ad activity...
+    </div>
+
+
+    <div class="ads-activity-table-wrap">
+
+        <table
+            class="ads-activity-table"
+        >
+
+            <thead>
+
+                <tr>
+
+                    <th>User</th>
+
+                    <th>Ads Today</th>
+
+                    <th>Weekly Ads</th>
+
+                    <th>Monthly Ads</th>
+
+                    <th>Last Ad</th>
+
+                </tr>
+
+            </thead>
+
+
+            <tbody
+                id="adsActivityBody"
+            >
+
+                <tr>
+
+                    <td
+                        colspan="5"
+                    >
+                        Loading...
+                    </td>
+
+                </tr>
+
+            </tbody>
+
+        </table>
+
+    </div>
+
+</div>
+
+                
           <!-- FUNDING PAYMENT SETTINGS -->
 
 <div class="panel">
