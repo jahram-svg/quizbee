@@ -605,6 +605,9 @@ async function bootstrap() {
             data.user
         );
 
+        initAdsGram();
+        await loadAdsStatus();
+
 
         games =
             normalizeGames(
