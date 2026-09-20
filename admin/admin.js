@@ -5514,3 +5514,372 @@ async function saveFundingSettings() {
 
     }
 }
+
+
+// ============================================================
+// ADS ACTIVITY
+// ============================================================
+
+let currentAdsActivitySort = "today";
+
+
+async function loadAdsActivity(
+    sortBy = currentAdsActivitySort
+) {
+
+    currentAdsActivitySort =
+        sortBy;
+
+
+    const body =
+        document.getElementById(
+            "adsActivityBody"
+        );
+
+
+    const summary =
+        document.getElementById(
+            "adsActivitySummary"
+        );
+
+
+    if (body) {
+
+        body.innerHTML = `
+            <tr>
+                <td colspan="5">
+                    Loading ad activity...
+                </td>
+            </tr>
+        `;
+
+    }
+
+
+    try {
+
+        const data =
+            await api(
+                `/api/admin/ads/activity?sort=${encodeURIComponent(
+                    sortBy
+                )}`
+            );
+
+
+        const users =
+            Array.isArray(
+                data.users
+            )
+                ? data.users
+                : [];
+
+
+        updateAdsActivitySortButtons(
+            sortBy
+        );
+
+
+        if (summary) {
+
+            const totalToday =
+                users.reduce(
+                    (
+                        total,
+                        user
+                    ) =>
+                        total +
+                        Number(
+                            user.ads_today || 0
+                        ),
+                    0
+                );
+
+
+            const totalWeekly =
+                users.reduce(
+                    (
+                        total,
+                        user
+                    ) =>
+                        total +
+                        Number(
+                            user.weekly_ads || 0
+                        ),
+                    0
+                );
+
+
+            const totalMonthly =
+                users.reduce(
+                    (
+                        total,
+                        user
+                    ) =>
+                        total +
+                        Number(
+                            user.monthly_ads || 0
+                        ),
+                    0
+                );
+
+
+            summary.innerHTML = `
+                <strong>
+                    📺 Ad Activity
+                </strong>
+
+                <p>
+                    Users:
+                    <strong>
+                        ${users.length.toLocaleString()}
+                    </strong>
+                </p>
+
+                <p>
+                    Ads today:
+                    <strong>
+                        ${totalToday.toLocaleString()}
+                    </strong>
+                </p>
+
+                <p>
+                    Ads this week:
+                    <strong>
+                        ${totalWeekly.toLocaleString()}
+                    </strong>
+                </p>
+
+                <p>
+                    Ads this month:
+                    <strong>
+                        ${totalMonthly.toLocaleString()}
+                    </strong>
+                </p>
+
+                <p>
+                    Sorted by:
+                    <strong>
+                        ${
+                            sortBy === "today"
+                                ? "Ads Today"
+                                : sortBy === "weekly"
+                                ? "Weekly Ads"
+                                : "Monthly Ads"
+                        }
+                    </strong>
+                </p>
+            `;
+
+        }
+
+
+        if (!body) {
+            return;
+        }
+
+
+        if (!users.length) {
+
+            body.innerHTML = `
+                <tr>
+                    <td colspan="5">
+                        No users found.
+                    </td>
+                </tr>
+            `;
+
+            return;
+        }
+
+
+        body.innerHTML =
+            users.map(
+                user => {
+
+                    const lastAd =
+                        formatAdsActivityDate(
+                            user.last_ad
+                        );
+
+
+                    return `
+                        <tr>
+
+                            <td>
+                                <strong>
+                                    ${escapeHtml(
+                                        user.user
+                                    )}
+                                </strong>
+                            </td>
+
+                            <td>
+                                ${Number(
+                                    user.ads_today || 0
+                                ).toLocaleString()}
+                            </td>
+
+                            <td>
+                                ${Number(
+                                    user.weekly_ads || 0
+                                ).toLocaleString()}
+                            </td>
+
+                            <td>
+                                ${Number(
+                                    user.monthly_ads || 0
+                                ).toLocaleString()}
+                            </td>
+
+                            <td>
+                                ${escapeHtml(
+                                    lastAd
+                                )}
+                            </td>
+
+                        </tr>
+                    `;
+
+                }
+            ).join("");
+
+
+    } catch (error) {
+
+        console.error(
+            "Ads activity error:",
+            error
+        );
+
+
+        if (body) {
+
+            body.innerHTML = `
+                <tr>
+                    <td colspan="5">
+                        Unable to load ad activity.
+                    </td>
+                </tr>
+            `;
+
+        }
+
+
+        if (summary) {
+
+            summary.textContent =
+                error.message ||
+                "Unable to load ad activity.";
+
+        }
+
+    }
+
+}
+
+
+function updateAdsActivitySortButtons(
+    sortBy
+) {
+
+    const buttons = {
+
+        today:
+            document.getElementById(
+                "adsSortToday"
+            ),
+
+        weekly:
+            document.getElementById(
+                "adsSortWeekly"
+            ),
+
+        monthly:
+            document.getElementById(
+                "adsSortMonthly"
+            )
+
+    };
+
+
+    Object.entries(
+        buttons
+    ).forEach(
+        (
+            [
+                key,
+                button
+            ]
+        ) => {
+
+            if (!button) {
+                return;
+            }
+
+
+            if (key === sortBy) {
+
+                button.className =
+                    "primary-btn";
+
+            } else {
+
+                button.className =
+                    "secondary-btn";
+
+            }
+
+        }
+    );
+
+}
+
+
+function formatAdsActivityDate(
+    value
+) {
+
+    if (!value) {
+
+        return "—";
+
+    }
+
+
+    try {
+
+        const date =
+            new Date(
+                value
+            );
+
+
+        if (
+            Number.isNaN(
+                date.getTime()
+            )
+        ) {
+
+            return "—";
+
+        }
+
+
+        return date.toLocaleString(
+            "en-NG",
+            {
+                dateStyle:
+                    "medium",
+
+                timeStyle:
+                    "short"
+            }
+        );
+
+    } catch {
+
+        return "—";
+
+    }
+
+        }
