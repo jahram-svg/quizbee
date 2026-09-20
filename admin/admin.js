@@ -3300,15 +3300,50 @@ document
     );
         
         document
-            .getElementById(
-                "dailyEnabled"
-            )
-            .checked =
-            settings.daily_earning_enabled
-            !== false;
+    .getElementById(
+        "dailyEnabled"
+    )
+    .checked =
+    settings.daily_earning_enabled
+    !== false;
 
 
-        await loadFundingSettings();
+// ----------------------------------------------------
+// ADS SETTINGS
+// ----------------------------------------------------
+
+document
+    .getElementById(
+        "adsEnabled"
+    )
+    .checked =
+    settings.ads_enabled
+    !== false;
+
+
+document
+    .getElementById(
+        "adsRewardPoints"
+    )
+    .value =
+    Number(
+        settings.ads_reward_points
+        ?? 1
+    );
+
+
+document
+    .getElementById(
+        "adsDailyLimit"
+    )
+    .value =
+    Number(
+        settings.ads_daily_limit
+        ?? 10
+    );
+
+
+await loadFundingSettings();
         
     } catch (error) {
 
@@ -3362,10 +3397,35 @@ async function saveSettings() {
             .filter(Boolean),
 
         daily_earning_enabled:
-            document
-            .getElementById(
-                "dailyEnabled"
-            ).checked
+    document
+    .getElementById(
+        "dailyEnabled"
+    ).checked,
+
+
+ads_enabled:
+    document
+    .getElementById(
+        "adsEnabled"
+    ).checked,
+
+
+ads_reward_points:
+    Number(
+        document
+        .getElementById(
+            "adsRewardPoints"
+        ).value
+    ),
+
+
+ads_daily_limit:
+    Number(
+        document
+        .getElementById(
+            "adsDailyLimit"
+        ).value
+    )
 
     })
             }
