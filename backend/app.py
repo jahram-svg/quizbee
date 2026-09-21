@@ -1973,44 +1973,102 @@ def reward_ad():
 
     try:
 
+        print(
+            "========================================"
+        )
+
+        print(
+            "📺 QUIZBEE AD REWARD REQUEST"
+        )
+
+        print(
+            "========================================"
+        )
+
+
+        # ----------------------------------------------------
+        # TELEGRAM AUTHENTICATION
+        # ----------------------------------------------------
+
         telegram_user = require_telegram_user()
 
         if not telegram_user:
 
+            print(
+                "❌ No valid Telegram session."
+            )
+
             return jsonify({
-                "success": False,
+
+                "success":
+                    False,
+
                 "error":
                     "Unauthorized Telegram session."
+
             }), 401
 
 
         user = get_or_create_user(
-                telegram_user
-            )
+            telegram_user
+        )
 
 
-        telegram_id = user["telegram_id"]
+        telegram_id =
+            user["telegram_id"]
 
 
-        settings = get_ads_settings()
+        print(
+            f"👤 Telegram ID: {telegram_id}"
+        )
+
+
+        # ----------------------------------------------------
+        # ADS SETTINGS
+        # ----------------------------------------------------
+
+        settings =
+            get_ads_settings()
+
+
+        print(
+            f"⚙️ Ads settings: {settings}"
+        )
 
 
         if not settings["enabled"]:
 
+            print(
+                "❌ Ads are disabled."
+            )
+
             return jsonify({
-                "success": False,
+
+                "success":
+                    False,
+
                 "error":
                     "Ads are currently disabled."
+
             }), 403
 
 
-        today = get_ads_today()
+        # ----------------------------------------------------
+        # TODAY
+        # ----------------------------------------------------
+
+        today =
+            get_ads_today()
 
 
-        # Count today's completed ads.
-        #
-        # We intentionally avoid a Firestore
-        # composite query here. 
+        print(
+            f"📅 Ad day: {today}"
+        )
+
+
+        # ----------------------------------------------------
+        # COUNT TODAY'S COMPLETED ADS
+        # ----------------------------------------------------
 
         docs = (
             db.collection(
@@ -2030,13 +2088,16 @@ def reward_ad():
 
         for doc in docs:
 
-            data = doc.to_dict() or {}
+            data =
+                doc.to_dict() or {}
+
 
             if (
                 data.get(
                     "ad_day"
                 ) == today
-                and data.get(
+                and
+                data.get(
                     "status"
                 ) == "completed"
             ):
@@ -2044,10 +2105,23 @@ def reward_ad():
                 watched += 1
 
 
+        print(
+            f"📊 Ads already watched today: {watched}"
+        )
+
+
+        # ----------------------------------------------------
+        # DAILY LIMIT
+        # ----------------------------------------------------
+
         if (
             watched >=
             settings["daily_limit"]
         ):
+
+            print(
+                "⚠️ Daily ad limit reached."
+            )
 
             return jsonify({
 
@@ -2058,47 +2132,78 @@ def reward_ad():
                     "You have reached today's ad limit.",
 
                 "ads_watched":
-                    watched
+                    watched,
+
+                "daily_limit":
+                    settings[
+                        "daily_limit"
+                    ]
 
             }), 429
 
 
-        reward = settings["reward_points"]
+        # ----------------------------------------------------
+        # REWARD AMOUNT
+        # ----------------------------------------------------
+
+        reward =
+            settings[
+                "reward_points"
+            ]
 
 
-        ad_ref = db.collection(
+        print(
+            f"🎁 Reward: {reward} points"
+        )
+
+
+        # ----------------------------------------------------
+        # CREATE AD REWARD RECORD
+        # ----------------------------------------------------
+
+        ad_ref =
+            db.collection(
                 "ad_rewards"
             ).document()
 
 
         ad_ref.set({
 
-    "telegram_id":
-        telegram_id,
+            "telegram_id":
+                telegram_id,
 
-    "reward":
-        reward,
+            "reward":
+                reward,
 
-    "provider":
-        "monetag",
+            "provider":
+                "monetag",
 
-    "zone_id":
-        "11853919",
+            "zone_id":
+                "11853919",
 
-    "monetag_site_id":
-        "3499970",
+            "monetag_site_id":
+                "3499970",
 
-    "status":
-        "completed",
+            "status":
+                "completed",
 
-    "ad_day":
-        today,
+            "ad_day":
+                today,
 
-    "created_at":
-        now()
+            "created_at":
+                now()
 
-})
+        })
 
+
+        print(
+            f"✅ Ad reward record created: {ad_ref.id}"
+        )
+
+
+        # ----------------------------------------------------
+        # CREDIT QUIZBEE POINTS
+        # ----------------------------------------------------
 
         user_ref(
             telegram_id
@@ -2120,9 +2225,22 @@ def reward_ad():
         })
 
 
-        db.collection(
-            "transactions"
-        ).document().set({
+        print(
+            f"💰 Added {reward} points to user."
+        )
+
+
+        # ----------------------------------------------------
+        # TRANSACTION RECORD
+        # ----------------------------------------------------
+
+        transaction_ref =
+            db.collection(
+                "transactions"
+            ).document()
+
+
+        transaction_ref.set({
 
             "telegram_id":
                 telegram_id,
@@ -2137,7 +2255,10 @@ def reward_ad():
                 "quizbee_points",
 
             "provider":
-                "monetag", 
+                "monetag",
+
+            "zone_id":
+                "11853919",
 
             "reference":
                 ad_ref.id,
@@ -2148,13 +2269,43 @@ def reward_ad():
         })
 
 
-        updated_user = user_ref(
-            telegram_id
-        ).get().to_dict()
+        print(
+            f"🧾 Transaction recorded: {transaction_ref.id}"
+        )
 
 
-        new_count = watched + 1
+        # ----------------------------------------------------
+        # GET UPDATED USER
+        # ----------------------------------------------------
 
+        updated_user =
+            user_ref(
+                telegram_id
+            ).get().to_dict()
+
+
+        new_count =
+            watched + 1
+
+
+        print(
+            f"📊 New ad count: {new_count}"
+        )
+
+
+        print(
+            "✅ AD REWARD COMPLETED SUCCESSFULLY"
+        )
+
+
+        print(
+            "========================================"
+        )
+
+
+        # ----------------------------------------------------
+        # RESPONSE
+        # ----------------------------------------------------
 
         return jsonify({
 
@@ -2180,10 +2331,28 @@ def reward_ad():
 
             "message":
                 f"+{reward} QuizBee Point"
+
         })
 
 
     except Exception as e:
+
+        print(
+            "========================================"
+        )
+
+        print(
+            "❌ AD REWARD ERROR"
+        )
+
+        print(
+            str(e)
+        )
+
+        print(
+            "========================================"
+        )
+
 
         return jsonify({
 
