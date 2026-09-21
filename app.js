@@ -605,7 +605,7 @@ async function bootstrap() {
             data.user
         );
 
-        initAdsGram();
+        initMonetag();
         await loadAdsStatus();
 
 
