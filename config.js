@@ -10,6 +10,12 @@ window.QUIZBEE_CONFIG = {
         "48771",
 
     ADSGRAM_DEBUG:
-        true
+        true,
+
+    TADS_WIDGET_ID:
+        "12229",
+
+    TADS_DEBUG:
+        false
 
 };
