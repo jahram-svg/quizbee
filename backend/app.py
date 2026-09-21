@@ -2073,28 +2073,31 @@ def reward_ad():
 
         ad_ref.set({
 
-            "telegram_id":
-                telegram_id,
+    "telegram_id":
+        telegram_id,
 
-            "reward":
-                reward,
+    "reward":
+        reward,
 
-            "provider":
-                "adsgram",
+    "provider":
+        "monetag",
 
-            "block_id":
-                "48771",
+    "zone_id":
+        "11853919",
 
-            "status":
-                "completed",
+    "monetag_site_id":
+        "3499970",
 
-            "ad_day":
-                today,
+    "status":
+        "completed",
 
-            "created_at":
-                now()
+    "ad_day":
+        today,
 
-        })
+    "created_at":
+        now()
+
+})
 
 
         user_ref(
@@ -2134,7 +2137,7 @@ def reward_ad():
                 "quizbee_points",
 
             "provider":
-                "adsgram",
+                "monetag", 
 
             "reference":
                 ad_ref.id,
