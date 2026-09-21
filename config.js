@@ -6,16 +6,13 @@ window.QUIZBEE_CONFIG = {
     FUNDING_BOT_USERNAME:
         "QuizBeeFundingBot",
 
-    ADSGRAM_BLOCK_ID:
-        "48771",
+    MONETAG_ZONE_ID:
+        "11853919",
 
-    ADSGRAM_DEBUG:
-        true,
+    MONETAG_SITE_ID:
+        "3499970",
 
-    TADS_WIDGET_ID:
-        "12229",
-
-    TADS_DEBUG:
+    MONETAG_DEBUG:
         false
 
 };
