@@ -2475,10 +2475,11 @@ async function submitAnswer(
 }
 
 
-// ADS
+// ============================================================
+// MONETAG ADS
 // ============================================================
 
-let adsgramController = null;
+let monetagAdReady = false;
 
 let adsSettings = {
     enabled: true,
@@ -2489,98 +2490,48 @@ let adsSettings = {
 
 
 // ------------------------------------------------------------
-// TADS INITIALIZATION
+// MONETAG INITIALIZATION
 // ------------------------------------------------------------
 
-function initAdsGram() {
+function initMonetag() {
 
     try {
 
-        const widgetId =
-            CONFIG.TADS_WIDGET_ID;
-
         if (
-            !widgetId ||
-            !window.tads
+            typeof window.show_11853919 !==
+            "function"
         ) {
 
             console.warn(
-                "TADS is not available."
+                "Monetag SDK is not available yet."
             );
 
-            return null;
+            monetagAdReady = false;
+
+            return false;
         }
 
 
-        /*
-         * TADS init returns a Promise.
-         *
-         * We keep that Promise here.
-         * The actual ad controller is
-         * obtained when the Promise resolves.
-         */
-
-        adsgramController =
-            window.tads.init({
-
-                widgetId:
-                    String(widgetId),
-
-                type:
-                    "fullscreen",
-
-                debug:
-                    Boolean(
-                        CONFIG.TADS_DEBUG
-                    ),
-
-                onShowReward:
-                    function (result) {
-
-                        console.log(
-                            "TADS rewarded ad completed:",
-                            result
-                        );
-
-                        showToast(
-                            "✅ TADS ad completed!"
-                        );
-
-                    },
-
-                onAdsNotFound:
-                    function () {
-
-                        console.warn(
-                            "TADS: No ads found."
-                        );
-
-                        showToast(
-                            "📺 No ad is available right now."
-                        );
-
-                    }
-
-            });
-
+        monetagAdReady = true;
 
         console.log(
-            "TADS initialized:",
-            widgetId
+            "Monetag initialized:",
+            "11853919"
         );
 
-
-        return adsgramController;
+        return true;
 
 
     } catch (error) {
 
         console.error(
-            "TADS initialization error:",
+            "Monetag initialization error:",
             error
         );
 
-        return null;
+        monetagAdReady = false;
+
+        return false;
     }
 }
 
@@ -2641,7 +2592,7 @@ async function loadAdsStatus() {
 
 
 // ------------------------------------------------------------
-// WATCH REWARDED AD
+// WATCH REWARDED MONETAG AD
 // ------------------------------------------------------------
 
 async function watchAd() {
@@ -2679,6 +2630,21 @@ async function watchAd() {
     }
 
 
+    if (
+        typeof window.show_11853919 !==
+        "function"
+    ) {
+
+        showToast(
+            "📺 Ad system is still loading. Please try again."
+        );
+
+        initMonetag();
+
+        return;
+    }
+
+
     if (button) {
 
         button.disabled =
@@ -2692,93 +2658,109 @@ async function watchAd() {
 
     try {
 
-        /*
-         * Initialize TADS if needed.
-         */
-
-        if (!adsgramController) {
-
-            adsgramController =
-                initAdsGram();
-
-        }
-
-
-        if (!adsgramController) {
-
-            throw new Error(
-                "TADS is not available."
-            );
-
-        }
-
-
-        /*
-         * TADS init returns a Promise.
-         *
-         * Wait for the actual controller.
-         */
-
-        if (button) {
-
-            button.textContent =
-                "📺 LOADING...";
-
-        }
-
-
-        const controller =
-            await adsgramController;
-
-
-        if (
-            !controller ||
-            typeof controller.showAd !==
-                "function"
-        ) {
-
-            throw new Error(
-                "TADS ad controller is unavailable."
-            );
-
-        }
-
-
         if (button) {
 
             button.textContent =
                 "📺 WATCHING...";
-
         }
 
 
         /*
-         * Show the fullscreen rewarded ad.
+         * Monetag Rewarded Interstitial
          *
-         * TADS fires onShowReward
-         * when the rewarded ad has
-         * been completed.
+         * The promise resolves after the
+         * rewarded ad has been completed.
          */
 
-        await controller.showAd();
+        await window.show_11853919();
 
 
-        console.log(
-            "TADS fullscreen ad displayed."
+        /*
+         * IMPORTANT:
+         *
+         * Only request the QuizBee reward
+         * AFTER Monetag completes.
+         */
+
+        if (button) {
+
+            button.textContent =
+                "🎁 CLAIMING REWARD...";
+        }
+
+
+        const rewardData =
+            await api(
+                "/api/ads/reward",
+                {
+                    method: "POST",
+                    body: JSON.stringify({
+                        provider:
+                            "monetag",
+                        zone_id:
+                            "11853919"
+                    })
+                }
+            );
+
+
+        if (
+            !rewardData.success
+        ) {
+
+            throw new Error(
+                rewardData.error ||
+                "Unable to claim ad reward."
+            );
+        }
+
+
+        /*
+         * Update local user state
+         */
+
+        if (
+            rewardData.user
+        ) {
+
+            updateUserState(
+                rewardData.user
+            );
+
+        }
+
+
+        adsWatched =
+            Number(
+                rewardData.ads_watched ??
+                adsWatched + 1
+            );
+
+
+        adsSettings.ads_watched =
+            adsWatched;
+
+
+        updateAdsUI();
+
+
+        showToast(
+            rewardData.message ||
+            `+${rewardData.reward_points || 1} QuizBee Point 🎉`
         );
 
 
     } catch (error) {
 
         console.error(
-            "TADS ad error:",
+            "Monetag ad error:",
             error
         );
 
 
         showToast(
             error?.message ||
-            "Unable to load the ad."
+            "Unable to complete the ad."
         );
 
 
@@ -2793,6 +2775,8 @@ async function watchAd() {
                 "📺 WATCH AD";
 
         }
+
+        updateAdsUI();
 
     }
 
@@ -2898,7 +2882,9 @@ function updateAdsUI() {
 
     if (button) {
 
-        if (!adsSettings.enabled) {
+        if (
+            !adsSettings.enabled
+        ) {
 
             button.disabled =
                 true;
@@ -2932,11 +2918,7 @@ function updateAdsUI() {
 
     }
 
-}
-
-
-// ============================================================
-
+            }
     
 // ============================================================
 // LEADERBOARD
