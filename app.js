@@ -2513,11 +2513,11 @@ function initAdsGram() {
 
 
         /*
-         * TADS fullscreen rewarded widget.
+         * TADS init returns a Promise.
          *
-         * We keep the existing function name
-         * initAdsGram() so the rest of QuizBee's
-         * bootstrap code does not need to change.
+         * We keep that Promise here.
+         * The actual ad controller is
+         * obtained when the Promise resolves.
          */
 
         adsgramController =
@@ -2534,16 +2534,6 @@ function initAdsGram() {
                         CONFIG.TADS_DEBUG
                     ),
 
-                /*
-                 * This callback is fired by TADS
-                 * after the user watches the
-                 * rewarded ad.
-                 *
-                 * TEST ONLY:
-                 * We do NOT award QuizBee Points
-                 * here yet.
-                 */
-
                 onShowReward:
                     function (result) {
 
@@ -2553,7 +2543,7 @@ function initAdsGram() {
                         );
 
                         showToast(
-                            "✅ TADS ad completed successfully!"
+                            "✅ TADS ad completed!"
                         );
 
                     },
@@ -2566,7 +2556,7 @@ function initAdsGram() {
                         );
 
                         showToast(
-                            "📺 No TADS ad is available right now."
+                            "📺 No ad is available right now."
                         );
 
                     }
@@ -2575,7 +2565,7 @@ function initAdsGram() {
 
 
         console.log(
-            "TADS initialized successfully.",
+            "TADS initialized:",
             widgetId
         );
 
@@ -2646,11 +2636,6 @@ async function loadAdsStatus() {
             error
         );
 
-        /*
-         * Keep the default UI if the
-         * status request fails.
-         */
-
     }
 }
 
@@ -2701,73 +2686,85 @@ async function watchAd() {
 
         button.textContent =
             "📺 LOADING AD...";
+
     }
 
 
     try {
 
         /*
-         * Initialize TADS if it has
-         * not already been initialized.
+         * Initialize TADS if needed.
          */
 
         if (!adsgramController) {
 
             adsgramController =
                 initAdsGram();
+
         }
 
 
         if (!adsgramController) {
 
             throw new Error(
-                "TADS ads are not ready yet. Please try again."
+                "TADS is not available."
             );
+
         }
 
+
+        /*
+         * TADS init returns a Promise.
+         *
+         * Wait for the actual controller.
+         */
 
         if (button) {
 
             button.textContent =
                 "📺 LOADING...";
+
         }
 
 
-        /*
-         * TADS fullscreen flow:
-         *
-         * 1. Load the ad.
-         * 2. Show the ad.
-         * 3. TADS fires onShowReward
-         *    after the rewarded ad is watched.
-         *
-         * We are NOT awarding QuizBee Points
-         * during this test.
-         */
+        const controller =
+            await adsgramController;
 
-        await adsgramController.loadAd();
+
+        if (
+            !controller ||
+            typeof controller.showAd !==
+                "function"
+        ) {
+
+            throw new Error(
+                "TADS ad controller is unavailable."
+            );
+
+        }
 
 
         if (button) {
 
             button.textContent =
                 "📺 WATCHING...";
+
         }
 
 
-        await adsgramController.showAd();
-
-
         /*
-         * The onShowReward callback above
-         * confirms the rewarded completion.
+         * Show the fullscreen rewarded ad.
          *
-         * We intentionally do not call
-         * /api/ads/reward yet.
+         * TADS fires onShowReward
+         * when the rewarded ad has
+         * been completed.
          */
 
+        await controller.showAd();
+
+
         console.log(
-            "TADS fullscreen ad flow completed."
+            "TADS fullscreen ad displayed."
         );
 
 
@@ -2780,7 +2777,7 @@ async function watchAd() {
 
 
         showToast(
-            error.message ||
+            error?.message ||
             "Unable to load the ad."
         );
 
@@ -2794,9 +2791,11 @@ async function watchAd() {
 
             button.textContent =
                 "📺 WATCH AD";
+
         }
 
     }
+
 }
 
 
@@ -2938,7 +2937,7 @@ function updateAdsUI() {
 
 // ============================================================
 
-
+    
 // ============================================================
 // LEADERBOARD
 // ============================================================
