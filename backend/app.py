@@ -2014,8 +2014,7 @@ def reward_ad():
         )
 
 
-        telegram_id =
-            user["telegram_id"]
+        telegram_id = user["telegram_id"]
 
 
         print(
@@ -2027,8 +2026,7 @@ def reward_ad():
         # ADS SETTINGS
         # ----------------------------------------------------
 
-        settings =
-            get_ads_settings()
+        settings = get_ads_settings()
 
 
         print(
@@ -2057,8 +2055,7 @@ def reward_ad():
         # TODAY
         # ----------------------------------------------------
 
-        today =
-            get_ads_today()
+        today = get_ads_today()
 
 
         print(
@@ -2088,8 +2085,7 @@ def reward_ad():
 
         for doc in docs:
 
-            data =
-                doc.to_dict() or {}
+            data = doc.to_dict() or {}
 
 
             if (
@@ -2146,8 +2142,7 @@ def reward_ad():
         # REWARD AMOUNT
         # ----------------------------------------------------
 
-        reward =
-            settings[
+        reward = settings[
                 "reward_points"
             ]
 
@@ -2161,8 +2156,7 @@ def reward_ad():
         # CREATE AD REWARD RECORD
         # ----------------------------------------------------
 
-        ad_ref =
-            db.collection(
+        ad_ref = db.collection(
                 "ad_rewards"
             ).document()
 
@@ -2234,8 +2228,7 @@ def reward_ad():
         # TRANSACTION RECORD
         # ----------------------------------------------------
 
-        transaction_ref =
-            db.collection(
+        transaction_ref = db.collection(
                 "transactions"
             ).document()
 
@@ -2278,14 +2271,12 @@ def reward_ad():
         # GET UPDATED USER
         # ----------------------------------------------------
 
-        updated_user =
-            user_ref(
+        updated_user = user_ref(
                 telegram_id
             ).get().to_dict()
 
 
-        new_count =
-            watched + 1
+        new_count = watched + 1
 
 
         print(
