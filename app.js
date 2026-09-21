@@ -2475,11 +2475,11 @@ async function submitAnswer(
 }
 
 
-// ============================================================
 // ADS
 // ============================================================
 
 let adsgramController = null;
+
 let adsSettings = {
     enabled: true,
     reward_points: 1,
@@ -2489,55 +2489,104 @@ let adsSettings = {
 
 
 // ------------------------------------------------------------
-// ADSGRAM INITIALIZATION
+// TADS INITIALIZATION
 // ------------------------------------------------------------
 
 function initAdsGram() {
 
     try {
 
-        const blockId =
-            CONFIG.ADSGRAM_BLOCK_ID;
+        const widgetId =
+            CONFIG.TADS_WIDGET_ID;
 
         if (
-            !blockId ||
-            !window.Adsgram
+            !widgetId ||
+            !window.tads
         ) {
 
             console.warn(
-                "AdsGram is not available."
+                "TADS is not available."
             );
 
             return null;
         }
 
-        adsgramController =
-            window.Adsgram.init({
 
-                blockId:
-                    String(blockId),
+        /*
+         * TADS fullscreen rewarded widget.
+         *
+         * We keep the existing function name
+         * initAdsGram() so the rest of QuizBee's
+         * bootstrap code does not need to change.
+         */
+
+        adsgramController =
+            window.tads.init({
+
+                widgetId:
+                    String(widgetId),
+
+                type:
+                    "fullscreen",
 
                 debug:
                     Boolean(
-                        CONFIG.ADSGRAM_DEBUG
+                        CONFIG.TADS_DEBUG
                     ),
 
-                debugConsole:
-                    Boolean(
-                        CONFIG.ADSGRAM_DEBUG
-                    ),
+                /*
+                 * This callback is fired by TADS
+                 * after the user watches the
+                 * rewarded ad.
+                 *
+                 * TEST ONLY:
+                 * We do NOT award QuizBee Points
+                 * here yet.
+                 */
 
-                debugBannerType:
-                    "RewardedVideo"
+                onShowReward:
+                    function (result) {
+
+                        console.log(
+                            "TADS rewarded ad completed:",
+                            result
+                        );
+
+                        showToast(
+                            "✅ TADS ad completed successfully!"
+                        );
+
+                    },
+
+                onAdsNotFound:
+                    function () {
+
+                        console.warn(
+                            "TADS: No ads found."
+                        );
+
+                        showToast(
+                            "📺 No TADS ad is available right now."
+                        );
+
+                    }
 
             });
 
+
+        console.log(
+            "TADS initialized successfully.",
+            widgetId
+        );
+
+
         return adsgramController;
+
 
     } catch (error) {
 
         console.error(
-            "AdsGram initialization error:",
+            "TADS initialization error:",
             error
         );
 
@@ -2558,6 +2607,7 @@ async function loadAdsStatus() {
             await api(
                 "/api/ads/status"
             );
+
 
         adsSettings = {
 
@@ -2581,10 +2631,13 @@ async function loadAdsStatus() {
 
         };
 
+
         adsWatched =
             adsSettings.ads_watched;
 
+
         updateAdsUI();
+
 
     } catch (error) {
 
@@ -2597,6 +2650,7 @@ async function loadAdsStatus() {
          * Keep the default UI if the
          * status request fails.
          */
+
     }
 }
 
@@ -2652,6 +2706,11 @@ async function watchAd() {
 
     try {
 
+        /*
+         * Initialize TADS if it has
+         * not already been initialized.
+         */
+
         if (!adsgramController) {
 
             adsgramController =
@@ -2662,21 +2721,32 @@ async function watchAd() {
         if (!adsgramController) {
 
             throw new Error(
-                "Ads are not ready yet. Please try again."
+                "TADS ads are not ready yet. Please try again."
             );
         }
 
 
+        if (button) {
+
+            button.textContent =
+                "📺 LOADING...";
+        }
+
+
         /*
-         * AdsGram Reward format:
+         * TADS fullscreen flow:
          *
-         * show() resolves only after
-         * the rewarded ad has been
-         * watched to completion.
+         * 1. Load the ad.
+         * 2. Show the ad.
+         * 3. TADS fires onShowReward
+         *    after the rewarded ad is watched.
          *
-         * If skipped/error occurs,
-         * the promise rejects.
+         * We are NOT awarding QuizBee Points
+         * during this test.
          */
+
+        await adsgramController.loadAd();
+
 
         if (button) {
 
@@ -2685,83 +2755,33 @@ async function watchAd() {
         }
 
 
-        await adsgramController.show();
+        await adsgramController.showAd();
 
 
         /*
-         * IMPORTANT:
+         * The onShowReward callback above
+         * confirms the rewarded completion.
          *
-         * We only call our backend
-         * after AdsGram reports that
-         * the Reward ad completed.
+         * We intentionally do not call
+         * /api/ads/reward yet.
          */
 
-        if (button) {
-
-            button.textContent =
-                "💰 CLAIMING...";
-        }
-
-
-        const data =
-            await api(
-                "/api/ads/reward",
-                {
-                    method:
-                        "POST",
-
-                    body:
-                        JSON.stringify({})
-                }
-            );
-
-
-        if (data.user) {
-
-            updateUserState(
-                data.user
-            );
-        }
-
-
-        const reward =
-            Number(
-                data.reward_points ??
-                data.reward ??
-                adsSettings.reward_points
-            );
-
-
-        adsWatched =
-            Number(
-                data.ads_watched ??
-                adsWatched + 1
-            );
-
-
-        adsSettings.ads_watched =
-            adsWatched;
-
-
-        updateAdsUI();
-
-
-        showToast(
-            `📺 Ad completed! +${reward} QuizBee Point${reward === 1 ? "" : "s"}`
+        console.log(
+            "TADS fullscreen ad flow completed."
         );
 
 
     } catch (error) {
 
         console.error(
-            "AdsGram / ad reward error:",
+            "TADS ad error:",
             error
         );
 
 
         showToast(
             error.message ||
-            "Unable to complete the ad."
+            "Unable to load the ad."
         );
 
 
@@ -2775,6 +2795,7 @@ async function watchAd() {
             button.textContent =
                 "📺 WATCH AD";
         }
+
     }
 }
 
@@ -2790,15 +2811,18 @@ function updateAdsUI() {
             "adsProgress"
         );
 
+
     const progressBar =
         document.getElementById(
             "adsProgressBar"
         );
 
+
     const button =
         document.getElementById(
             "watchAdButton"
         );
+
 
     const rewardDisplay =
         document.getElementById(
@@ -2857,10 +2881,11 @@ function updateAdsUI() {
     }
 
 
-        const earningHint =
+    const earningHint =
         document.getElementById(
             "adsEarningHint"
         );
+
 
     if (earningHint) {
 
@@ -2909,6 +2934,9 @@ function updateAdsUI() {
     }
 
 }
+
+
+// ============================================================
 
 
 // ============================================================
