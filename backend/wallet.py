@@ -1561,7 +1561,7 @@ def approve_point_order(
             "error": "Unauthorized Telegram session."
         }), 401
 
-    ref = (
+    order_ref = (
         db.collection(
             "point_orders"
         )
@@ -1570,137 +1570,305 @@ def approve_point_order(
         )
     )
 
-    snap = ref.get()
-
-    if not snap.exists:
-        return jsonify({
-            "success": False,
-            "error": "Point order not found."
-        }), 404
-
-    order = snap.to_dict()
-
-    if order.get("status") != "pending":
-        return jsonify({
-            "success": False,
-            "error": (
-                "This order has already "
-                "been processed."
-            )
-        }), 400
-
-    telegram_id = str(
-        order.get(
-            "telegram_id"
-        )
-    )
-
-    points = safe_int(
-        order.get(
-            "points",
-            0
-        )
-    )
-
-    if points <= 0:
-        return jsonify({
-            "success": False,
-            "error": "Invalid point amount."
-        }), 400
-
-    # Credit points.
-    user_ref(
-        telegram_id
-    ).update({
-        "quizbee_points":
-            firestore.Increment(
-                points
-            ),
-        "updated_at":
-            now()
-    })
-
-    ref.update({
-        "status": "paid",
-        "paid_at": now(),
-        "approved_at": now(),
-        "updated_at": now()
-    })
-
-    # Update the pending transaction.
-    tx_query = (
+    credit_transaction_ref = (
         db.collection(
             "transactions"
         )
-        .where(
-            "provider_reference",
-            "==",
-            order_id
+        .document(
+            f"point_purchase_credit_{order_id}"
         )
-        .where(
-            "type",
-            "==",
-            "point_purchase"
-        )
-        .limit(1)
     )
 
-    tx_docs = list(
-        tx_query.stream()
-    )
+    firestore_transaction = db.transaction()
 
-    for tx_doc in tx_docs:
-        tx_doc.reference.update({
-            "status": "completed",
-            "updated_at": now()
-        })
+    @firestore.transactional
+    def approve_transaction(tx):
 
-    transaction(
-        telegram_id=telegram_id,
-        tx_type="point_purchase_credit",
-        amount=points,
-        currency="quizbee_points",
-        balance_type="quizbee_points",
-        status="completed",
-        provider=order.get(
-            "provider",
-            "manual"
-        ),
-        provider_reference=order_id,
-        description=(
-            f"Approved purchase: "
-            f"{points} QuizBee Points"
-        ),
-        extra={
-            "order_id": order_id
+        order_snapshot = order_ref.get(
+            transaction=tx
+        )
+
+        if not order_snapshot.exists:
+            raise ValueError(
+                "Point order not found."
+            )
+
+        order = (
+            order_snapshot.to_dict()
+            or {}
+        )
+
+        # ----------------------------------------------------
+        # IDEMPOTENCY
+        #
+        # Only a PENDING order can be approved.
+        # This prevents a second approval from crediting
+        # the same purchase again.
+        # ----------------------------------------------------
+
+        if order.get("status") != "pending":
+            raise ValueError(
+                "This order has already been processed."
+            )
+
+        telegram_id = str(
+            order.get(
+                "telegram_id",
+                ""
+            )
+        ).strip()
+
+        if not telegram_id:
+            raise ValueError(
+                "Point order has no Telegram user."
+            )
+
+        points = safe_int(
+            order.get(
+                "points",
+                0
+            )
+        )
+
+        if points <= 0:
+            raise ValueError(
+                "Invalid point amount."
+            )
+
+        user_reference = user_ref(
+            telegram_id
+        )
+
+        user_snapshot = user_reference.get(
+            transaction=tx
+        )
+
+        if not user_snapshot.exists:
+            raise ValueError(
+                "User account not found."
+            )
+
+        # ----------------------------------------------------
+        # PERMANENT CREDIT MARKER
+        #
+        # If this document already exists, this purchase
+        # has already been credited.
+        # ----------------------------------------------------
+
+        credit_snapshot = (
+            credit_transaction_ref.get(
+                transaction=tx
+            )
+        )
+
+        if credit_snapshot.exists:
+            raise ValueError(
+                "This purchase has already been credited."
+            )
+
+        # ----------------------------------------------------
+        # CREDIT POINTS + CLOSE ORDER + CREATE CREDIT
+        # IN ONE FIRESTORE TRANSACTION
+        # ----------------------------------------------------
+
+        tx.update(
+            user_reference,
+            {
+                "quizbee_points":
+                    firestore.Increment(
+                        points
+                    ),
+
+                "updated_at":
+                    firestore.SERVER_TIMESTAMP
+            }
+        )
+
+        tx.update(
+            order_ref,
+            {
+                "status":
+                    "paid",
+
+                "paid_at":
+                    firestore.SERVER_TIMESTAMP,
+
+                "approved_at":
+                    firestore.SERVER_TIMESTAMP,
+
+                "updated_at":
+                    firestore.SERVER_TIMESTAMP
+            }
+        )
+
+        tx.set(
+            credit_transaction_ref,
+            {
+                "telegram_id":
+                    telegram_id,
+
+                "type":
+                    "point_purchase_credit",
+
+                "amount":
+                    points,
+
+                "currency":
+                    "quizbee_points",
+
+                "balance_type":
+                    "quizbee_points",
+
+                "status":
+                    "completed",
+
+                "provider":
+                    order.get(
+                        "provider",
+                        "manual"
+                    ),
+
+                "provider_reference":
+                    order_id,
+
+                "description":
+                    (
+                        f"Approved purchase: "
+                        f"{points} QuizBee Points"
+                    ),
+
+                "order_id":
+                    order_id,
+
+                "created_at":
+                    firestore.SERVER_TIMESTAMP,
+
+                "updated_at":
+                    firestore.SERVER_TIMESTAMP
+            }
+        )
+
+        return {
+            "telegram_id":
+                telegram_id,
+
+            "points":
+                points
         }
-    )
+
+    try:
+
+        result = approve_transaction(
+            firestore_transaction
+        )
+
+    except ValueError as exc:
+
+        return jsonify({
+            "success": False,
+            "error": str(exc)
+        }), 400
+
+    except Exception as exc:
+
+        print(
+            "Point purchase approval transaction error:",
+            repr(exc)
+        )
+
+        return jsonify({
+            "success": False,
+            "error":
+                "Unable to approve point purchase."
+        }), 500
+
+    telegram_id = result["telegram_id"]
+    points = result["points"]
+
+    # --------------------------------------------------------
+    # UPDATE THE ORIGINAL PENDING TRANSACTION
+    # --------------------------------------------------------
+
+    try:
+
+        tx_query = (
+            db.collection(
+                "transactions"
+            )
+            .where(
+                "provider_reference",
+                "==",
+                order_id
+            )
+            .where(
+                "type",
+                "==",
+                "point_purchase"
+            )
+            .limit(1)
+        )
+
+        tx_docs = list(
+            tx_query.stream()
+        )
+
+        for tx_doc in tx_docs:
+
+            tx_doc.reference.update({
+                "status":
+                    "completed",
+
+                "updated_at":
+                    now()
+            })
+
+    except Exception as exc:
+
+        print(
+            "Pending point purchase transaction update error:",
+            repr(exc)
+        )
+
+    # --------------------------------------------------------
+    # NOTIFICATION
+    # --------------------------------------------------------
 
     create_notification(
-    user_id=telegram_id,
-    title="💰 Points Added!",
-    message=(
-        f"Your payment has been approved.\n\n"
-        f"🪙 {points:,} QuizBee Points "
-        f"have been added to your wallet."
-    ),
-    notification_type="wallet",
-    action_url="",
-    button_text="",
-    dedupe_key=(
-        f"point-purchase-approved:"
-        f"{order_id}"
-    ),
-    send_telegram=True
+        user_id=telegram_id,
+
+        title="💰 Points Added!",
+
+        message=(
+            f"Your payment has been approved.\n\n"
+            f"🪙 {points:,} QuizBee Points "
+            f"have been added to your wallet."
+        ),
+
+        notification_type="wallet",
+
+        action_url="",
+
+        button_text="",
+
+        dedupe_key=(
+            f"point-purchase-approved:"
+            f"{order_id}"
+        ),
+
+        send_telegram=True
     )
 
     return jsonify({
         "success": True,
-        "points_added": points,
-        "message": (
-            f"{points} QuizBee Points "
-            "added successfully."
-        )
+
+        "points_added":
+            points,
+
+        "message":
+            (
+                f"{points} QuizBee Points "
+                "added successfully."
+            )
     })
 
 
