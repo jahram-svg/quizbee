@@ -2495,44 +2495,27 @@ let adsSettings = {
 
 function initMonetag() {
 
-    try {
+    if (
+        typeof window.show_11853919 !== "function"
+    ) {
 
-        if (
-            typeof window.show_11853919 !==
-            "function"
-        ) {
-
-            console.warn(
-                "Monetag SDK is not available yet."
-            );
-
-            monetagAdReady = false;
-
-            return false;
-        }
-
-
-        monetagAdReady = true;
-
-        console.log(
-            "Monetag initialized:",
-            "11853919"
-        );
-
-        return true;
-
-
-    } catch (error) {
-
-        console.error(
-            "Monetag initialization error:",
-            error
+        console.warn(
+            "Monetag SDK is not available."
         );
 
         monetagAdReady = false;
 
         return false;
     }
+
+    monetagAdReady = true;
+
+    console.log(
+        "Monetag ready. Zone:",
+        "11853919"
+    );
+
+    return true;
 }
 
 
@@ -2548,6 +2531,16 @@ async function loadAdsStatus() {
             await api(
                 "/api/ads/status"
             );
+
+
+        if (!data.success) {
+
+            throw new Error(
+                data.error ||
+                "Unable to load ad status."
+            );
+
+        }
 
 
         adsSettings = {
@@ -2580,6 +2573,12 @@ async function loadAdsStatus() {
         updateAdsUI();
 
 
+        console.log(
+            "Ads status loaded:",
+            adsSettings
+        );
+
+
     } catch (error) {
 
         console.error(
@@ -2588,11 +2587,12 @@ async function loadAdsStatus() {
         );
 
     }
+
 }
 
 
 // ------------------------------------------------------------
-// WATCH REWARDED MONETAG AD
+// WATCH MONETAG REWARDED AD
 // ------------------------------------------------------------
 
 async function watchAd() {
@@ -2603,9 +2603,11 @@ async function watchAd() {
         );
 
 
-    if (
-        !adsSettings.enabled
-    ) {
+    // --------------------------------------------------------
+    // BASIC CHECKS
+    // --------------------------------------------------------
+
+    if (!adsSettings.enabled) {
 
         showToast(
             "📺 Ads are currently unavailable."
@@ -2630,10 +2632,18 @@ async function watchAd() {
     }
 
 
+    // --------------------------------------------------------
+    // CHECK MONETAG SDK
+    // --------------------------------------------------------
+
     if (
         typeof window.show_11853919 !==
         "function"
     ) {
+
+        console.error(
+            "Monetag function show_11853919() was not found."
+        );
 
         showToast(
             "📺 Ad system is still loading. Please try again."
@@ -2645,10 +2655,13 @@ async function watchAd() {
     }
 
 
+    // --------------------------------------------------------
+    // LOCK BUTTON
+    // --------------------------------------------------------
+
     if (button) {
 
-        button.disabled =
-            true;
+        button.disabled = true;
 
         button.textContent =
             "📺 LOADING AD...";
@@ -2658,66 +2671,100 @@ async function watchAd() {
 
     try {
 
+        console.log(
+            "Starting Monetag rewarded ad..."
+        );
+
+
         if (button) {
 
             button.textContent =
                 "📺 WATCHING...";
+
         }
 
 
-        /*
-         * Monetag Rewarded Interstitial
-         *
-         * The promise resolves after the
-         * rewarded ad has been completed.
-         */
+        // ----------------------------------------------------
+        // SHOW MONETAG AD
+        // ----------------------------------------------------
 
         await window.show_11853919();
 
 
-        /*
-         * IMPORTANT:
-         *
-         * Only request the QuizBee reward
-         * AFTER Monetag completes.
-         */
+        console.log(
+            "Monetag ad promise completed."
+        );
+
+
+        // ----------------------------------------------------
+        // AD COMPLETED
+        // ----------------------------------------------------
 
         if (button) {
 
             button.textContent =
                 "🎁 CLAIMING REWARD...";
+
         }
 
+
+        console.log(
+            "Requesting QuizBee reward..."
+        );
+
+
+        // ----------------------------------------------------
+        // REQUEST QUIZBEE REWARD
+        // ----------------------------------------------------
 
         const rewardData =
             await api(
                 "/api/ads/reward",
                 {
                     method: "POST",
-                    body: JSON.stringify({
-                        provider:
-                            "monetag",
-                        zone_id:
-                            "11853919"
-                    })
+
+                    body:
+                        JSON.stringify({
+                            provider:
+                                "monetag",
+
+                            zone_id:
+                                "11853919",
+
+                            site_id:
+                                "3499970"
+                        })
                 }
             );
 
 
+        console.log(
+            "QuizBee reward response:",
+            rewardData
+        );
+
+
+        // ----------------------------------------------------
+        // CHECK SERVER RESPONSE
+        // ----------------------------------------------------
+
         if (
-            !rewardData.success
+            !rewardData ||
+            rewardData.success !== true
         ) {
 
             throw new Error(
-                rewardData.error ||
-                "Unable to claim ad reward."
+                rewardData?.error ||
+                rewardData?.message ||
+                "QuizBee could not credit the ad reward."
             );
+
         }
 
 
-        /*
-         * Update local user state
-         */
+        // ----------------------------------------------------
+        // UPDATE USER
+        // ----------------------------------------------------
 
         if (
             rewardData.user
@@ -2730,10 +2777,16 @@ async function watchAd() {
         }
 
 
+        // ----------------------------------------------------
+        // UPDATE AD COUNT
+        // ----------------------------------------------------
+
         adsWatched =
             Number(
                 rewardData.ads_watched ??
-                adsWatched + 1
+                (
+                    Number(adsWatched) + 1
+                )
             );
 
 
@@ -2741,40 +2794,70 @@ async function watchAd() {
             adsWatched;
 
 
+        // ----------------------------------------------------
+        // UPDATE UI
+        // ----------------------------------------------------
+
         updateAdsUI();
 
 
+        // ----------------------------------------------------
+        // SUCCESS
+        // ----------------------------------------------------
+
+        const reward =
+            Number(
+                rewardData.reward_points ??
+                rewardData.reward ??
+                adsSettings.reward_points ??
+                1
+            );
+
+
         showToast(
-            rewardData.message ||
-            `+${rewardData.reward_points || 1} QuizBee Point 🎉`
+            `🎉 +${reward} QuizBee ${
+                reward === 1
+                    ? "Point"
+                    : "Points"
+            }`
+        );
+
+
+        console.log(
+            "QuizBee ad reward successfully credited:",
+            reward
         );
 
 
     } catch (error) {
 
         console.error(
-            "Monetag ad error:",
+            "MONETAG REWARD ERROR:",
             error
         );
 
 
         showToast(
             error?.message ||
-            "Unable to complete the ad."
+            "Unable to claim ad reward."
         );
 
 
     } finally {
 
+        // ----------------------------------------------------
+        // RESTORE BUTTON
+        // ----------------------------------------------------
+
         if (button) {
 
-            button.disabled =
-                false;
+            button.disabled = false;
 
             button.textContent =
                 "📺 WATCH AD";
 
         }
+
 
         updateAdsUI();
 
@@ -2844,8 +2927,11 @@ function updateAdsUI() {
         progressBar.style.width =
             `${Math.min(
                 watched /
-                    Math.max(limit, 1) *
-                    100,
+                Math.max(
+                    limit,
+                    1
+                ) *
+                100,
                 100
             )}%`;
 
@@ -2886,8 +2972,7 @@ function updateAdsUI() {
             !adsSettings.enabled
         ) {
 
-            button.disabled =
-                true;
+            button.disabled = true;
 
             button.textContent =
                 "📺 ADS UNAVAILABLE";
@@ -2898,8 +2983,7 @@ function updateAdsUI() {
             watched >= limit
         ) {
 
-            button.disabled =
-                true;
+            button.disabled = true;
 
             button.textContent =
                 "✅ DAILY LIMIT REACHED";
@@ -2908,8 +2992,7 @@ function updateAdsUI() {
 
         else {
 
-            button.disabled =
-                false;
+            button.disabled = false;
 
             button.textContent =
                 "📺 WATCH AD";
@@ -2918,7 +3001,7 @@ function updateAdsUI() {
 
     }
 
-            }
+        }
     
 // ============================================================
 // LEADERBOARD
