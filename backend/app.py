@@ -957,6 +957,173 @@ def bootstrap():
 
 
 # ============================================================
+# GAME HISTORY
+# ============================================================
+
+@app.get("/api/game-history")
+def game_history():
+
+    try:
+
+        telegram_user = (
+            require_telegram_user()
+        )
+
+        if not telegram_user:
+
+            return jsonify({
+                "success": False,
+                "error":
+                    "Unauthorized Telegram session."
+            }), 401
+
+        telegram_id = str(
+            telegram_user["telegram_id"]
+        )
+
+        docs = list(
+            db.collection(
+                "transactions"
+            )
+            .where(
+                "telegram_id",
+                "==",
+                telegram_id
+            )
+            .limit(300)
+            .stream()
+        )
+
+        history = []
+
+        for doc in docs:
+
+            data = (
+                doc.to_dict()
+                or {}
+            )
+
+            tx_type = str(
+                data.get(
+                    "type",
+                    ""
+                )
+            )
+
+            if tx_type not in {
+                "game_entry",
+                "game_reward",
+                "competition_prize"
+            }:
+
+                continue
+
+            history.append({
+
+                "id":
+                    doc.id,
+
+                "type":
+                    tx_type,
+
+                "game_id":
+                    data.get(
+                        "game_id",
+                        ""
+                    ),
+
+                "challenge_id":
+                    data.get(
+                        "challenge_id",
+                        ""
+                    ),
+
+                "amount":
+                    data.get(
+                        "amount",
+                        data.get(
+                            "amount_usd",
+                            0
+                        )
+                    ),
+
+                "currency":
+                    data.get(
+                        "currency",
+                        "quizbee_points"
+                    ),
+
+                "description":
+                    data.get(
+                        "description",
+                        ""
+                    ),
+
+                "status":
+                    data.get(
+                        "status",
+                        "completed"
+                    ),
+
+                "created_at":
+                    (
+                        data.get(
+                            "created_at"
+                        ).isoformat()
+                        if isinstance(
+                            data.get(
+                                "created_at"
+                            ),
+                            datetime
+                        )
+                        else str(
+                            data.get(
+                                "created_at",
+                                ""
+                            )
+                        )
+                    )
+
+            })
+
+        history.sort(
+            key=lambda item:
+                item.get(
+                    "created_at",
+                    ""
+                ),
+            reverse=True
+        )
+
+        return jsonify({
+
+            "success":
+                True,
+
+            "history":
+                history[:100]
+
+        })
+
+    except Exception as e:
+
+        print(
+            "Game history error:",
+            repr(e)
+        )
+
+        return jsonify({
+
+            "success":
+                False,
+
+            "error":
+                "Unable to load game history."
+
+        }), 500
+
+
+# ============================================================
 # GAMES
 # ============================================================
 
