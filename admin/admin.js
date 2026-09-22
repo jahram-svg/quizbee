@@ -3307,6 +3307,23 @@ document
     settings.daily_earning_enabled
     !== false;
 
+        document
+    .getElementById(
+        "telegramChannelUrl"
+    )
+    .value =
+    settings.telegram_channel_url
+    || "";
+
+
+document
+    .getElementById(
+        "customerSupportUrl"
+    )
+    .value =
+    settings.customer_support_url
+    || "";
+
 
 // ----------------------------------------------------
 // ADS SETTINGS
@@ -3353,6 +3370,52 @@ await loadAdsActivity();
     
 }
 
+
+async function saveCommunitySettings() {
+
+    try {
+
+        await api(
+            "/api/admin/settings",
+            {
+                method: "POST",
+
+                body:
+                    JSON.stringify({
+
+                        telegram_channel_url:
+                            document
+                            .getElementById(
+                                "telegramChannelUrl"
+                            )
+                            .value
+                            .trim(),
+
+                        customer_support_url:
+                            document
+                            .getElementById(
+                                "customerSupportUrl"
+                            )
+                            .value
+                            .trim()
+
+                    })
+            }
+        );
+
+        showToast(
+            "✅ Community settings saved."
+        );
+
+    } catch (error) {
+
+        showToast(
+            error.message
+        );
+
+    }
+
+}
 
 async function saveSettings() {
 
