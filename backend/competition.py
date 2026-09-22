@@ -1280,18 +1280,51 @@ transaction.update(
             )
 
             transaction.set(
-                payout_ref,
-                {
-                    "telegram_id": telegram_id,
-                    "type": "competition_prize",
-                    "direction": "credit",
-                    "amount_usd": amount_each,
-                    "round_id": round_data["id"],
-                    "game_id": round_data.get("game_id"),
-                    "status": "completed",
-                    "created_at": firestore.SERVER_TIMESTAMP,
-                },
-                merge=True,
+    payout_ref,
+    {
+        "telegram_id":
+            telegram_id,
+
+        "type":
+            "competition_prize",
+
+        "direction":
+            "credit",
+
+        "amount":
+            amount_each,
+
+        "amount_usd":
+            amount_each,
+
+        "currency":
+            "USD",
+
+        "balance_type":
+            "prize_balance",
+
+        "round_id":
+            round_data["id"],
+
+        "game_id":
+            round_data.get("game_id"),
+
+        "status":
+            "completed",
+
+        "description":
+            (
+                f"Competition prize: "
+                f"${amount_each:.2f}"
+            ),
+
+        "created_at":
+            firestore.SERVER_TIMESTAMP,
+
+        "updated_at":
+            firestore.SERVER_TIMESTAMP,
+    },
+    merge=True,
             )
 
             return True
