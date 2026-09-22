@@ -921,13 +921,29 @@ def bootstrap():
                 games,
 
             "featured_challenge":
-                (
-                    get_public_challenge(
-                        challenge
-                    )
-                    if challenge
-                    else None
-                )
+    (
+        get_public_challenge(
+            challenge
+        )
+        if challenge
+        else None
+    ),
+
+"public_settings": {
+
+    "telegram_channel_url":
+        get_app_settings().get(
+            "telegram_channel_url",
+            ""
+        ),
+
+    "customer_support_url":
+        get_app_settings().get(
+            "customer_support_url",
+            ""
+        )
+
+}
 
         })
 
