@@ -190,6 +190,30 @@ def maintenance_gate():
 
 
 # ============================================================
+# SECURITY RESPONSE HEADERS
+# ============================================================
+
+@app.after_request
+def security_headers(response):
+
+    response.headers["X-Content-Type-Options"] = "nosniff"
+
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+
+    response.headers["Referrer-Policy"] = (
+        "strict-origin-when-cross-origin"
+    )
+
+    response.headers["Permissions-Policy"] = (
+        "camera=(), "
+        "microphone=(), "
+        "geolocation=()"
+    )
+
+    return response
+
+
+# ============================================================
 # HELPERS
 # ============================================================
 
