@@ -2322,12 +2322,12 @@ def update_settings():
                 }), 400
 
 
-            if not 1 <= reward_points <= 100:
+            if not 1 <= reward_points <= 10000:
 
                 return jsonify({
                     "success": False,
                     "error":
-                        "Ad reward must be between 1 and 100 points."
+                        "Ad reward must be between 1 and 10000 points."
                 }), 400
 
 
