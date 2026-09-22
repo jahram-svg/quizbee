@@ -243,35 +243,65 @@ def wallet_transactions():
     if not user:
         return jsonify({
             "success": False,
-            "error": "Unauthorized Telegram session."
+            "error":
+                "Unauthorized Telegram session."
         }), 401
 
-    telegram_id = user["telegram_id"]
-
-    docs = (
-        db.collection("transactions")
-        .where(
-            "telegram_id",
-            "==",
-            telegram_id
-        )
-        .order_by(
-            "created_at",
-            direction=firestore.Query.DESCENDING
-        )
-        .limit(100)
-        .stream()
+    telegram_id = str(
+        user["telegram_id"]
     )
 
-    results = [
-        serialize_doc(doc)
-        for doc in docs
-    ]
+    try:
 
-    return jsonify({
-        "success": True,
-        "transactions": results
-    })
+        docs = list(
+            db.collection(
+                "transactions"
+            )
+            .where(
+                "telegram_id",
+                "==",
+                telegram_id
+            )
+            .limit(200)
+            .stream()
+        )
+
+        results = [
+            serialize_doc(doc)
+            for doc in docs
+        ]
+
+        results.sort(
+            key=lambda item:
+                item.get(
+                    "created_at",
+                    ""
+                ) or "",
+            reverse=True
+        )
+
+        return jsonify({
+            "success":
+                True,
+
+            "transactions":
+                results[:100]
+        })
+
+    except Exception as exc:
+
+        print(
+            "Wallet transactions error:",
+            repr(exc)
+        )
+
+        return jsonify({
+            "success":
+                False,
+
+            "error":
+                "Unable to load transaction history."
+        }), 500
 
 
 # ============================================================
