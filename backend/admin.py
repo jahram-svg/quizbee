@@ -2328,12 +2328,12 @@ def update_settings():
                 }), 400
 
 
-            if not 1 <= reward_points <= 10000:
+            if not 1 <= reward_points <= 100:
 
                 return jsonify({
                     "success": False,
                     "error":
-                        "Ad reward must be between 1 and 10000 points."
+                        "Ad reward must be between 1 and 100 points."
                 }), 400
 
 
@@ -2367,12 +2367,12 @@ def update_settings():
                 }), 400
 
 
-            if not 1 <= daily_limit <= 100:
+            if not 1 <= daily_limit <= 10000:
 
                 return jsonify({
                     "success": False,
                     "error":
-                        "Daily ad limit must be between 1 and 100."
+                        "Daily ad limit must be between 1 and 10000."
                 }), 400
 
 
