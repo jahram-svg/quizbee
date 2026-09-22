@@ -2598,271 +2598,172 @@ async function loadAdsStatus() {
 async function watchAd() {
 
     const button =
-        document.getElementById(
-            "watchAdButton"
-        );
-
-
-    // --------------------------------------------------------
-    // BASIC CHECKS
-    // --------------------------------------------------------
-
-    if (!adsSettings.enabled) {
-
-        showToast(
-            "📺 Ads are currently unavailable."
-        );
-
-        return;
-    }
-
-
-    if (
-        adsWatched >=
-        adsSettings.daily_limit
-    ) {
-
-        showToast(
-            "🎉 You have reached today's ad limit."
-        );
-
-        updateAdsUI();
-
-        return;
-    }
-
-
-    // --------------------------------------------------------
-    // CHECK MONETAG SDK
-    // --------------------------------------------------------
-
-    if (
-        typeof window.show_11853919 !==
-        "function"
-    ) {
-
-        console.error(
-            "Monetag function show_11853919() was not found."
-        );
-
-        showToast(
-            "📺 Ad system is still loading. Please try again."
-        );
-
-        initMonetag();
-
-        return;
-    }
-
-
-    // --------------------------------------------------------
-    // LOCK BUTTON
-    // --------------------------------------------------------
+        document.getElementById("watchAdButton");
 
     if (button) {
-
         button.disabled = true;
-
-        button.textContent =
-            "📺 LOADING AD...";
-
+        button.textContent = "Preparing ad...";
     }
-
 
     try {
 
         console.log(
-            "Starting Monetag rewarded ad..."
+            "📺 Starting QuizBee ad session..."
         );
 
+        const startResponse = await api(
+            "/api/ads/start",
+            {
+                method: "POST"
+            }
+        );
 
-        if (button) {
+        console.log(
+            "📺 Ad session response:",
+            startResponse
+        );
 
-            button.textContent =
-                "📺 WATCHING...";
-
+        if (
+            !startResponse ||
+            !startResponse.success
+        ) {
+            throw new Error(
+                startResponse?.error ||
+                "Unable to start ad."
+            );
         }
 
+        const adSessionId =
+            startResponse.ad_session_id;
 
-        // ----------------------------------------------------
-        // SHOW MONETAG AD
-        // ----------------------------------------------------
+        if (!adSessionId) {
+            throw new Error(
+                "Ad session ID was not returned."
+            );
+        }
+
+        if (
+            typeof window.show_11853919 !==
+            "function"
+        ) {
+            throw new Error(
+                "Monetag ad is not ready."
+            );
+        }
+
+        if (button) {
+            button.textContent =
+                "Watching ad...";
+        }
+
+        console.log(
+            "📺 Showing Monetag ad..."
+        );
 
         await window.show_11853919();
 
-
         console.log(
-            "Monetag ad promise completed."
+            "📺 Monetag ad completed."
         );
-
-
-        // ----------------------------------------------------
-        // AD COMPLETED
-        // ----------------------------------------------------
 
         if (button) {
-
             button.textContent =
-                "🎁 CLAIMING REWARD...";
-
+                "Claiming reward...";
         }
 
+        const rewardResponse = await api(
+            "/api/ads/reward",
+            {
+                method: "POST",
 
-        console.log(
-            "Requesting QuizBee reward..."
+                body: JSON.stringify({
+                    ad_session_id:
+                        adSessionId
+                })
+            }
         );
 
-
-        // ----------------------------------------------------
-        // REQUEST QUIZBEE REWARD
-        // ----------------------------------------------------
-
-        const rewardData =
-            await api(
-                "/api/ads/reward",
-                {
-                    method: "POST",
-
-                    body:
-                        JSON.stringify({
-                            provider:
-                                "monetag",
-
-                            zone_id:
-                                "11853919",
-
-                            site_id:
-                                "3499970"
-                        })
-                }
-            );
-
-
         console.log(
-            "QuizBee reward response:",
-            rewardData
+            "🎁 Reward response:",
+            rewardResponse
         );
-
-
-        // ----------------------------------------------------
-        // CHECK SERVER RESPONSE
-        // ----------------------------------------------------
 
         if (
-            !rewardData ||
-            rewardData.success !== true
+            !rewardResponse ||
+            !rewardResponse.success
         ) {
-
             throw new Error(
-                rewardData?.error ||
-                rewardData?.message ||
-                "QuizBee could not credit the ad reward."
+                rewardResponse?.error ||
+                "Unable to claim reward."
             );
-
         }
-
-
-        // ----------------------------------------------------
-        // UPDATE USER
-        // ----------------------------------------------------
 
         if (
-            rewardData.user
+            rewardResponse.user &&
+            typeof updateUserState ===
+                "function"
         ) {
-
             updateUserState(
-                rewardData.user
+                rewardResponse.user
             );
-
         }
 
+        if (
+            typeof loadAdsStatus ===
+                "function"
+        ) {
+            await loadAdsStatus();
+        }
 
-        // ----------------------------------------------------
-        // UPDATE AD COUNT
-        // ----------------------------------------------------
+        if (
+            typeof updateAdsUI ===
+                "function"
+        ) {
+            updateAdsUI();
+        }
 
-        adsWatched =
-            Number(
-                rewardData.ads_watched ??
-                (
-                    Number(adsWatched) + 1
-                )
+        if (
+            typeof showToast ===
+                "function"
+        ) {
+            showToast(
+                `+${rewardResponse.reward_points || rewardResponse.reward || 1} QuizBee Point`
             );
-
-
-        adsSettings.ads_watched =
-            adsWatched;
-
-
-        // ----------------------------------------------------
-        // UPDATE UI
-        // ----------------------------------------------------
-
-        updateAdsUI();
-
-
-        // ----------------------------------------------------
-        // SUCCESS
-        // ----------------------------------------------------
-
-        const reward =
-            Number(
-                rewardData.reward_points ??
-                rewardData.reward ??
-                adsSettings.reward_points ??
-                1
-            );
-
-
-        showToast(
-            `🎉 +${reward} QuizBee ${
-                reward === 1
-                    ? "Point"
-                    : "Points"
-            }`
-        );
-
-
-        console.log(
-            "QuizBee ad reward successfully credited:",
-            reward
-        );
-
+        }
 
     } catch (error) {
 
         console.error(
-            "MONETAG REWARD ERROR:",
+            "❌ Ad reward error:",
             error
         );
 
-
-        showToast(
-            error?.message ||
-            "Unable to claim ad reward."
-        );
-
+        if (
+            typeof showToast ===
+                "function"
+        ) {
+            showToast(
+                error.message ||
+                "Unable to process ad."
+            );
+        }
 
     } finally {
 
-        // ----------------------------------------------------
-        // RESTORE BUTTON
-        // ----------------------------------------------------
-
         if (button) {
-
             button.disabled = false;
 
-            button.textContent =
-                "📺 WATCH AD";
-
+            if (
+                typeof updateAdsUI ===
+                    "function"
+            ) {
+                updateAdsUI();
+            } else {
+                button.textContent =
+                    "Watch Ad";
+            }
         }
-
-
-        updateAdsUI();
-
     }
-
 }
 
 
