@@ -1968,103 +1968,39 @@ def ads_status():
         }), 500
 
 
-@app.post("/api/ads/reward")
-def reward_ad():
+@app.post("/api/ads/start")
+def start_ad():
 
     try:
-
-        print(
-            "========================================"
-        )
-
-        print(
-            "📺 QUIZBEE AD REWARD REQUEST"
-        )
-
-        print(
-            "========================================"
-        )
-
-
-        # ----------------------------------------------------
-        # TELEGRAM AUTHENTICATION
-        # ----------------------------------------------------
 
         telegram_user = require_telegram_user()
 
         if not telegram_user:
-
-            print(
-                "❌ No valid Telegram session."
-            )
-
             return jsonify({
-
-                "success":
-                    False,
-
+                "success": False,
                 "error":
                     "Unauthorized Telegram session."
-
             }), 401
-
 
         user = get_or_create_user(
             telegram_user
         )
 
-
         telegram_id = user["telegram_id"]
-
-
-        print(
-            f"👤 Telegram ID: {telegram_id}"
-        )
-
-
-        # ----------------------------------------------------
-        # ADS SETTINGS
-        # ----------------------------------------------------
 
         settings = get_ads_settings()
 
-
-        print(
-            f"⚙️ Ads settings: {settings}"
-        )
-
-
         if not settings["enabled"]:
-
-            print(
-                "❌ Ads are disabled."
-            )
-
             return jsonify({
-
-                "success":
-                    False,
-
+                "success": False,
                 "error":
                     "Ads are currently disabled."
-
             }), 403
-
-
-        # ----------------------------------------------------
-        # TODAY
-        # ----------------------------------------------------
 
         today = get_ads_today()
 
-
-        print(
-            f"📅 Ad day: {today}"
-        )
-
-
         # ----------------------------------------------------
-        # COUNT TODAY'S COMPLETED ADS
+        # Daily limit
         # ----------------------------------------------------
 
         docs = (
@@ -2079,51 +2015,23 @@ def reward_ad():
             .stream()
         )
 
-
         watched = 0
-
 
         for doc in docs:
 
             data = doc.to_dict() or {}
 
-
             if (
-                data.get(
-                    "ad_day"
-                ) == today
+                data.get("ad_day") == today
                 and
-                data.get(
-                    "status"
-                ) == "completed"
+                data.get("status") == "completed"
             ):
-
                 watched += 1
 
-
-        print(
-            f"📊 Ads already watched today: {watched}"
-        )
-
-
-        # ----------------------------------------------------
-        # DAILY LIMIT
-        # ----------------------------------------------------
-
-        if (
-            watched >=
-            settings["daily_limit"]
-        ):
-
-            print(
-                "⚠️ Daily ad limit reached."
-            )
+        if watched >= settings["daily_limit"]:
 
             return jsonify({
-
-                "success":
-                    False,
-
+                "success": False,
                 "error":
                     "You have reached today's ad limit.",
 
@@ -2131,121 +2039,24 @@ def reward_ad():
                     watched,
 
                 "daily_limit":
-                    settings[
-                        "daily_limit"
-                    ]
-
+                    settings["daily_limit"]
             }), 429
 
-
-        # ----------------------------------------------------
-        # REWARD AMOUNT
-        # ----------------------------------------------------
-
-        reward = settings[
-                "reward_points"
-            ]
-
-
-        print(
-            f"🎁 Reward: {reward} points"
+        session_ref = (
+            db.collection(
+                "ad_sessions"
+            ).document()
         )
 
-
-        # ----------------------------------------------------
-        # CREATE AD REWARD RECORD
-        # ----------------------------------------------------
-
-        ad_ref = db.collection(
-                "ad_rewards"
-            ).document()
-
-
-        ad_ref.set({
-
+        session_ref.set({
             "telegram_id":
                 telegram_id,
-
-            "reward":
-                reward,
-
-            "provider":
-                "monetag",
-
-            "zone_id":
-                "11853919",
-
-            "monetag_site_id":
-                "3499970",
-
-            "status":
-                "completed",
 
             "ad_day":
                 today,
 
-            "created_at":
-                now()
-
-        })
-
-
-        print(
-            f"✅ Ad reward record created: {ad_ref.id}"
-        )
-
-
-        # ----------------------------------------------------
-        # CREDIT QUIZBEE POINTS
-        # ----------------------------------------------------
-
-        user_ref(
-            telegram_id
-        ).update({
-
-            "quizbee_points":
-                firestore.Increment(
-                    reward
-                ),
-
-            "total_earned":
-                firestore.Increment(
-                    reward
-                ),
-
-            "updated_at":
-                now()
-
-        })
-
-
-        print(
-            f"💰 Added {reward} points to user."
-        )
-
-
-        # ----------------------------------------------------
-        # TRANSACTION RECORD
-        # ----------------------------------------------------
-
-        transaction_ref = db.collection(
-                "transactions"
-            ).document()
-
-
-        transaction_ref.set({
-
-            "telegram_id":
-                telegram_id,
-
-            "type":
-                "ad_reward",
-
-            "amount":
-                reward,
-
-            "currency":
-                "quizbee_points",
+            "status":
+                "pending",
 
             "provider":
                 "monetag",
@@ -2253,106 +2064,384 @@ def reward_ad():
             "zone_id":
                 "11853919",
 
-            "reference":
-                ad_ref.id,
-
             "created_at":
-                now()
+                now(),
 
+            "expires_at":
+                now() + __import__(
+                    "datetime"
+                ).timedelta(
+                    minutes=5
+                )
         })
 
-
-        print(
-            f"🧾 Transaction recorded: {transaction_ref.id}"
-        )
-
-
-        # ----------------------------------------------------
-        # GET UPDATED USER
-        # ----------------------------------------------------
-
-        updated_user = user_ref(
-                telegram_id
-            ).get().to_dict()
-
-
-        new_count = watched + 1
-
-
-        print(
-            f"📊 New ad count: {new_count}"
-        )
-
-
-        print(
-            "✅ AD REWARD COMPLETED SUCCESSFULLY"
-        )
-
-
-        print(
-            "========================================"
-        )
-
-
-        # ----------------------------------------------------
-        # RESPONSE
-        # ----------------------------------------------------
-
         return jsonify({
+            "success": True,
 
-            "success":
-                True,
-
-            "reward":
-                reward,
+            "ad_session_id":
+                session_ref.id,
 
             "reward_points":
-                reward,
+                settings["reward_points"],
 
             "ads_watched":
-                new_count,
+                watched,
 
             "daily_limit":
-                settings[
-                    "daily_limit"
-                ],
+                settings["daily_limit"]
+        })
+
+    except Exception as e:
+
+        print(
+            "Ad start error:",
+            repr(e)
+        )
+
+        return jsonify({
+            "success": False,
+            "error":
+                "Unable to start ad session."
+        }), 500
+
+
+@app.post("/api/ads/reward")
+def reward_ad():
+
+    try:
+
+        telegram_user = require_telegram_user()
+
+        if not telegram_user:
+            return jsonify({
+                "success": False,
+                "error":
+                    "Unauthorized Telegram session."
+            }), 401
+
+        user = get_or_create_user(
+            telegram_user
+        )
+
+        telegram_id = user["telegram_id"]
+
+        settings = get_ads_settings()
+
+        if not settings["enabled"]:
+            return jsonify({
+                "success": False,
+                "error":
+                    "Ads are currently disabled."
+            }), 403
+
+        body = (
+            request.get_json(
+                silent=True
+            )
+            or {}
+        )
+
+        ad_session_id = str(
+            body.get(
+                "ad_session_id",
+                ""
+            )
+        ).strip()
+
+        if not ad_session_id:
+            return jsonify({
+                "success": False,
+                "error":
+                    "Ad session is required."
+            }), 400
+
+        today = get_ads_today()
+
+        session_ref = (
+            db.collection(
+                "ad_sessions"
+            )
+            .document(
+                ad_session_id
+            )
+        )
+
+        ad_ref = (
+            db.collection(
+                "ad_rewards"
+            ).document()
+        )
+
+        transaction_ref = (
+            db.collection(
+                "transactions"
+            )
+            .document()
+        )
+
+        user_ref_value = (
+            db.collection(
+                "users"
+            )
+            .document(
+                telegram_id
+            )
+        )
+
+        firestore_transaction = db.transaction()
+
+        @firestore.transactional
+        def reward_transaction(tx):
+
+            session_snapshot = session_ref.get(
+                transaction=tx
+            )
+
+            if not session_snapshot.exists:
+                raise ValueError(
+                    "Invalid ad session."
+                )
+
+            session = (
+                session_snapshot.to_dict()
+                or {}
+            )
+
+            if str(
+                session.get(
+                    "telegram_id",
+                    ""
+                )
+            ) != telegram_id:
+                raise ValueError(
+                    "Invalid ad session."
+                )
+
+            if session.get("ad_day") != today:
+                raise ValueError(
+                    "This ad session has expired."
+                )
+
+            if session.get("status") != "pending":
+                raise ValueError(
+                    "This ad session has already been used."
+                )
+
+            expires_at = session.get(
+                "expires_at"
+            )
+
+            if expires_at:
+
+                current_time = now()
+
+                try:
+                    if current_time > expires_at:
+                        raise ValueError(
+                            "This ad session has expired."
+                        )
+                except TypeError:
+                    pass
+
+            # ------------------------------------------------
+            # Count today's rewards inside the transaction.
+            # ------------------------------------------------
+
+            reward_docs = (
+                db.collection(
+                    "ad_rewards"
+                )
+                .where(
+                    "telegram_id",
+                    "==",
+                    telegram_id
+                )
+                .stream()
+            )
+
+            watched = 0
+
+            for doc in reward_docs:
+
+                data = (
+                    doc.to_dict()
+                    or {}
+                )
+
+                if (
+                    data.get("ad_day") == today
+                    and
+                    data.get("status") == "completed"
+                ):
+                    watched += 1
+
+            if watched >= settings["daily_limit"]:
+                raise ValueError(
+                    "You have reached today's ad limit."
+                )
+
+            reward = settings[
+                "reward_points"
+            ]
+
+            # ------------------------------------------------
+            # Mark session used BEFORE granting reward.
+            # ------------------------------------------------
+
+            tx.update(
+                session_ref,
+                {
+                    "status":
+                        "completed",
+
+                    "completed_at":
+                        firestore.SERVER_TIMESTAMP
+                }
+            )
+
+            tx.set(
+                ad_ref,
+                {
+                    "telegram_id":
+                        telegram_id,
+
+                    "reward":
+                        reward,
+
+                    "provider":
+                        "monetag",
+
+                    "zone_id":
+                        "11853919",
+
+                    "monetag_site_id":
+                        "3499970",
+
+                    "status":
+                        "completed",
+
+                    "ad_day":
+                        today,
+
+                    "ad_session_id":
+                        ad_session_id,
+
+                    "created_at":
+                        firestore.SERVER_TIMESTAMP
+                }
+            )
+
+            tx.update(
+                user_ref_value,
+                {
+                    "quizbee_points":
+                        firestore.Increment(
+                            reward
+                        ),
+
+                    "total_earned":
+                        firestore.Increment(
+                            reward
+                        ),
+
+                    "updated_at":
+                        firestore.SERVER_TIMESTAMP
+                }
+            )
+
+            tx.set(
+                transaction_ref,
+                {
+                    "telegram_id":
+                        telegram_id,
+
+                    "type":
+                        "ad_reward",
+
+                    "amount":
+                        reward,
+
+                    "currency":
+                        "quizbee_points",
+
+                    "provider":
+                        "monetag",
+
+                    "zone_id":
+                        "11853919",
+
+                    "reference":
+                        ad_ref.id,
+
+                    "ad_session_id":
+                        ad_session_id,
+
+                    "created_at":
+                        firestore.SERVER_TIMESTAMP
+                }
+            )
+
+            return {
+                "reward":
+                    reward,
+
+                "ads_watched":
+                    watched + 1
+            }
+
+        result = reward_transaction(
+            firestore_transaction
+        )
+
+        updated_user = (
+            user_ref_value
+            .get()
+            .to_dict()
+        )
+
+        return jsonify({
+            "success": True,
+
+            "reward":
+                result["reward"],
+
+            "reward_points":
+                result["reward"],
+
+            "ads_watched":
+                result["ads_watched"],
+
+            "daily_limit":
+                settings["daily_limit"],
 
             "user":
                 updated_user,
 
             "message":
-                f"+{reward} QuizBee Point"
-
+                (
+                    f"+{result['reward']} "
+                    "QuizBee Point"
+                )
         })
 
-
-    except Exception as e:
-
-        print(
-            "========================================"
-        )
-
-        print(
-            "❌ AD REWARD ERROR"
-        )
-
-        print(
-            str(e)
-        )
-
-        print(
-            "========================================"
-        )
-
+    except ValueError as exc:
 
         return jsonify({
+            "success": False,
+            "error": str(exc)
+        }), 400
 
-            "success":
-                False,
+    except Exception as exc:
 
+        print(
+            "Ad reward transaction error:",
+            repr(exc)
+        )
+
+        return jsonify({
+            "success": False,
             "error":
-                str(e)
-
+                "Unable to process ad reward."
         }), 500
 
 
