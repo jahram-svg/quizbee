@@ -510,7 +510,8 @@ def create_withdrawal():
     if amount <= 0:
         return jsonify({
             "success": False,
-            "error": "Withdrawal amount must be greater than $0."
+            "error":
+                "Withdrawal amount must be greater than $0."
         }), 400
 
     method = str(
@@ -526,44 +527,11 @@ def create_withdrawal():
     ]:
         return jsonify({
             "success": False,
-            "error": "Select a valid withdrawal method."
+            "error":
+                "Select a valid withdrawal method."
         }), 400
 
-    telegram_id = user[
-        "telegram_id"
-    ]
-
-    user_document = user_ref(
-        telegram_id
-    )
-
-    current_user = get_user(
-        telegram_id
-    )
-
-    if not current_user:
-        return jsonify({
-            "success": False,
-            "error": "User account not found."
-        }), 404
-
-    current_balance = Decimal(
-        str(
-            current_user.get(
-                "prize_balance",
-                0
-            )
-        )
-    )
-
-    if amount > current_balance:
-        return jsonify({
-            "success": False,
-            "error": (
-                "You cannot withdraw more "
-                "than your available Prize Balance."
-            )
-        }), 400
+    telegram_id = user["telegram_id"]
 
     if method == "nigerian_bank":
 
@@ -591,23 +559,25 @@ def create_withdrawal():
         if not bank_name:
             return jsonify({
                 "success": False,
-                "error": "Enter your bank name."
+                "error":
+                    "Enter your bank name."
             }), 400
 
         if not account_number:
             return jsonify({
                 "success": False,
-                "error": "Enter your account number."
+                "error":
+                    "Enter your account number."
             }), 400
 
         if not account_name:
             return jsonify({
                 "success": False,
-                "error": "Enter your account name."
+                "error":
+                    "Enter your account name."
             }), 400
 
         network = "NGN_BANK"
-
         destination = account_number
 
     else:
@@ -622,13 +592,11 @@ def create_withdrawal():
         if not wallet_address:
             return jsonify({
                 "success": False,
-                "error": (
+                "error":
                     "Enter your USDT BEP20 wallet address."
-                )
             }), 400
 
         network = "BEP20"
-
         destination = wallet_address
 
         bank_name = ""
@@ -641,97 +609,253 @@ def create_withdrawal():
         ).document()
     )
 
-    withdrawal_data = {
-        "telegram_id": telegram_id,
-        "amount": float(amount),
-        "currency": "USD",
-        "method": method,
-        "network": network,
-        "destination": destination,
-        "account_name": account_name,
-        "bank_name": bank_name,
-        "account_number": (
-            account_number
-            if method == "nigerian_bank"
-            else ""
-        ),
-        "status": "pending",
-        "created_at": now(),
-        "updated_at": now(),
-        "approved_at": None,
-        "paid_at": None,
-        "rejected_at": None,
-        "admin_note": "",
-        "payment_reference": None
-    }
+    withdrawal_id = withdrawal_ref.id
 
-    withdrawal_ref.set(
-        withdrawal_data
+    transaction_ref = (
+        db.collection(
+            "transactions"
+        )
+        .document(
+            f"withdrawal_{withdrawal_id}"
+        )
     )
 
-    # Reserve the prize money immediately.
-    user_document.update({
-        "prize_balance":
-            firestore.Increment(
-                -float(amount)
-            ),
-        "updated_at":
-            now()
-    })
+    user_document = user_ref(
+        telegram_id
+    )
 
-    transaction(
-        telegram_id=telegram_id,
-        tx_type="withdrawal",
-        amount=-float(amount),
-        currency="USD",
-        balance_type="prize_balance",
-        status="pending",
-        provider=method,
-        provider_reference=withdrawal_ref.id,
-        description=(
-            f"Prize withdrawal request: "
-            f"${amount:.2f}"
-        ),
-        extra={
-            "withdrawal_id":
-                withdrawal_ref.id
+    firestore_transaction = db.transaction()
+
+    @firestore.transactional
+    def create_withdrawal_transaction(tx):
+
+        user_snapshot = user_document.get(
+            transaction=tx
+        )
+
+        if not user_snapshot.exists:
+            raise ValueError(
+                "User account not found."
+            )
+
+        user_data = (
+            user_snapshot.to_dict()
+            or {}
+        )
+
+        try:
+            current_balance = Decimal(
+                str(
+                    user_data.get(
+                        "prize_balance",
+                        0
+                    )
+                )
+            )
+        except Exception:
+            current_balance = Decimal("0")
+
+        if amount > current_balance:
+            raise ValueError(
+                "You cannot withdraw more "
+                "than your available Prize Balance."
+            )
+
+        withdrawal_data = {
+            "telegram_id":
+                telegram_id,
+
+            "amount":
+                float(amount),
+
+            "currency":
+                "USD",
+
+            "method":
+                method,
+
+            "network":
+                network,
+
+            "destination":
+                destination,
+
+            "account_name":
+                account_name,
+
+            "bank_name":
+                bank_name,
+
+            "account_number":
+                (
+                    account_number
+                    if method == "nigerian_bank"
+                    else ""
+                ),
+
+            "status":
+                "pending",
+
+            "created_at":
+                firestore.SERVER_TIMESTAMP,
+
+            "updated_at":
+                firestore.SERVER_TIMESTAMP,
+
+            "approved_at":
+                None,
+
+            "paid_at":
+                None,
+
+            "rejected_at":
+                None,
+
+            "admin_note":
+                "",
+
+            "payment_reference":
+                None
         }
-    )
+
+        tx.set(
+            withdrawal_ref,
+            withdrawal_data
+        )
+
+        tx.update(
+            user_document,
+            {
+                "prize_balance":
+                    firestore.Increment(
+                        -float(amount)
+                    ),
+
+                "updated_at":
+                    firestore.SERVER_TIMESTAMP
+            }
+        )
+
+        tx.set(
+            transaction_ref,
+            {
+                "telegram_id":
+                    telegram_id,
+
+                "type":
+                    "withdrawal",
+
+                "amount":
+                    -float(amount),
+
+                "currency":
+                    "USD",
+
+                "balance_type":
+                    "prize_balance",
+
+                "status":
+                    "pending",
+
+                "provider":
+                    method,
+
+                "provider_reference":
+                    withdrawal_id,
+
+                "withdrawal_id":
+                    withdrawal_id,
+
+                "description":
+                    (
+                        f"Prize withdrawal request: "
+                        f"${amount:.2f}"
+                    ),
+
+                "created_at":
+                    firestore.SERVER_TIMESTAMP,
+
+                "updated_at":
+                    firestore.SERVER_TIMESTAMP
+            }
+        )
+
+        return True
+
+    try:
+
+        create_withdrawal_transaction(
+            firestore_transaction
+        )
+
+    except ValueError as exc:
+
+        return jsonify({
+            "success": False,
+            "error": str(exc)
+        }), 400
+
+    except Exception as exc:
+
+        print(
+            "Withdrawal transaction error:",
+            repr(exc)
+        )
+
+        return jsonify({
+            "success": False,
+            "error":
+                "Unable to submit withdrawal."
+        }), 500
 
     create_notification(
-    user_id=telegram_id,
-    title="💸 Withdrawal Submitted",
-    message=(
-        f"Your withdrawal request for "
-        f"${float(amount):.2f} has been submitted "
-        f"and is pending review."
-    ),
-    notification_type="general",
-    action_url="",
-    button_text="",
-    dedupe_key=(
-        f"withdrawal-submitted:"
-        f"{withdrawal_ref.id}"
-    ),
-    send_telegram=True,
+        user_id=telegram_id,
+
+        title="💸 Withdrawal Submitted",
+
+        message=(
+            f"Your withdrawal request for "
+            f"${float(amount):.2f} has been submitted "
+            f"and is pending review."
+        ),
+
+        notification_type="general",
+
+        action_url="",
+
+        button_text="",
+
+        dedupe_key=(
+            f"withdrawal-submitted:"
+            f"{withdrawal_id}"
+        ),
+
+        send_telegram=True
     )
 
     return jsonify({
         "success": True,
+
         "withdrawal": {
             "id":
-                withdrawal_ref.id,
+                withdrawal_id,
+
             "amount":
                 float(amount),
+
             "currency":
                 "USD",
+
             "method":
                 method,
+
             "network":
                 network,
+
             "status":
                 "pending"
         },
+
         "message": (
             "Withdrawal request submitted. "
             "Your prize will be manually reviewed "
@@ -912,10 +1036,11 @@ def approve_withdrawal(
     if not admin:
         return jsonify({
             "success": False,
-            "error": "Unauthorized Telegram session."
+            "error":
+                "Unauthorized Telegram session."
         }), 401
 
-    ref = (
+    withdrawal_ref = (
         db.collection(
             "withdrawals"
         )
@@ -924,58 +1049,119 @@ def approve_withdrawal(
         )
     )
 
-    snap = ref.get()
+    firestore_transaction = db.transaction()
 
-    if not snap.exists:
-        return jsonify({
-            "success": False,
-            "error": "Withdrawal not found."
-        }), 404
+    @firestore.transactional
+    def approve_transaction(tx):
 
-    data = snap.to_dict()
+        snapshot = withdrawal_ref.get(
+            transaction=tx
+        )
 
-    if data.get("status") != "pending":
-        return jsonify({
-            "success": False,
-            "error": (
+        if not snapshot.exists:
+            raise ValueError(
+                "Withdrawal not found."
+            )
+
+        data = (
+            snapshot.to_dict()
+            or {}
+        )
+
+        if data.get("status") != "pending":
+            raise ValueError(
                 "Only pending withdrawals "
                 "can be approved."
             )
+
+        tx.update(
+            withdrawal_ref,
+            {
+                "status":
+                    "approved",
+
+                "approved_at":
+                    firestore.SERVER_TIMESTAMP,
+
+                "updated_at":
+                    firestore.SERVER_TIMESTAMP
+            }
+        )
+
+        return {
+            "telegram_id":
+                str(
+                    data.get(
+                        "telegram_id",
+                        ""
+                    )
+                ),
+
+            "amount":
+                float(
+                    data.get(
+                        "amount",
+                        0
+                    )
+                )
+        }
+
+    try:
+
+        result = approve_transaction(
+            firestore_transaction
+        )
+
+    except ValueError as exc:
+
+        return jsonify({
+            "success": False,
+            "error": str(exc)
         }), 400
 
-    ref.update({
-        "status": "approved",
-        "approved_at": now(),
-        "updated_at": now()
-    })
+    except Exception as exc:
+
+        print(
+            "Withdrawal approval transaction error:",
+            repr(exc)
+        )
+
+        return jsonify({
+            "success": False,
+            "error":
+                "Unable to approve withdrawal."
+        }), 500
 
     create_notification(
-    user_id=str(
-        data.get(
-            "telegram_id",
-            ""
-        )
-    ),
-    title="✅ Withdrawal Approved",
-    message=(
-        f"Your withdrawal of "
-        f"${float(data.get('amount', 0)):.2f} "
-        f"has been approved and is now ready "
-        f"for payment."
-    ),
-    notification_type="general",
-    action_url="",
-    button_text="",
-    dedupe_key=(
-        f"withdrawal-approved:"
-        f"{withdrawal_id}"
-    ),
-    send_telegram=True,
-        )
+        user_id=result["telegram_id"],
+
+        title="✅ Withdrawal Approved",
+
+        message=(
+            f"Your withdrawal of "
+            f"${result['amount']:.2f} "
+            "has been approved and is now "
+            "ready for payment."
+        ),
+
+        notification_type="general",
+
+        action_url="",
+
+        button_text="",
+
+        dedupe_key=(
+            f"withdrawal-approved:"
+            f"{withdrawal_id}"
+        ),
+
+        send_telegram=True
+    )
 
     return jsonify({
         "success": True,
-        "message": "Withdrawal approved."
+        "message":
+            "Withdrawal approved."
     })
 
 
@@ -1001,7 +1187,8 @@ def reject_withdrawal(
     if not admin:
         return jsonify({
             "success": False,
-            "error": "Unauthorized Telegram session."
+            "error":
+                "Unauthorized Telegram session."
         }), 401
 
     body = (
@@ -1018,7 +1205,7 @@ def reject_withdrawal(
         )
     ).strip()
 
-    ref = (
+    withdrawal_ref = (
         db.collection(
             "withdrawals"
         )
@@ -1027,98 +1214,228 @@ def reject_withdrawal(
         )
     )
 
-    snap = ref.get()
+    refund_transaction_ref = (
+        db.collection(
+            "transactions"
+        )
+        .document(
+            f"withdrawal_refund_{withdrawal_id}"
+        )
+    )
 
-    if not snap.exists:
-        return jsonify({
-            "success": False,
-            "error": "Withdrawal not found."
-        }), 404
+    firestore_transaction = db.transaction()
 
-    data = snap.to_dict()
+    @firestore.transactional
+    def reject_transaction(tx):
 
-    if data.get("status") != "pending":
-        return jsonify({
-            "success": False,
-            "error": (
+        snapshot = withdrawal_ref.get(
+            transaction=tx
+        )
+
+        if not snapshot.exists:
+            raise ValueError(
+                "Withdrawal not found."
+            )
+
+        data = (
+            snapshot.to_dict()
+            or {}
+        )
+
+        if data.get("status") != "pending":
+            raise ValueError(
                 "Only pending withdrawals "
                 "can be rejected."
             )
+
+        telegram_id = str(
+            data.get(
+                "telegram_id",
+                ""
+            )
+        ).strip()
+
+        if not telegram_id:
+            raise ValueError(
+                "Withdrawal has no Telegram user."
+            )
+
+        amount = float(
+            data.get(
+                "amount",
+                0
+            )
+        )
+
+        if amount <= 0:
+            raise ValueError(
+                "Invalid withdrawal amount."
+            )
+
+        user_reference = user_ref(
+            telegram_id
+        )
+
+        user_snapshot = user_reference.get(
+            transaction=tx
+        )
+
+        if not user_snapshot.exists:
+            raise ValueError(
+                "User account not found."
+            )
+
+        refund_snapshot = (
+            refund_transaction_ref.get(
+                transaction=tx
+            )
+        )
+
+        if refund_snapshot.exists:
+            raise ValueError(
+                "This withdrawal has already been refunded."
+            )
+
+        tx.update(
+            withdrawal_ref,
+            {
+                "status":
+                    "rejected",
+
+                "rejected_at":
+                    firestore.SERVER_TIMESTAMP,
+
+                "updated_at":
+                    firestore.SERVER_TIMESTAMP,
+
+                "admin_note":
+                    note
+            }
+        )
+
+        tx.update(
+            user_reference,
+            {
+                "prize_balance":
+                    firestore.Increment(
+                        amount
+                    ),
+
+                "updated_at":
+                    firestore.SERVER_TIMESTAMP
+            }
+        )
+
+        tx.set(
+            refund_transaction_ref,
+            {
+                "telegram_id":
+                    telegram_id,
+
+                "type":
+                    "withdrawal_refund",
+
+                "amount":
+                    amount,
+
+                "currency":
+                    "USD",
+
+                "balance_type":
+                    "prize_balance",
+
+                "status":
+                    "completed",
+
+                "provider":
+                    "internal",
+
+                "provider_reference":
+                    withdrawal_id,
+
+                "withdrawal_id":
+                    withdrawal_id,
+
+                "description":
+                    (
+                        f"Refund for rejected "
+                        f"withdrawal ${amount:.2f}"
+                    ),
+
+                "created_at":
+                    firestore.SERVER_TIMESTAMP,
+
+                "updated_at":
+                    firestore.SERVER_TIMESTAMP
+            }
+        )
+
+        return {
+            "telegram_id":
+                telegram_id,
+
+            "amount":
+                amount
+        }
+
+    try:
+
+        result = reject_transaction(
+            firestore_transaction
+        )
+
+    except ValueError as exc:
+
+        return jsonify({
+            "success": False,
+            "error": str(exc)
         }), 400
 
-    amount = float(
-        data.get(
-            "amount",
-            0
+    except Exception as exc:
+
+        print(
+            "Withdrawal rejection transaction error:",
+            repr(exc)
         )
-    )
 
-    telegram_id = str(
-        data.get(
-            "telegram_id"
-        )
-    )
+        return jsonify({
+            "success": False,
+            "error":
+                "Unable to reject withdrawal."
+        }), 500
 
-    ref.update({
-        "status": "rejected",
-        "rejected_at": now(),
-        "updated_at": now(),
-        "admin_note": note
-    })
-
-    # Return the reserved prize money.
-    user_ref(
-        telegram_id
-    ).update({
-        "prize_balance":
-            firestore.Increment(
-                amount
-            ),
-        "updated_at":
-            now()
-    })
-
-    transaction(
-        telegram_id=telegram_id,
-        tx_type="withdrawal_refund",
-        amount=amount,
-        currency="USD",
-        balance_type="prize_balance",
-        status="completed",
-        provider="internal",
-        provider_reference=withdrawal_id,
-        description=(
-            f"Refund for rejected "
-            f"withdrawal ${amount:.2f}"
-        ),
-        extra={
-            "withdrawal_id":
-                withdrawal_id
-        }
-    )
+    telegram_id = result["telegram_id"]
+    amount = result["amount"]
 
     create_notification(
-    user_id=telegram_id,
-    title="❌ Withdrawal Rejected",
-    message=(
-        f"Your withdrawal of "
-        f"${amount:.2f} was rejected. "
-        f"The amount has been returned to "
-        f"your Prize Balance."
-        + (
-            f"\n\nAdmin note: {note}"
-            if note
-            else ""
-        )
-    ),
-    notification_type="warning",
-    action_url="",
-    button_text="",
-    dedupe_key=(
-        f"withdrawal-rejected:"
-        f"{withdrawal_id}"
-    ),
-    send_telegram=True,
+        user_id=telegram_id,
+
+        title="❌ Withdrawal Rejected",
+
+        message=(
+            f"Your withdrawal of "
+            f"${amount:.2f} was rejected. "
+            f"The amount has been returned to "
+            f"your Prize Balance."
+            + (
+                f"\n\nAdmin note: {note}"
+                if note
+                else ""
+            )
+        ),
+
+        notification_type="warning",
+
+        action_url="",
+
+        button_text="",
+
+        dedupe_key=(
+            f"withdrawal-rejected:"
+            f"{withdrawal_id}"
+        ),
+
+        send_telegram=True
     )
 
     return jsonify({
@@ -1152,7 +1469,8 @@ def mark_withdrawal_paid(
     if not admin:
         return jsonify({
             "success": False,
-            "error": "Unauthorized Telegram session."
+            "error":
+                "Unauthorized Telegram session."
         }), 401
 
     body = (
@@ -1179,13 +1497,12 @@ def mark_withdrawal_paid(
     if not payment_reference:
         return jsonify({
             "success": False,
-            "error": (
+            "error":
                 "Enter the payment reference "
                 "before marking as paid."
-            )
         }), 400
 
-    ref = (
+    withdrawal_ref = (
         db.collection(
             "withdrawals"
         )
@@ -1194,98 +1511,176 @@ def mark_withdrawal_paid(
         )
     )
 
-    snap = ref.get()
+    firestore_transaction = db.transaction()
 
-    if not snap.exists:
-        return jsonify({
-            "success": False,
-            "error": "Withdrawal not found."
-        }), 404
+    @firestore.transactional
+    def mark_paid_transaction(tx):
 
-    data = snap.to_dict()
+        snapshot = withdrawal_ref.get(
+            transaction=tx
+        )
 
-    if data.get("status") not in [
-        "approved",
-        "processing"
-    ]:
-        return jsonify({
-            "success": False,
-            "error": (
+        if not snapshot.exists:
+            raise ValueError(
+                "Withdrawal not found."
+            )
+
+        data = (
+            snapshot.to_dict()
+            or {}
+        )
+
+        if data.get("status") not in [
+            "approved",
+            "processing"
+        ]:
+            if data.get("status") == "paid":
+                raise ValueError(
+                    "This withdrawal has already been marked as paid."
+                )
+
+            raise ValueError(
                 "Withdrawal must be approved "
                 "before it can be marked paid."
             )
+
+        tx.update(
+            withdrawal_ref,
+            {
+                "status":
+                    "paid",
+
+                "paid_at":
+                    firestore.SERVER_TIMESTAMP,
+
+                "updated_at":
+                    firestore.SERVER_TIMESTAMP,
+
+                "payment_reference":
+                    payment_reference,
+
+                "admin_note":
+                    admin_note
+            }
+        )
+
+        return {
+            "telegram_id":
+                str(
+                    data.get(
+                        "telegram_id",
+                        ""
+                    )
+                ),
+
+            "amount":
+                float(
+                    data.get(
+                        "amount",
+                        0
+                    )
+                )
+        }
+
+    try:
+
+        result = mark_paid_transaction(
+            firestore_transaction
+        )
+
+    except ValueError as exc:
+
+        return jsonify({
+            "success": False,
+            "error": str(exc)
         }), 400
 
-    ref.update({
-        "status": "paid",
-        "paid_at": now(),
-        "updated_at": now(),
-        "payment_reference":
-            payment_reference,
-        "admin_note":
-            admin_note
-    })
+    except Exception as exc:
 
-    # Update the original transaction status.
-    tx_query = (
-        db.collection(
-            "transactions"
+        print(
+            "Mark withdrawal paid transaction error:",
+            repr(exc)
         )
-        .where(
-            "provider_reference",
-            "==",
-            withdrawal_id
-        )
-        .where(
-            "type",
-            "==",
-            "withdrawal"
-        )
-        .limit(1)
-    )
 
-    tx_docs = list(
-        tx_query.stream()
-    )
+        return jsonify({
+            "success": False,
+            "error":
+                "Unable to mark withdrawal as paid."
+        }), 500
 
-    for tx_doc in tx_docs:
-        tx_doc.reference.update({
-            "status": "paid",
-            "updated_at": now()
-        })
+    # Update original withdrawal transaction.
+    try:
 
-    telegram_id = str(
-        data.get(
-            "telegram_id",
-            ""
+        tx_query = (
+            db.collection(
+                "transactions"
+            )
+            .where(
+                "provider_reference",
+                "==",
+                withdrawal_id
+            )
+            .where(
+                "type",
+                "==",
+                "withdrawal"
+            )
+            .limit(1)
         )
-    )
+
+        tx_docs = list(
+            tx_query.stream()
+        )
+
+        for tx_doc in tx_docs:
+
+            tx_doc.reference.update({
+                "status":
+                    "completed",
+
+                "updated_at":
+                    now(),
+
+                "payment_reference":
+                    payment_reference
+            })
+
+    except Exception as exc:
+
+        print(
+            "Withdrawal transaction status update error:",
+            repr(exc)
+        )
 
     create_notification(
-        user_id=telegram_id,
-        title="🎉 Withdrawal Paid!",
+        user_id=result["telegram_id"],
+
+        title="💸 Withdrawal Paid",
+
         message=(
             f"Your withdrawal of "
-            f"${float(data.get('amount', 0)):.2f} "
-            f"has been paid successfully."
-            f"\n\nPayment reference: "
-            f"{payment_reference}"
+            f"${result['amount']:.2f} "
+            "has been marked as paid."
         ),
-        notification_type="prize",
+
+        notification_type="wallet",
+
         action_url="",
+
         button_text="",
+
         dedupe_key=(
             f"withdrawal-paid:"
             f"{withdrawal_id}"
         ),
-        send_telegram=True,
+
+        send_telegram=True
     )
 
     return jsonify({
         "success": True,
-        "message": (
+        "message":
             "Withdrawal marked as paid."
-        )
     })
 
 
