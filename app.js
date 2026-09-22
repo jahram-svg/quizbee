@@ -16,6 +16,10 @@ let currentPage = "home";
 let adsWatched = 0;
 let selectedChoice = null;
 let maintenanceActive = false;
+let publicSettings = {
+    telegram_channel_url: "",
+    customer_support_url: ""
+};
 
 
 // ============================================================
@@ -604,6 +608,11 @@ async function bootstrap() {
         updateUserState(
             data.user
         );
+
+        publicSettings = data.public_settings || {
+        telegram_channel_url: "",
+        customer_support_url: ""
+        };
 
         initMonetag();
         await loadAdsStatus();
