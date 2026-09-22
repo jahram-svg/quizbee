@@ -3761,3 +3761,61 @@ document.addEventListener(
 
     }
 );
+
+
+// ============================================================
+// COMMUNITY LINKS
+// ============================================================
+
+function openCommunityLink(
+    type
+) {
+
+    const url =
+        type === "channel"
+            ? publicSettings.telegram_channel_url
+            : publicSettings.customer_support_url;
+
+    if (
+        !url
+        || !(
+            url.startsWith(
+                "https://t.me/"
+            )
+            ||
+            url.startsWith(
+                "https://telegram.me/"
+            )
+        )
+    ) {
+
+        showToast(
+            type === "channel"
+                ? "Telegram channel link is not available yet."
+                : "Customer support link is not available yet."
+        );
+
+        return;
+    }
+
+
+    if (
+        window.Telegram &&
+        Telegram.WebApp &&
+        Telegram.WebApp.openTelegramLink
+    ) {
+
+        Telegram.WebApp.openTelegramLink(
+            url
+        );
+
+    } else {
+
+        window.open(
+            url,
+            "_blank"
+        );
+
+    }
+
+}
