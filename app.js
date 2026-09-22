@@ -3330,6 +3330,15 @@ function showPage(
 
     }
 
+    if (
+    page ===
+    "gameHistory"
+) {
+
+    loadGameHistory();
+
+    }
+
 
     if (
         page ===
@@ -3381,6 +3390,175 @@ function withdrawPrize() {
     );
 
 }
+
+
+// ============================================================
+// GAME HISTORY
+// ============================================================
+
+async function loadGameHistory() {
+
+    const list =
+        document.getElementById(
+            "gameHistoryList"
+        );
+
+    if (!list) {
+        return;
+    }
+
+    list.innerHTML = `
+        <div class="info-box">
+            Loading game history...
+        </div>
+    `;
+
+    try {
+
+        const data =
+            await api(
+                "/api/game-history"
+            );
+
+        const history =
+            data.history || [];
+
+        if (!history.length) {
+
+            list.innerHTML = `
+                <div class="info-box">
+                    No game history yet.
+                </div>
+            `;
+
+            return;
+        }
+
+        list.innerHTML =
+            history
+                .map(
+                    renderGameHistoryItem
+                )
+                .join("");
+
+    } catch (error) {
+
+        console.error(
+            "Game history error:",
+            error
+        );
+
+        list.innerHTML = `
+            <div class="info-box">
+                Unable to load game history.
+            </div>
+        `;
+
+    }
+
+}
+
+
+function renderGameHistoryItem(
+    item
+) {
+
+    const type =
+        item.type || "";
+
+    let icon = "🎮";
+    let title = "Game Activity";
+    let amount = "";
+
+    if (
+        type ===
+        "game_entry"
+    ) {
+
+        icon = "🎮";
+        title = "Game Entry";
+
+        amount =
+            `-${Math.abs(
+                Number(
+                    item.amount || 0
+                )
+            )} Points`;
+
+    } else if (
+        type ===
+        "game_reward"
+    ) {
+
+        icon = "🏆";
+        title = "Game Reward";
+
+        amount =
+            `+${Number(
+                item.amount || 0
+            )} Points`;
+
+    } else if (
+        type ===
+        "competition_prize"
+    ) {
+
+        icon = "🏆";
+        title = "Competition Prize";
+
+        amount =
+            `+$${Number(
+                item.amount || 0
+            ).toFixed(2)}`;
+
+    }
+
+    const date =
+        item.created_at
+            ? new Date(
+                item.created_at
+            ).toLocaleString()
+            : "";
+
+    return `
+
+        <div class="wallet-history-row">
+
+            <div>
+
+                <strong>
+                    ${icon}
+                    ${escapeHtml(title)}
+                </strong>
+
+                <small>
+                    ${escapeHtml(date)}
+                </small>
+
+                ${
+                    item.game_id
+                    ? `
+                        <small>
+                            ${escapeHtml(
+                                item.game_id
+                            )}
+                        </small>
+                    `
+                    : ""
+                }
+
+            </div>
+
+            <div>
+                <strong>
+                    ${escapeHtml(amount)}
+                </strong>
+            </div>
+
+        </div>
+
+    `;
+                }
 
 
 // ============================================================
