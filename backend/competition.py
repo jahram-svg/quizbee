@@ -291,10 +291,15 @@ def public_user(user: Dict[str, Any]) -> Dict[str, Any]:
         "username": user.get("username", ""),
         "quizbee_points": to_int(points, 0),
         "wins": to_int(user.get("wins", 0), 0),
-        "prize_balance_usd": round(
-            to_number(user.get("prize_balance_usd", 0)),
-            4,
-        ),
+        "prize_balance": round(
+    to_number(
+        user.get(
+            "prize_balance",
+            user.get("prize_balance_usd", 0)
+        )
+    ),
+    4,
+),
     }
 
 
@@ -1236,13 +1241,32 @@ def distribute_prize(
             if not user_snap.exists:
                 return False
 
-            transaction.update(
-                user_ref,
-                {
-                    "prize_balance_usd": firestore.Increment(amount_each),
-                    "updated_at": firestore.SERVER_TIMESTAMP,
-                },
-            )
+            current_data = user_snap.to_dict() or {}
+
+current_prize_balance = to_number(
+    current_data.get(
+        "prize_balance",
+        current_data.get(
+            "prize_balance_usd",
+            0
+        )
+    ),
+    0,
+)
+
+transaction.update(
+    user_ref,
+    {
+        "prize_balance":
+            current_prize_balance + amount_each,
+
+        "prize_balance_usd":
+            0,
+
+        "updated_at":
+            firestore.SERVER_TIMESTAMP,
+    },
+)
 
             transaction.set(
                 result_ref,
