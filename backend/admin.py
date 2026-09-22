@@ -1980,7 +1980,13 @@ DEFAULT_APP_SETTINGS = {
         1,
 
     "ads_daily_limit":
-        10
+        10,
+
+    "telegram_channel_url":
+        "",
+
+    "customer_support_url":
+        ""
 }
 
 
@@ -2374,6 +2380,83 @@ def update_settings():
                 "ads_daily_limit"
             ] = daily_limit
 
+        # ----------------------------------------------------
+# TELEGRAM CHANNEL
+# ----------------------------------------------------
+
+if (
+    "telegram_channel_url"
+    in body
+):
+
+    telegram_channel_url = str(
+        body.get(
+            "telegram_channel_url",
+            ""
+        )
+    ).strip()
+
+    if (
+        telegram_channel_url
+        and not (
+            telegram_channel_url.startswith(
+                "https://t.me/"
+            )
+            or telegram_channel_url.startswith(
+                "https://telegram.me/"
+            )
+        )
+    ):
+
+        return jsonify({
+            "success": False,
+            "error":
+                "Telegram channel must be a valid Telegram link."
+        }), 400
+
+    updates[
+        "telegram_channel_url"
+    ] = telegram_channel_url
+
+
+# ----------------------------------------------------
+# CUSTOMER SUPPORT
+# ----------------------------------------------------
+
+if (
+    "customer_support_url"
+    in body
+):
+
+    customer_support_url = str(
+        body.get(
+            "customer_support_url",
+            ""
+        )
+    ).strip()
+
+    if (
+        customer_support_url
+        and not (
+            customer_support_url.startswith(
+                "https://t.me/"
+            )
+            or customer_support_url.startswith(
+                "https://telegram.me/"
+            )
+        )
+    ):
+
+        return jsonify({
+            "success": False,
+            "error":
+                "Customer support must be a valid Telegram link."
+        }), 400
+
+    updates[
+        "customer_support_url"
+    ] = customer_support_url 
+    
         # ----------------------------------------------------
         # AUDIT
         # ----------------------------------------------------
