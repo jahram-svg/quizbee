@@ -344,9 +344,11 @@
                     <span>›</span>
                 </button>
 
-                <button>
-                    📜 Game History
-                    <span>›</span>
+                <button
+    onclick="showPage('gameHistory')"
+>
+    📜 Game History
+    <span>›</span>
                 </button>
 
                 <button>
@@ -357,6 +359,35 @@
             </div>
 
         </section>
+
+        <!-- GAME HISTORY -->
+<section id="gameHistoryPage" class="page">
+
+    <div class="page-heading">
+
+        <button
+            class="back-btn"
+            onclick="showPage('profile')"
+        >
+            ‹
+        </button>
+
+        <h1>📜 Game History</h1>
+
+    </div>
+
+    <div
+        id="gameHistoryList"
+        class="games-list"
+    >
+
+        <div class="info-box">
+            Loading game history...
+        </div>
+
+    </div>
+
+</section>
 
     </main>
 
