@@ -2833,83 +2833,64 @@ def competition_submit(user, game_id):
         }), 400
 
     entry_ref = entries_col().document(
-    f"{round_id}_{stage_no}_{telegram_id}"
-)
-
-firestore_transaction = db.transaction()
-
-@firestore.transactional
-def submit_answer_transaction(tx):
-
-    entry_snapshot = entry_ref.get(
-        transaction=tx
+        f"{round_id}_{stage_no}_{telegram_id}"
     )
 
-    if not entry_snapshot.exists:
-        raise ValueError(
-            "Enter the stage before answering."
+    firestore_transaction = db.transaction()
+
+    @firestore.transactional
+    def submit_answer_transaction(tx):
+        entry_snapshot = entry_ref.get(
+            transaction=tx
         )
 
-    entry_data = (
-        entry_snapshot.to_dict()
-        or {}
-    )
+        if not entry_snapshot.exists:
+            raise ValueError(
+                "Enter the stage before answering."
+            )
 
-    if entry_data.get("status") == "submitted":
-        raise ValueError(
-            "You have already submitted an answer."
+        entry_data = entry_snapshot.to_dict() or {}
+
+        if entry_data.get("status") == "submitted":
+            raise ValueError(
+                "You have already submitted an answer."
+            )
+
+        if entry_data.get("status") != "entered":
+            raise ValueError(
+                "This entry is no longer active."
+            )
+
+        tx.update(
+            entry_ref,
+            {
+                "status": "submitted",
+                "answer": answer,
+                "submitted_at": firestore.SERVER_TIMESTAMP,
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            }
         )
 
-    if entry_data.get("status") != "entered":
-        raise ValueError(
-            "This entry is no longer active."
+    try:
+        submit_answer_transaction(firestore_transaction)
+
+    except ValueError as exc:
+        return jsonify({
+            "success": False,
+            "error": str(exc)
+        }), 400
+
+    except Exception as exc:
+        print(
+            "Competition answer transaction error:",
+            repr(exc)
         )
 
-    tx.update(
-        entry_ref,
-        {
-            "status":
-                "submitted",
+        return jsonify({
+            "success": False,
+            "error": "Unable to submit answer."
+        }), 500
 
-            "answer":
-                answer,
-
-            "submitted_at":
-                firestore.SERVER_TIMESTAMP,
-
-            "updated_at":
-                firestore.SERVER_TIMESTAMP
-        }
-    )
-
-    return True
-
-try:
-
-    submit_answer_transaction(
-        firestore_transaction
-    )
-
-except ValueError as exc:
-
-    return jsonify({
-        "success": False,
-        "error": str(exc)
-    }), 400
-
-except Exception as exc:
-
-    print(
-        "Competition answer transaction error:",
-        repr(exc)
-    )
-
-    return jsonify({
-        "success": False,
-        "error":
-            "Unable to submit answer."
-    }), 500
-    
     return jsonify({
         "success": True,
         "status": "submitted",
