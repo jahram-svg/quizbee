@@ -382,6 +382,10 @@ def bootstrap():
                     ):
                         active_round = data
 
+                online_members = get_online_members(
+            users
+        )
+
         return jsonify({
             "success": True,
 
@@ -403,6 +407,9 @@ def bootstrap():
             "stats": {
                 "users":
                     len(users),
+
+                "online_users":
+                    len(online_members),
 
                 "active_games":
                     active_games,
@@ -427,6 +434,9 @@ def bootstrap():
                 serialize_value(active_round)
                 if active_round
                 else None,
+
+            "online_members":
+                online_members,
 
             "raffle_enabled":
                 bool(
@@ -544,6 +554,10 @@ def list_users():
 
             data["telegram_id"] = telegram_id
             data["id"] = doc.id
+
+            data["online"] = is_user_online(
+                 data.get("last_seen")
+                        )
 
             results.append(
                 serialize_value(data)
