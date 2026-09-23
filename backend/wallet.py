@@ -262,14 +262,92 @@ def wallet_transactions():
                 "==",
                 telegram_id
             )
-            .limit(200)
+            .limit(300)
             .stream()
         )
 
-        results = [
-            serialize_doc(doc)
-            for doc in docs
-        ]
+        results = []
+
+        for doc in docs:
+
+            data = serialize_doc(doc)
+
+            # ------------------------------------------------
+            # NORMALIZE AMOUNT
+            # ------------------------------------------------
+
+            try:
+                data["amount"] = float(
+                    data.get(
+                        "amount",
+                        0
+                    ) or 0
+                )
+            except (
+                TypeError,
+                ValueError
+            ):
+                data["amount"] = 0
+
+            # ------------------------------------------------
+            # NORMALIZE CURRENCY
+            # ------------------------------------------------
+
+            currency = str(
+                data.get(
+                    "currency",
+                    ""
+                )
+                or ""
+            )
+
+            if currency == "quizbee_points":
+                data["currency"] = "Points"
+
+            elif currency.upper() in [
+                "USD",
+                "$"
+            ]:
+                data["currency"] = "USD"
+
+            # ------------------------------------------------
+            # NORMALIZE DIRECTION
+            # ------------------------------------------------
+
+            if (
+                data.get("direction")
+                not in [
+                    "credit",
+                    "debit"
+                ]
+            ):
+
+                amount = data["amount"]
+
+                data["direction"] = (
+                    "credit"
+                    if amount >= 0
+                    else "debit"
+                )
+
+            # ------------------------------------------------
+            # DISPLAY AMOUNT
+            # ------------------------------------------------
+
+            if data["direction"] == "debit":
+                data["display_amount"] = -abs(
+                    data["amount"]
+                )
+            else:
+                data["display_amount"] = abs(
+                    data["amount"]
+                )
+
+            results.append(data)
+
+        # ----------------------------------------------------
+        # LOCAL SORT
+        # ----------------------------------------------------
 
         results.sort(
             key=lambda item:
@@ -285,7 +363,7 @@ def wallet_transactions():
                 True,
 
             "transactions":
-                results[:100]
+                results[:150]
         })
 
     except Exception as exc:
