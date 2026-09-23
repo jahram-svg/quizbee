@@ -941,10 +941,17 @@ function transactionRow(
     tx
 ) {
 
-    const amount =
+    const rawAmount =
         Number(
-            tx.amount || 0
+            tx.display_amount ??
+            tx.amount ??
+            0
         );
+
+    const amount =
+        Number.isFinite(rawAmount)
+            ? rawAmount
+            : 0;
 
     const positive =
         amount >= 0;
@@ -955,11 +962,8 @@ function transactionRow(
             : "";
 
     const currency =
-        tx.currency ===
-        "quizbee_points"
-            ? "Points"
-            : tx.currency || "";
-
+        tx.currency ||
+        "";
 
     const date =
         tx.created_at
@@ -968,6 +972,10 @@ function transactionRow(
             ).toLocaleString()
             : "";
 
+    const description =
+        tx.description ||
+        tx.type ||
+        "Transaction";
 
     return `
 
@@ -977,9 +985,7 @@ function transactionRow(
 
                 <strong>
                     ${escapeHtml(
-                        tx.description ||
-                        tx.type ||
-                        "Transaction"
+                        description
                     )}
                 </strong>
 
@@ -1000,10 +1006,8 @@ function transactionRow(
                 }"
             >
 
-                ${sign}${amount}
-                ${escapeHtml(
-                    currency
-                )}
+                ${sign}${Math.abs(amount)}
+                ${escapeHtml(currency)}
 
                 <small>
                     ${escapeHtml(
@@ -1017,7 +1021,6 @@ function transactionRow(
         </div>
 
     `;
-
 }
 
 
