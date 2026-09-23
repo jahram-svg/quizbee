@@ -1162,15 +1162,18 @@ def distribute_prize(
     """
     Credit the final competition prize exactly once per winner.
 
-    The old implementation used a read -> calculate -> batch write flow.
-    That meant a second settlement could read the already-paid balance and
-    add the prize again.  It also made the prize path weaker than the
-    transaction-protected leaderboard win path.
+    Each winner gets a permanent payout transaction document.
+    That document acts as the idempotency marker.
 
-    Each winner now has a permanent payout transaction document.  The user
-    balance, payout marker and result are written in one Firestore
-    transaction.  Re-running settlement therefore becomes a safe repair
-    operation instead of another payment.
+    The canonical user field is:
+        prize_balance
+
+    Older accounts may contain:
+        prize_balance_usd
+
+    If an older account has prize_balance_usd but no usable
+    prize_balance, its old balance is migrated into prize_balance
+    before the new prize is added.
     """
 
     prize = to_number(
@@ -1180,7 +1183,7 @@ def distribute_prize(
 
     if prize <= 0 or not winner_entries:
         return {
-            "winner_count": 0 if not winner_entries else len(winner_entries),
+            "winner_count": 0,
             "amount_each": 0,
             "total_distributed": 0,
         }
@@ -1188,12 +1191,21 @@ def distribute_prize(
     unique_ids: List[str] = []
 
     for entry in winner_entries:
+
         telegram_id = str(
-            entry.get("telegram_id", "")
+            entry.get(
+                "telegram_id",
+                "",
+            )
         ).strip()
 
-        if telegram_id and telegram_id not in unique_ids:
-            unique_ids.append(telegram_id)
+        if (
+            telegram_id
+            and telegram_id not in unique_ids
+        ):
+            unique_ids.append(
+                telegram_id
+            )
 
     if not unique_ids:
         return {
@@ -1210,6 +1222,7 @@ def distribute_prize(
     paid_count = 0
 
     for telegram_id in unique_ids:
+
         user_ref = users_col().document(
             telegram_id
         )
@@ -1222,123 +1235,179 @@ def distribute_prize(
             f"competition_prize_{round_data['id']}_{telegram_id}"
         )
 
-        transaction = db.transaction()
+        firestore_transaction = db.transaction()
 
         @firestore.transactional
-        def credit_prize(transaction):
-            payout_snap = payout_ref.get(
-                transaction=transaction
+        def credit_prize(tx):
+
+            payout_snapshot = payout_ref.get(
+                transaction=tx
             )
 
-            # A completed payout is the permanent idempotency marker.
-            if payout_snap.exists:
-                return True
+            # ------------------------------------------------
+            # IDEMPOTENCY
+            # ------------------------------------------------
 
-            user_snap = user_ref.get(
-                transaction=transaction
-            )
-
-            if not user_snap.exists:
+            if payout_snapshot.exists:
                 return False
 
-            current_data = user_snap.to_dict() or {}
+            user_snapshot = user_ref.get(
+                transaction=tx
+            )
 
-current_prize_balance = to_number(
-    current_data.get(
-        "prize_balance",
-        current_data.get(
-            "prize_balance_usd",
-            0
-        )
-    ),
-    0,
-)
+            if not user_snapshot.exists:
+                return False
 
-transaction.update(
-    user_ref,
-    {
-        "prize_balance":
-            current_prize_balance + amount_each,
+            user_data = (
+                user_snapshot.to_dict()
+                or {}
+            )
 
-        "prize_balance_usd":
-            0,
+            # ------------------------------------------------
+            # COMPATIBILITY WITH OLD ACCOUNTS
+            # ------------------------------------------------
 
-        "updated_at":
-            firestore.SERVER_TIMESTAMP,
-    },
-)
+            current_prize_balance = to_number(
+                user_data.get(
+                    "prize_balance",
+                    0,
+                ),
+                0,
+            )
 
-            transaction.set(
+            legacy_balance = to_number(
+                user_data.get(
+                    "prize_balance_usd",
+                    0,
+                ),
+                0,
+            )
+
+            # If the canonical field is empty but the legacy
+            # field contains money, preserve that balance.
+            if (
+                current_prize_balance <= 0
+                and legacy_balance > 0
+            ):
+                current_prize_balance = (
+                    legacy_balance
+                )
+
+            new_balance = round(
+                current_prize_balance
+                + amount_each,
+                6,
+            )
+
+            # ------------------------------------------------
+            # CREDIT USER
+            # ------------------------------------------------
+
+            tx.update(
+                user_ref,
+                {
+                    "prize_balance":
+                        new_balance,
+
+                    "updated_at":
+                        firestore.SERVER_TIMESTAMP,
+                },
+            )
+
+            # ------------------------------------------------
+            # UPDATE RESULT
+            # ------------------------------------------------
+
+            tx.set(
                 result_ref,
                 {
-                    "amount_usd": amount_each,
-                    "winner": True,
-                    "outcome": "winner",
-                    "updated_at": firestore.SERVER_TIMESTAMP,
+                    "amount_usd":
+                        amount_each,
+
+                    "winner":
+                        True,
+
+                    "outcome":
+                        "winner",
+
+                    "updated_at":
+                        firestore.SERVER_TIMESTAMP,
                 },
                 merge=True,
             )
 
-            transaction.set(
-    payout_ref,
-    {
-        "telegram_id":
-            telegram_id,
+            # ------------------------------------------------
+            # PERMANENT PAYOUT TRANSACTION
+            # ------------------------------------------------
 
-        "type":
-            "competition_prize",
+            tx.set(
+                payout_ref,
+                {
+                    "telegram_id":
+                        telegram_id,
 
-        "direction":
-            "credit",
+                    "type":
+                        "competition_prize",
 
-        "amount":
-            amount_each,
+                    "direction":
+                        "credit",
 
-        "amount_usd":
-            amount_each,
+                    "amount":
+                        amount_each,
 
-        "currency":
-            "USD",
+                    "amount_usd":
+                        amount_each,
 
-        "balance_type":
-            "prize_balance",
+                    "currency":
+                        "USD",
 
-        "round_id":
-            round_data["id"],
+                    "balance_type":
+                        "prize_balance",
 
-        "game_id":
-            round_data.get("game_id"),
+                    "round_id":
+                        round_data["id"],
 
-        "status":
-            "completed",
+                    "game_id":
+                        round_data.get(
+                            "game_id"
+                        ),
 
-        "description":
-            (
-                f"Competition prize: "
-                f"${amount_each:.2f}"
-            ),
+                    "status":
+                        "completed",
 
-        "created_at":
-            firestore.SERVER_TIMESTAMP,
+                    "description":
+                        (
+                            "Competition prize: "
+                            f"${amount_each:.2f}"
+                        ),
 
-        "updated_at":
-            firestore.SERVER_TIMESTAMP,
-    },
-    merge=True,
+                    "created_at":
+                        firestore.SERVER_TIMESTAMP,
+
+                    "updated_at":
+                        firestore.SERVER_TIMESTAMP,
+                },
             )
 
             return True
 
-        if credit_prize(transaction):
+        if credit_prize(
+            firestore_transaction
+        ):
             paid_count += 1
 
     return {
-        "winner_count": len(unique_ids),
-        "amount_each": amount_each,
-        "total_distributed": round(
-            amount_each * paid_count,
-            6,
-        ),
+        "winner_count":
+            len(unique_ids),
+
+        "amount_each":
+            amount_each,
+
+        "total_distributed":
+            round(
+                amount_each * paid_count,
+                6,
+            ),
     }
 
 
