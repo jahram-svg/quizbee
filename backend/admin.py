@@ -24,6 +24,133 @@ def now():
     return datetime.now(timezone.utc)
 
 
+ONLINE_WINDOW_SECONDS = 90
+
+
+def is_user_online(last_seen):
+
+    if not last_seen:
+        return False
+
+    try:
+
+        if isinstance(
+            last_seen,
+            datetime
+        ):
+
+            seen_at = last_seen
+
+        else:
+
+            seen_at = datetime.fromisoformat(
+                str(last_seen)
+                .replace(
+                    "Z",
+                    "+00:00"
+                )
+            )
+
+        if seen_at.tzinfo is None:
+
+            seen_at = seen_at.replace(
+                tzinfo=timezone.utc
+            )
+
+        age = (
+            now()
+            - seen_at
+        ).total_seconds()
+
+        return (
+            age <=
+            ONLINE_WINDOW_SECONDS
+        )
+
+    except Exception:
+
+        return False
+
+
+def get_online_members(users):
+
+    online = []
+
+    for doc in users:
+
+        data = doc.to_dict() or {}
+
+        if not is_user_online(
+            data.get("last_seen")
+        ):
+            continue
+
+        online.append({
+
+            "telegram_id":
+                str(
+                    data.get(
+                        "telegram_id",
+                        doc.id
+                    )
+                ),
+
+            "username":
+                str(
+                    data.get(
+                        "username",
+                        ""
+                    )
+                    or ""
+                ),
+
+            "first_name":
+                str(
+                    data.get(
+                        "first_name",
+                        ""
+                    )
+                    or ""
+                ),
+
+            "last_name":
+                str(
+                    data.get(
+                        "last_name",
+                        ""
+                    )
+                    or ""
+                ),
+
+            "last_seen":
+                (
+                    data["last_seen"].isoformat()
+                    if isinstance(
+                        data.get("last_seen"),
+                        datetime
+                    )
+                    else str(
+                        data.get(
+                            "last_seen",
+                            ""
+                        )
+                    )
+                )
+
+        })
+
+    online.sort(
+        key=lambda item:
+            item.get(
+                "last_seen",
+                ""
+            ),
+        reverse=True
+    )
+
+    return online
+
+
 def serialize_value(value):
     if isinstance(value, datetime):
         return value.isoformat()
