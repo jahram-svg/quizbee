@@ -47,6 +47,84 @@ function getTelegramUser() {
 
 
 // ============================================================
+// ONLINE HEARTBEAT
+// ============================================================
+
+let heartbeatTimer = null;
+let heartbeatStarted = false;
+
+
+async function sendHeartbeat() {
+
+    try {
+
+        await api(
+            "/api/heartbeat",
+            {
+                method: "POST",
+                body: JSON.stringify({})
+            }
+        );
+
+    } catch (error) {
+
+        // Heartbeat is background monitoring.
+        // Do not interrupt the user experience
+        // if a heartbeat temporarily fails.
+
+        console.debug(
+            "Heartbeat skipped:",
+            error.message
+        );
+
+    }
+
+}
+
+
+function startHeartbeat() {
+
+    if (heartbeatStarted) {
+        return;
+    }
+
+    heartbeatStarted = true;
+
+    // Register immediately.
+    sendHeartbeat();
+
+    // Then every 30 seconds.
+    heartbeatTimer =
+        setInterval(
+            sendHeartbeat,
+            30000
+        );
+
+}
+
+
+function stopHeartbeat() {
+
+    if (
+        heartbeatTimer !== null
+    ) {
+
+        clearInterval(
+            heartbeatTimer
+        );
+
+        heartbeatTimer =
+            null;
+
+    }
+
+    heartbeatStarted =
+        false;
+
+}
+
+
+// ============================================================
 // API
 // ============================================================
 
@@ -608,6 +686,8 @@ async function bootstrap() {
         updateUserState(
             data.user
         );
+
+        startHeartbeat();
 
         publicSettings = data.public_settings || {
         telegram_channel_url: "",
@@ -3819,3 +3899,23 @@ function openCommunityLink(
     }
 
 }
+
+// ============================================================
+// HEARTBEAT VISIBILITY RECOVERY
+// ============================================================
+
+document.addEventListener(
+    "visibilitychange",
+    () => {
+
+        if (
+            document.visibilityState ===
+            "visible"
+        ) {
+
+            sendHeartbeat();
+
+        }
+
+    }
+);
