@@ -2213,6 +2213,9 @@ def approve_point_order(
                 "type":
                     "point_purchase_credit",
 
+                "direction":
+                     "credit",
+
                 "amount":
                     points,
 
