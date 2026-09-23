@@ -282,14 +282,18 @@ async function boot() {
             `Hello, ${admin.first_name || "Admin"}`;
 
         renderStats(
-            data.stats || {}
-        );
+    data.stats || {}
+);
 
-        renderDashboardDaily(
-            data.active_daily_round
-        );
+renderDashboardDaily(
+    data.active_daily_round
+);
 
-        loadSettings();
+renderOnlineMembers(
+    data.online_members || []
+);
+
+loadSettings(); 
 
     } catch (error) {
 
@@ -330,6 +334,18 @@ function renderStats(stats) {
         )
         .textContent =
         stats.users || 0;
+
+        const onlineEl =
+        document.getElementById(
+            "statOnlineUsers"
+        );
+
+    if (onlineEl) {
+
+        onlineEl.textContent =
+            stats.online_users || 0;
+
+    }
 
     document
         .getElementById(
@@ -453,6 +469,136 @@ function renderDashboardDaily(round) {
 }
 
 
+function renderOnlineMembers(
+    members
+) {
+
+    const list =
+        document.getElementById(
+            "onlineMembersList"
+        );
+
+    if (!list) {
+        return;
+    }
+
+    const online =
+        members || [];
+
+    if (!online.length) {
+
+        list.innerHTML = `
+            <div class="list-card">
+
+                <div class="row">
+
+                    <div>
+
+                        <h3>
+                            💤 No members online
+                        </h3>
+
+                        <p>
+                            No active members detected right now.
+                        </p>
+
+                    </div>
+
+                    <span class="badge">
+                        0
+                    </span>
+
+                </div>
+
+            </div>
+        `;
+
+        return;
+    }
+
+    list.innerHTML =
+        online
+            .map(
+                renderOnlineMember
+            )
+            .join("");
+
+}
+
+
+function renderOnlineMember(
+    member
+) {
+
+    const name =
+        [
+            member.first_name,
+            member.last_name
+        ]
+        .filter(Boolean)
+        .join(" ")
+        ||
+        member.username
+        ||
+        "QuizBee User";
+
+    const username =
+        member.username
+            ? `@${member.username}`
+            : "No username";
+
+    return `
+
+        <div class="list-card">
+
+            <div class="row">
+
+                <div>
+
+                    <h3>
+
+                        🟢
+                        ${escapeHtml(
+                            name
+                        )}
+
+                    </h3>
+
+                    <p>
+
+                        ${escapeHtml(
+                            username
+                        )}
+
+                    </p>
+
+                    <p>
+
+                        Telegram ID:
+                        ${escapeHtml(
+                            member.telegram_id ||
+                            ""
+                        )}
+
+                    </p>
+
+                </div>
+
+                <span class="badge active">
+
+                    ONLINE
+
+                </span>
+
+            </div>
+
+        </div>
+
+    `;
+
+}
+
+
 async function loadDashboard() {
 
     try {
@@ -468,6 +614,10 @@ async function loadDashboard() {
 
         renderDashboardDaily(
             data.active_daily_round
+        );
+
+        renderOnlineMembers(
+            data.online_members || []
         );
 
     } catch (error) {
@@ -579,16 +729,24 @@ function renderUserCard(user) {
                 <span class="badge ${
     user.blocked
     ? "danger"
-    : ""
+    : (
+        user.online
+        ? "active"
+        : ""
+    )
 }">
+
     ${
         user.blocked
         ? "🚫 BLOCKED"
-        : `${Number(
-            user.quizbee_points || 0
-        ).toLocaleString()} pts`
+        : (
+            user.online
+            ? "🟢 ONLINE"
+            : "⚪ OFFLINE"
+        )
     }
-</span>
+
+</span> 
 
             </div>
 
