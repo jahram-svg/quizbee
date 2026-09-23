@@ -853,6 +853,9 @@ def create_withdrawal():
                 "type":
                     "withdrawal",
 
+                "direction":
+                    "debit",
+
                 "amount":
                     -float(amount),
 
@@ -1442,6 +1445,9 @@ def reject_withdrawal(
 
                 "type":
                     "withdrawal_refund",
+
+                "direction":
+                    "credit",
 
                 "amount":
                     amount,
