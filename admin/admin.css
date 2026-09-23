@@ -847,3 +847,24 @@ select:focus {
 .ads-activity-table th:nth-child(4) {
     text-align: center;
 }
+
+/* ============================================================
+   ONLINE MEMBER MONITORING
+============================================================ */
+
+.online-stat-card {
+    position: relative;
+}
+
+.online-stat-card strong {
+    color: #22c55e;
+}
+
+#onlineMembersList {
+    max-height: 420px;
+    overflow-y: auto;
+}
+
+#onlineMembersList .list-card {
+    margin-bottom: 10px;
+}
