@@ -796,6 +796,218 @@ def get_public_challenge(
 
 
 # ============================================================
+# ONLINE HEARTBEAT
+# ============================================================
+
+ONLINE_WINDOW_SECONDS = 90
+
+
+@app.post("/api/heartbeat")
+def heartbeat():
+
+    try:
+
+        telegram_user = (
+            require_telegram_user()
+        )
+
+        if not telegram_user:
+
+            return jsonify({
+                "success": False,
+                "error":
+                    "Unauthorized Telegram session."
+            }), 401
+
+        telegram_id = str(
+            telegram_user["telegram_id"]
+        )
+
+        ref = user_ref(
+            telegram_id
+        )
+
+        snap = ref.get()
+
+        if not snap.exists:
+
+            return jsonify({
+                "success": False,
+                "error":
+                    "User account not found."
+            }), 404
+
+        ref.update({
+
+            "last_seen":
+                now(),
+
+            "updated_at":
+                now()
+
+        })
+
+        return jsonify({
+
+            "success":
+                True,
+
+            "online":
+                True,
+
+            "last_seen":
+                now().isoformat()
+
+        })
+
+    except Exception as e:
+
+        print(
+            "Heartbeat error:",
+            repr(e)
+        )
+
+        return jsonify({
+            "success": False,
+            "error":
+                "Heartbeat failed."
+        }), 500
+
+
+# ============================================================
+# ONLINE MEMBER HELPERS
+# ============================================================
+
+def is_user_online(last_seen):
+
+    if not last_seen:
+        return False
+
+    try:
+
+        if isinstance(
+            last_seen,
+            datetime
+        ):
+
+            seen_at = last_seen
+
+        else:
+
+            seen_at = datetime.fromisoformat(
+                str(last_seen)
+                .replace(
+                    "Z",
+                    "+00:00"
+                )
+            )
+
+        if seen_at.tzinfo is None:
+
+            seen_at = seen_at.replace(
+                tzinfo=timezone.utc
+            )
+
+        age =
+            (
+                now()
+                - seen_at
+            ).total_seconds()
+
+        return (
+            age <=
+            ONLINE_WINDOW_SECONDS
+        )
+
+    except Exception:
+
+        return False
+
+
+def get_online_members(users):
+
+    online = []
+
+    for doc in users:
+
+        data = doc.to_dict() or {}
+
+        last_seen = data.get(
+            "last_seen"
+        )
+
+        if not is_user_online(
+            last_seen
+        ):
+            continue
+
+        telegram_id = str(
+            data.get(
+                "telegram_id",
+                doc.id
+            )
+        )
+
+        online.append({
+
+            "telegram_id":
+                telegram_id,
+
+            "username":
+                str(
+                    data.get(
+                        "username",
+                        ""
+                    )
+                    or ""
+                ),
+
+            "first_name":
+                str(
+                    data.get(
+                        "first_name",
+                        ""
+                    )
+                    or ""
+                ),
+
+            "last_name":
+                str(
+                    data.get(
+                        "last_name",
+                        ""
+                    )
+                    or ""
+                ),
+
+            "last_seen":
+                (
+                    last_seen.isoformat()
+                    if isinstance(
+                        last_seen,
+                        datetime
+                    )
+                    else str(
+                        last_seen
+                        or ""
+                    )
+                )
+
+        })
+
+    online.sort(
+        key=lambda item:
+            item.get(
+                "last_seen",
+                ""
+            ),
+        reverse=True
+    )
+
+    return online
+
+
+# ============================================================
 # HEALTH
 # ============================================================
 
