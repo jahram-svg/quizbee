@@ -120,6 +120,47 @@ function showToast(message) {
 }
 
 
+// ============================================================
+// DASHBOARD LIVE REFRESH
+// ============================================================
+
+let dashboardRefreshTimer = null;
+
+
+function startDashboardRefresh() {
+
+    if (dashboardRefreshTimer !== null) {
+        return;
+    }
+
+    // Refresh online members/stats every 60 seconds.
+    dashboardRefreshTimer =
+        setInterval(
+            loadDashboard,
+            60000
+        );
+
+}
+
+
+function stopDashboardRefresh() {
+
+    if (
+        dashboardRefreshTimer !== null
+    ) {
+
+        clearInterval(
+            dashboardRefreshTimer
+        );
+
+        dashboardRefreshTimer =
+            null;
+
+    }
+
+}
+
+
 /* ============================================================
    PAGE NAVIGATION
 ============================================================ */
@@ -293,7 +334,9 @@ renderOnlineMembers(
     data.online_members || []
 );
 
-loadSettings(); 
+loadSettings();
+
+startDashboardRefresh();
 
     } catch (error) {
 
@@ -547,6 +590,54 @@ function renderOnlineMember(
             ? `@${member.username}`
             : "No username";
 
+    let lastSeenText =
+        "Active recently";
+
+    if (member.last_seen) {
+
+        const seen =
+            new Date(
+                member.last_seen
+            );
+
+        if (
+            !Number.isNaN(
+                seen.getTime()
+            )
+        ) {
+
+            const seconds =
+                Math.max(
+                    0,
+                    Math.floor(
+                        (
+                            Date.now() -
+                            seen.getTime()
+                        ) / 1000
+                    )
+                );
+
+            if (seconds < 60) {
+
+                lastSeenText =
+                    "Active just now";
+
+            } else {
+
+                const minutes =
+                    Math.floor(
+                        seconds / 60
+                    );
+
+                lastSeenText =
+                    `Active ${minutes} min ago`;
+
+            }
+
+        }
+
+    }
+
     return `
 
         <div class="list-card">
@@ -568,6 +659,14 @@ function renderOnlineMember(
 
                         ${escapeHtml(
                             username
+                        )}
+
+                    </p>
+
+                    <p>
+
+                        ${escapeHtml(
+                            lastSeenText
                         )}
 
                     </p>
@@ -608,6 +707,15 @@ async function loadDashboard() {
                 "/api/admin/bootstrap"
             );
 
+        if (!data.success) {
+
+            throw new Error(
+                data.error ||
+                "Unable to load dashboard."
+            );
+
+        }
+
         renderStats(
             data.stats || {}
         );
@@ -622,11 +730,21 @@ async function loadDashboard() {
 
     } catch (error) {
 
-        showToast(
-            error.message
+        console.error(
+            "Dashboard refresh error:",
+            error
         );
+
+        // Do not replace the whole dashboard when
+        // a background refresh temporarily fails.
+        showToast(
+            error.message ||
+            "Dashboard refresh failed."
+        );
+
     }
-}
+
+} 
 
 
 /* ============================================================
