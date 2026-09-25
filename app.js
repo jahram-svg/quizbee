@@ -93,12 +93,12 @@ function startHeartbeat() {
     // Register immediately.
     sendHeartbeat();
 
-    // Then every 30 seconds.
+    // Then every 2 minutes.
     heartbeatTimer =
-        setInterval(
-            sendHeartbeat,
-            30000
-        );
+         setInterval(
+              sendHeartbeat,
+              120000
+    ); 
 
 }
 
