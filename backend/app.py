@@ -98,9 +98,15 @@ def maintenance_gate():
     ):
         return None
 
-    # Health check must remain available.
-    if path == "/api/health":
-        return None
+    # Health and heartbeat must remain available.
+    #
+    # Heartbeat is background presence monitoring and should not
+    # be blocked just because the user-facing app is in maintenance.
+    if path in (
+    "/api/health",
+    "/api/heartbeat"
+    ):
+    return None 
 
     # --------------------------------------------------------
     # CORS PREFLIGHT
@@ -799,7 +805,9 @@ def get_public_challenge(
 # ONLINE HEARTBEAT
 # ============================================================
 
-ONLINE_WINDOW_SECONDS = 90
+# A user is considered online if the app has contacted
+# the backend within the last 5 minutes.
+ONLINE_WINDOW_SECONDS = 300
 
 
 @app.post("/api/heartbeat")
@@ -837,13 +845,21 @@ def heartbeat():
                     "User account not found."
             }), 404
 
+        heartbeat_time = now()
+
+        # ----------------------------------------------------
+        # PRESENCE ONLY
+        #
+        # Do NOT update updated_at here.
+        #
+        # updated_at represents an actual account/data update,
+        # while last_seen represents online presence.
+        # ----------------------------------------------------
+
         ref.update({
 
             "last_seen":
-                now(),
-
-            "updated_at":
-                now()
+                heartbeat_time
 
         })
 
@@ -856,7 +872,7 @@ def heartbeat():
                 True,
 
             "last_seen":
-                now().isoformat()
+                heartbeat_time.isoformat()
 
         })
 
@@ -871,7 +887,7 @@ def heartbeat():
             "success": False,
             "error":
                 "Heartbeat failed."
-        }), 500
+        }), 500 
 
 
 # ============================================================
