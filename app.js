@@ -20,6 +20,7 @@ let publicSettings = {
     telegram_channel_url: "",
     customer_support_url: ""
 };
+let gameEntryInProgress = false;
 
 
 // ============================================================
@@ -122,6 +123,36 @@ function stopHeartbeat() {
         false;
 
 }
+
+
+// ============================================================
+// CONNECTION RECOVERY
+// ============================================================
+
+window.addEventListener(
+    "online",
+    () => {
+
+        console.log(
+            "Network connection restored."
+        );
+
+        sendHeartbeat();
+
+    }
+);
+
+
+window.addEventListener(
+    "offline",
+    () => {
+
+        console.warn(
+            "Network connection lost."
+        );
+
+    }
+);
 
 
 // ============================================================
@@ -1170,12 +1201,18 @@ async function enterGame() {
         return;
     }
 
+    if (gameEntryInProgress) {
+
+        return;
+
+    }
+
+    gameEntryInProgress = true;
 
     const container =
         document.getElementById(
             "gameContent"
         );
-
 
     if (container) {
 
@@ -1195,7 +1232,6 @@ async function enterGame() {
 
     }
 
-
     try {
 
         const data =
@@ -1209,7 +1245,6 @@ async function enterGame() {
                 }
             );
 
-
         if (!data.success) {
 
             throw new Error(
@@ -1219,7 +1254,6 @@ async function enterGame() {
 
         }
 
-
         if (data.user) {
 
             updateUserState(
@@ -1228,14 +1262,12 @@ async function enterGame() {
 
         }
 
-
         currentChallenge =
             data.challenge ||
             null;
 
         selectedChoice =
             null;
-
 
         if (!currentChallenge) {
 
@@ -1248,7 +1280,6 @@ async function enterGame() {
             renderChallenge();
 
         }
-
 
         if (data.already_entered) {
 
@@ -1264,7 +1295,6 @@ async function enterGame() {
 
         }
 
-
     } catch (error) {
 
         console.error(
@@ -1273,12 +1303,12 @@ async function enterGame() {
         );
 
         if (
-    handleMaintenanceError(
-        error
-    )
-) {
+            handleMaintenanceError(
+                error
+            )
+        ) {
 
-    return;
+            return;
 
         }
 
@@ -1302,7 +1332,6 @@ async function enterGame() {
 
                     </div>
 
-
                     <button
                         class="primary-btn"
                         onclick="enterGame()"
@@ -1318,7 +1347,13 @@ async function enterGame() {
 
         }
 
+    } finally {
+
+        gameEntryInProgress =
+            false;
+
     }
+
 }
 
 
