@@ -103,10 +103,10 @@ def maintenance_gate():
     # Heartbeat is background presence monitoring and should not
     # be blocked just because the user-facing app is in maintenance.
     if path in (
-    "/api/health",
-    "/api/heartbeat"
+        "/api/health",
+        "/api/heartbeat"
     ):
-    return None 
+        return None 
 
     # --------------------------------------------------------
     # CORS PREFLIGHT
