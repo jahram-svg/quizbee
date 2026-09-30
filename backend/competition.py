@@ -234,6 +234,33 @@ def clean_text(value: Any) -> str:
     return str(value or "").strip()
 
 
+def normalize_youtube_url(value: Any) -> str:
+    """
+    Accept a normal YouTube URL and return it unchanged when valid.
+
+    Supported examples:
+        https://www.youtube.com/watch?v=...
+        https://youtu.be/...
+        https://www.youtube.com/shorts/...
+        https://...
+    """
+
+    url = clean_text(value)
+
+    if not url:
+        return ""
+
+    if not re.match(
+        r"^https?://(www\.)?"
+        r"(youtube\.com|youtu\.be)/",
+        url,
+        re.IGNORECASE,
+    ):
+        return ""
+
+    return url
+
+
 def normalize_answer(value: Any) -> str:
     text = clean_text(value).lower()
 
