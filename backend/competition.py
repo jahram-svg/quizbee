@@ -726,6 +726,38 @@ def public_stage_data(
         "title": stage.get("title", ""),
         "question": stage.get("question", ""),
         "clue": stage.get("clue", ""),
+        "show_youtube_button": (
+            bool(
+                stage.get(
+                    "show_youtube_button",
+                    False,
+                )
+            )
+            and game_id in {
+                "guess_it",
+                "impossible_question",
+            }
+        ),
+
+        "youtube_url": (
+            normalize_youtube_url(
+                stage.get(
+                    "youtube_url",
+                    "",
+                )
+            )
+            if (
+                stage.get(
+                    "show_youtube_button",
+                    False,
+                )
+                and game_id in {
+                    "guess_it",
+                    "impossible_question",
+                }
+            )
+            else ""
+        ),
         "entry_fee": to_int(stage.get("entry_fee"), 0),
         "start_at": iso(stage.get("start_at")),
         "end_at": iso(stage.get("end_at")),
@@ -1562,6 +1594,7 @@ def award_competition_win_once(
 def settle_stage(
     round_data: Dict[str, Any],
     stage: Dict[str, Any],
+    force_final: bool = False,
 ) -> Dict[str, Any]:
 
     round_id = round_data["id"]
@@ -1667,9 +1700,13 @@ def settle_stage(
     result_count = 0
 
     next_stage = (
+    None
+    if force_final
+    else (
         stage_no + 1
         if stage_no < total_stages
         else None
+    )
     )
 
     for entry in entries:
@@ -1820,11 +1857,12 @@ def settle_stage(
         "total_distributed": 0,
     }
 
-    if stage_no == total_stages:
-        prize_info = distribute_prize(
-            round_data,
-            winners,
-        )
+    if force_final or stage_no == total_stages:
+
+    prize_info = distribute_prize(
+        round_data,
+        winners,
+    )
 
         # ----------------------------------------------------
         # FINAL WINNER PRIZE NOTIFICATIONS
@@ -1900,6 +1938,54 @@ def settle_stage(
     )
 
     # --------------------------------------------------------
+    # FORCE-FINAL GAME END
+    #
+    # Any stages after the stage being concluded are no longer
+    # allowed to run.
+    # --------------------------------------------------------
+
+    if force_final:
+
+        for future_stage in round_stages(
+            round_id
+        ):
+
+            future_stage_no = to_int(
+                future_stage.get(
+                    "stage_no"
+                ),
+                0,
+            )
+
+            if (
+                future_stage_no > stage_no
+                and future_stage.get(
+                    "status"
+                ) not in {
+                    "closed",
+                    "cancelled",
+                }
+            ):
+
+                stages_col().document(
+                    future_stage["id"]
+                ).set(
+                    {
+                        "status": "cancelled",
+
+                        "cancelled_reason":
+                            "Game ended early by Admin.",
+
+                        "cancelled_at":
+                            firestore.SERVER_TIMESTAMP,
+
+                        "updated_at":
+                            firestore.SERVER_TIMESTAMP,
+                    },
+                    merge=True,
+                )
+
+    # --------------------------------------------------------
     # UPDATE ROUND
     # --------------------------------------------------------
 
@@ -1914,12 +2000,33 @@ def settle_stage(
         ),
     }
 
-    if stage_no < total_stages:
+            if force_final:
+
         round_update["current_stage"] = stage_no
 
+        round_update[
+            "ended_at"
+        ] = firestore.SERVER_TIMESTAMP
+
+        round_update[
+            "ended_early"
+        ] = True
+
+    elif stage_no < total_stages:
+
+        round_update[
+            "current_stage"
+        ] = stage_no
+
     else:
-        round_update["current_stage"] = total_stages
-        round_update["ended_at"] = firestore.SERVER_TIMESTAMP
+
+        round_update[
+            "current_stage"
+        ] = total_stages
+
+        round_update[
+            "ended_at"
+        ] = firestore.SERVER_TIMESTAMP
 
     rounds_col().document(
         round_id
@@ -3710,6 +3817,36 @@ def admin_create_stage(
         )
     )
 
+        # --------------------------------------------------------
+    # YouTube clue video
+    # --------------------------------------------------------
+
+    show_youtube_button = bool(
+        payload.get(
+            "show_youtube_button",
+            False,
+        )
+    )
+
+    youtube_url = normalize_youtube_url(
+        payload.get(
+            "youtube_url",
+            "",
+        )
+    )
+
+    # YouTube clue videos are supported only for
+    # Guess It and Impossible Question.
+    if game_id not in {
+        "guess_it",
+        "impossible_question",
+    }:
+        show_youtube_button = False
+        youtube_url = ""
+
+    if not youtube_url:
+        show_youtube_button = False
+
     safe_option = clean_text(
         payload.get(
             "safe_option"
@@ -3792,6 +3929,8 @@ def admin_create_stage(
             "title": title,
             "question": question,
             "clue": clue,
+            "show_youtube_button": show_youtube_button,
+            "youtube_url": youtube_url,
             "entry_fee": entry_fee,
             "start_at": start_at,
             "end_at": end_at,
@@ -3931,6 +4070,47 @@ def admin_edit_stage(
         updates["clue"] = clean_text(
             payload.get("clue")
         )
+
+        if (
+        "show_youtube_button" in payload
+        or "youtube_url" in payload
+    ):
+
+        game_id = round_data.get(
+            "game_id"
+        )
+
+        show_youtube_button = bool(
+            payload.get(
+                "show_youtube_button",
+                False,
+            )
+        )
+
+        youtube_url = normalize_youtube_url(
+            payload.get(
+                "youtube_url",
+                ""
+            )
+        )
+
+        if game_id not in {
+            "guess_it",
+            "impossible_question",
+        }:
+            show_youtube_button = False
+            youtube_url = ""
+
+        if not youtube_url:
+            show_youtube_button = False
+
+        updates[
+            "show_youtube_button"
+        ] = show_youtube_button
+
+        updates[
+            "youtube_url"
+        ] = youtube_url
 
     if "options" in payload:
         updates["options"] = unique_list(
@@ -4537,6 +4717,126 @@ def admin_end_stage(
         "message": (
             "Stage concluded and player results recorded."
         ),
+        **result,
+    })
+
+
+# ============================================================
+# ADMIN: END ENTIRE GAME / ROUND EARLY
+# ============================================================
+
+@competition_bp.post(
+    "/admin/rounds/<round_id>/end-game"
+)
+@admin_route
+def admin_end_game(
+    admin,
+    round_id,
+):
+    round_data = get_round(
+        round_id
+    )
+
+    if not round_data:
+        return jsonify({
+            "success": False,
+            "error": "Round not found.",
+        }), 404
+
+    if round_data.get(
+        "status"
+    ) == "settled":
+
+        return jsonify({
+            "success": False,
+            "error":
+                "This game round has already ended.",
+        }), 400
+
+    if round_data.get(
+        "status"
+    ) == "cancelled":
+
+        return jsonify({
+            "success": False,
+            "error":
+                "This game round has been cancelled.",
+        }), 400
+
+    current_stage_no = to_int(
+        round_data.get(
+            "current_stage"
+        ),
+        1,
+    )
+
+    stage = get_stage(
+        round_id,
+        current_stage_no,
+    )
+
+    if not stage:
+
+        return jsonify({
+            "success": False,
+            "error":
+                "The current stage could not be found.",
+        }), 404
+
+    if stage.get(
+        "status"
+    ) not in {
+        "live",
+        "closed",
+    }:
+
+        return jsonify({
+            "success": False,
+            "error":
+                "The current stage must be live or already closed.",
+        }), 400
+
+    result = settle_stage(
+        round_data,
+        stage,
+        force_final=True,
+    )
+
+    rounds_col().document(
+        round_id
+    ).set(
+        {
+            "status": "settled",
+
+            "ended_early": True,
+
+            "ended_early_by":
+                str(
+                    admin.get(
+                        "id",
+                        "",
+                    )
+                ),
+
+            "ended_at":
+                firestore.SERVER_TIMESTAMP,
+
+            "updated_at":
+                firestore.SERVER_TIMESTAMP,
+        },
+        merge=True,
+    )
+
+    return jsonify({
+        "success": True,
+
+        "message": (
+            "Game ended completely. "
+            "The current stage winners were "
+            "treated as the final winners and "
+            "the prize was distributed."
+        ),
+
         **result,
     })
 
