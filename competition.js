@@ -591,6 +591,7 @@
         );
     }
 
+
     // ========================================================
     // TIMER
     // ========================================================
@@ -691,6 +692,38 @@
             <div class="question">
                 ${escapeHtml(question)}
             </div>
+
+            ${
+    (
+        (
+            game?.id === "guess_it" ||
+            game?.id === "impossible_question"
+        )
+        &&
+        stageData?.show_youtube_button
+        &&
+        stageData?.youtube_url
+    )
+        ? `
+            <div
+                class="competition-youtube-clue"
+                style="
+                    margin-top:14px;
+                "
+            >
+
+                <button
+                    class="secondary-btn full"
+                    type="button"
+                    onclick="openCompetitionYoutubeClue()"
+                >
+                    ▶️ WATCH CLUE VIDEO
+                </button>
+
+            </div>
+        `
+        : ""
+            }
 
             <div
                 class="competition-timer"
@@ -813,6 +846,51 @@
 
         startTimer(stage.end_at);
     }
+
+    window.openCompetitionYoutubeClue =
+    function () {
+
+        const game =
+            currentGame || {};
+
+        const stage =
+            stageData || {};
+
+        if (
+            game.id !== "guess_it" &&
+            game.id !== "impossible_question"
+        ) {
+
+            return;
+
+        }
+
+        if (
+            !stage.show_youtube_button
+        ) {
+
+            return;
+
+        }
+
+        const url =
+            String(
+                stage.youtube_url || ""
+            ).trim();
+
+        if (!url) {
+
+            return;
+
+        }
+
+        window.open(
+            url,
+            "_blank",
+            "noopener,noreferrer"
+        );
+
+    };
 
     // ========================================================
     // REFRESH
