@@ -1162,6 +1162,15 @@
                      END / SETTLE STAGE
                 </button>
             `;
+
+            buttons += `
+            <button
+                class="danger-btn"
+                onclick="competitionEndGame('${h(round.id)}')"
+            >
+                🛑 END GAME COMPLETELY
+            </button>
+        `;
         }
 
         /*
@@ -2517,6 +2526,70 @@ youtube_url:
             );
         }
     };
+
+
+    window.competitionEndGame = async function (
+    roundId
+) {
+
+    const confirmed =
+        window.confirm(
+            "END THIS GAME COMPLETELY?\n\n" +
+            "The current stage will be concluded " +
+            "immediately.\n\n" +
+            "The winners of the current stage will " +
+            "become the final winners and share the " +
+            "prize pool.\n\n" +
+            "All remaining stages will be cancelled.\n\n" +
+            "This cannot be undone."
+        );
+
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+
+        const data = await api(
+            `/api/competition/admin/rounds/${encodeURIComponent(
+                roundId
+            )}/end-game`,
+            {
+                method: "POST",
+                body: JSON.stringify({})
+            }
+        );
+
+        if (!data.success) {
+
+            throw new Error(
+                data.error ||
+                "Unable to end game."
+            );
+
+        }
+
+        showToast(
+            data.message ||
+            "Game ended completely."
+        );
+
+        await competitionLoadRound(
+            roundId
+        );
+
+        await competitionLoadRounds();
+
+    } catch (error) {
+
+        showToast(
+            error.message ||
+            "Unable to end game."
+        );
+
+    }
+
+};
 
     /*
      * ------------------------------------------------------------
