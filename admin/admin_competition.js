@@ -1277,6 +1277,53 @@ ${h(stage.title || "Untitled")}
                         : ""
                 }
 
+                ${
+    (
+        gameId === "guess_it" ||
+        gameId === "impossible_question"
+    ) && stage.show_youtube_button
+        ? `
+            <div class="competition-secret">
+
+                <span>
+                    YouTube Clue
+                </span>
+
+                <strong>
+                    ▶️ Button enabled
+                </strong>
+
+                ${
+                    stage.youtube_url
+                        ? `
+                            <div
+                                style="
+                                    margin-top:6px;
+                                    word-break:break-all;
+                                    font-size:12px;
+                                    opacity:.75;
+                                "
+                            >
+                                ${h(stage.youtube_url)}
+                            </div>
+                        `
+                        : `
+                            <div
+                                style="
+                                    margin-top:6px;
+                                    color:#ff7777;
+                                "
+                            >
+                                ⚠️ No YouTube URL set
+                            </div>
+                        `
+                }
+
+            </div>
+        `
+        : ""
+                }
+
                 <div class="competition-secret">
                     <span> Private Admin Secret</span>
                     ${secret}
@@ -1536,6 +1583,58 @@ ${h(stage.title || "Untitled")}
                                         value="${h(accepted)}"
                                     >
                                 </div>
+
+                                <div class="competition-form-full">
+                                    <label>
+                                        YouTube Clue Video
+                                    </label>
+
+                                    <label
+                                        style="
+                                            display:flex;
+                                            align-items:center;
+                                            gap:8px;
+                                            margin-top:8px;
+                                        "
+                                    >
+
+                                        <input
+                                            type="checkbox"
+                                            id="editStageShowYoutube_${Number(stage.stage_no)}"
+                                            ${
+                                                stage.show_youtube_button
+                                                    ? "checked"
+                                                    : ""
+                                            }
+                                        >
+
+                                        <span>
+                                            Show YouTube clue button
+                                        </span>
+
+                                    </label>
+
+                                </div>
+
+                                <div class="competition-form-full">
+
+                                    <label>
+                                        YouTube Video Link
+                                    </label>
+
+                                    <input
+                                        id="editStageYoutubeUrl_${Number(stage.stage_no)}"
+                                        type="url"
+                                        placeholder="https://www.youtube.com/watch?v=..."
+                                        value="${h(stage.youtube_url || "")}"
+                                    >
+
+                                    <div class="competition-help">
+                                        Enter the YouTube video link that
+                                        contains clues for this question.
+                                    </div>
+
+                                </div>
                             `
                             : ""
                     }
@@ -1770,6 +1869,16 @@ ${h(stage.title || "Untitled")}
 
                 clue:
                     getValue(`editStageClue_${stageNo}`),
+
+                show_youtube_button:
+    document.getElementById(
+        `editStageShowYoutube_${stageNo}`
+    )?.checked || false,
+
+youtube_url:
+    getValue(
+        `editStageYoutubeUrl_${stageNo}`
+    ),
 
                 options:
                     splitList(`editStageOptions_${stageNo}`),
