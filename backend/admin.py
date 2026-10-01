@@ -349,7 +349,7 @@ def bootstrap():
 
         active_round = None
 
-                for doc in daily_rounds:
+        for doc in daily_rounds:
 
             data = doc.to_dict() or {}
 
