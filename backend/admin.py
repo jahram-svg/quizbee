@@ -349,7 +349,7 @@ def bootstrap():
 
         active_round = None
 
-        for doc in daily_rounds:
+                for doc in daily_rounds:
 
             data = doc.to_dict() or {}
 
@@ -367,10 +367,13 @@ def bootstrap():
 
                 if active_round is None:
                     active_round = data
+
                 else:
+
                     old_start = active_round.get(
                         "start_at"
                     )
+
                     new_start = data.get(
                         "start_at"
                     )
@@ -380,11 +383,21 @@ def bootstrap():
                         and old_start
                         and new_start > old_start
                     ):
+
                         active_round = data
 
-                online_members = get_online_members(
+
+        # ----------------------------------------------------
+        # ONLINE MEMBERS
+        # ----------------------------------------------------
+
+        # This MUST be outside the daily_rounds loop.
+        # The Admin dashboard needs this even when there
+        # are currently no Daily Earning rounds.
+        online_members = get_online_members(
             users
         )
+
 
         return jsonify({
             "success": True,
