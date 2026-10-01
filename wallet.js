@@ -1115,12 +1115,35 @@ async function showWithdrawalHistory() {
                 .join("");
 
 
-    } catch (error) {
+        } catch (error) {
 
         console.error(
             "Withdrawal history error:",
             error
         );
+
+        const list =
+            document.getElementById(
+                "withdrawalHistoryList"
+            );
+
+        if (list) {
+
+            list.innerHTML = `
+
+                <div class="info-box">
+
+                    Unable to load withdrawal history.
+
+                    <br><br>
+
+                    Please try again.
+
+                </div>
+
+            `;
+
+        }
 
     }
 
