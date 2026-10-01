@@ -985,37 +985,78 @@ def withdrawals():
     user = require_user()
 
     if not user:
+
         return jsonify({
             "success": False,
-            "error": "Unauthorized Telegram session."
+            "error":
+                "Unauthorized Telegram session."
         }), 401
 
-    docs = (
-        db.collection(
-            "withdrawals"
-        )
-        .where(
-            "telegram_id",
-            "==",
+    try:
+
+        telegram_id = str(
             user["telegram_id"]
         )
-        .order_by(
-            "created_at",
-            direction=firestore.Query.DESCENDING
+
+        # ----------------------------------------------------
+        # Do NOT use Firestore order_by here.
+        #
+        # Filtering by telegram_id + ordering by created_at
+        # can require a composite Firestore index.
+        #
+        # We fetch the user's withdrawals and sort locally,
+        # exactly like the working transaction history.
+        # ----------------------------------------------------
+
+        docs = list(
+            db.collection(
+                "withdrawals"
+            )
+            .where(
+                "telegram_id",
+                "==",
+                telegram_id
+            )
+            .limit(100)
+            .stream()
         )
-        .limit(50)
-        .stream()
-    )
 
-    results = [
-        serialize_doc(doc)
-        for doc in docs
-    ]
+        results = [
+            serialize_doc(doc)
+            for doc in docs
+        ]
 
-    return jsonify({
-        "success": True,
-        "withdrawals": results
-    })
+        # ----------------------------------------------------
+        # LOCAL SORT
+        # ----------------------------------------------------
+
+        results.sort(
+            key=lambda item:
+                item.get(
+                    "created_at",
+                    ""
+                ) or "",
+            reverse=True
+        )
+
+        return jsonify({
+            "success": True,
+            "withdrawals":
+                results[:50]
+        })
+
+    except Exception as exc:
+
+        print(
+            "Withdrawal history error:",
+            repr(exc)
+        )
+
+        return jsonify({
+            "success": False,
+            "error":
+                "Unable to load withdrawal history."
+        }), 500
 
 
 # ============================================================
