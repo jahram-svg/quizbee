@@ -924,11 +924,10 @@ def is_user_online(last_seen):
                 tzinfo=timezone.utc
             )
 
-        age =
-            (
-                now()
-                - seen_at
-            ).total_seconds()
+        age = (
+            now()
+            - seen_at
+        ).total_seconds()
 
         return (
             age <=
