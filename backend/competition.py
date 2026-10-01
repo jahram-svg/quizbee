@@ -1859,10 +1859,10 @@ def settle_stage(
 
     if force_final or stage_no == total_stages:
 
-    prize_info = distribute_prize(
-        round_data,
-        winners,
-    )
+        prize_info = distribute_prize(
+            round_data,
+            winners,
+        )
 
         # ----------------------------------------------------
         # FINAL WINNER PRIZE NOTIFICATIONS
@@ -2000,7 +2000,7 @@ def settle_stage(
         ),
     }
 
-            if force_final:
+    if force_final:
 
         round_update["current_stage"] = stage_no
 
@@ -4071,7 +4071,7 @@ def admin_edit_stage(
             payload.get("clue")
         )
 
-        if (
+    if (
         "show_youtube_button" in payload
         or "youtube_url" in payload
     ):
